@@ -97,6 +97,7 @@ test_db3.php
 # Allow specific schema migration scripts under database/ (per file, supaya
 # tidak accidentally expose data karyawan/jadwal yang juga di-stage di sini).
 !database/add_early_leave_columns.sql
+!database/backfill_sakit_presence_get_paid.sql
 
 # User Guide
 /user_guide/
