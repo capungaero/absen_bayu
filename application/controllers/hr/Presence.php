@@ -360,7 +360,7 @@ class Presence extends CI_Controller{
 					$entry_time_late = 0;
 
 					if($entry != null){
-						$entry_time_late = $this->_late_minutes($adt['start_time_late'], $entry);
+						$entry_time_late = late_minutes($adt['start_time_late'], $entry);
 					}
 					
 					$rest_time_late = 0;
@@ -368,7 +368,7 @@ class Presence extends CI_Controller{
 						$rto = $p['rest_time_out'].":00";
 						$rest_limit = date('H:i:s', strtotime($rest_in." +".$adt['rest_time_range']." minutes"));
 						if($rto <= $adt['end_time_rest']){
-							$rest_time_late = $this->_late_minutes($rest_limit, $rto);
+							$rest_time_late = late_minutes($rest_limit, $rto);
 						}
 					}
 
@@ -1053,7 +1053,7 @@ class Presence extends CI_Controller{
 					$d_day = $date.' '.$time;
 					if($this->_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $payload['entry_time'] == ''){
 						$payload['entry_time'] = $d_day;
-						$payload['entry_time_late'] = $this->_late_minutes($shift['start_time_late'], $time);
+						$payload['entry_time_late'] = late_minutes($shift['start_time_late'], $time);
 						continue;
 					}
 
@@ -1068,7 +1068,7 @@ class Presence extends CI_Controller{
 						}else if($payload['rest_time_out'] == ''){
 							$payload['rest_time_out'] = $d_day;
 							$limit = date('H:i:s', strtotime($payload['rest_time_in'].' +'.$shift['rest_time_range'].' minutes'));
-							$payload['rest_time_late'] = $this->_late_minutes($limit, $time);
+							$payload['rest_time_late'] = late_minutes($limit, $time);
 						}
 					}
 				}
@@ -1863,7 +1863,7 @@ class Presence extends CI_Controller{
 					$d_day = $date.' '.$time;
 					if($this->_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $input[$employee['id']][$date]['entry_time'] == ''){
 						$input[$employee['id']][$date]['entry_time'] = $d_day;
-						$input[$employee['id']][$date]['entry_time_late'] = $this->_late_minutes($shift['start_time_late'], $time);
+						$input[$employee['id']][$date]['entry_time_late'] = late_minutes($shift['start_time_late'], $time);
 						continue;
 					}
 
@@ -1878,7 +1878,7 @@ class Presence extends CI_Controller{
 						}else if($input[$employee['id']][$date]['rest_time_out'] == ''){
 							$input[$employee['id']][$date]['rest_time_out'] = $d_day;
 							$limit = date('H:i:s', strtotime($input[$employee['id']][$date]['rest_time_in'].' +'.$shift['rest_time_range'].' minutes'));
-							$input[$employee['id']][$date]['rest_time_late'] = $this->_late_minutes($limit, $time);
+							$input[$employee['id']][$date]['rest_time_late'] = late_minutes($limit, $time);
 						}
 					}
 				}
@@ -2199,19 +2199,6 @@ class Presence extends CI_Controller{
 		}
 
 		return $time >= $start || $time <= $end;
-	}
-
-	private function _late_minutes($limit, $time){
-		if($limit === null || $limit === '' || $time === null || $time === ''){
-			return 0;
-		}
-
-		$time = date('H:i', strtotime($time));
-		$limit = date('H:i', strtotime($limit));
-		$time_minutes = ((int) substr($time, 0, 2) * 60) + (int) substr($time, 3, 2);
-		$limit_minutes = ((int) substr($limit, 0, 2) * 60) + (int) substr($limit, 3, 2);
-
-		return max(0, $time_minutes - $limit_minutes);
 	}
 
 	private function _apply_attlog_fallback(&$payload, $date, $times){

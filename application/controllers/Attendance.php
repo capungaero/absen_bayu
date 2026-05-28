@@ -559,7 +559,7 @@ class Attendance extends CI_Controller {
             $start_time_late = $shift['start_time_late']; // batas toleransi keterlambatan
             $tap_time        = date('H:i:s', strtotime($log['tap_datetime']));
 
-            $late_minutes = $this->_late_minutes($start_time_late, $tap_time);
+            $late_minutes = late_minutes($start_time_late, $tap_time);
             if ($late_minutes <= 0) {
                 // Hadir tepat waktu (dalam toleransi)
                 $log['keterangan'] = 'Tepat Waktu';
@@ -598,19 +598,6 @@ class Attendance extends CI_Controller {
         $data['shift_schedule_count']  = $schedule_count;
 
         $this->template->load('layout/admin', 'attendance/machine_report', $data);
-    }
-
-    private function _late_minutes($limit, $time) {
-        if ($limit === null || $limit === '' || $time === null || $time === '') {
-            return 0;
-        }
-
-        $limit = date('H:i', strtotime($limit));
-        $time = date('H:i', strtotime($time));
-        $limit_minutes = ((int) substr($limit, 0, 2) * 60) + (int) substr($limit, 3, 2);
-        $time_minutes = ((int) substr($time, 0, 2) * 60) + (int) substr($time, 3, 2);
-
-        return max(0, $time_minutes - $limit_minutes);
     }
 
     private function _sanitize_machine_sn($sn) {
