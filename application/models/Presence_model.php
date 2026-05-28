@@ -979,8 +979,14 @@ Class Presence_model extends CI_Model{
       }
 
       ## LEAVE FINE
+      ## Aturan: presence_type='sakit' selalu potongan 0% (di-skip dari
+      ## perhitungan fine). Keterangan sakit di-enforce saat insert leave
+      ## (leave_reason required) + di approval (Leave::change_status set
+      ## presence_get_paid=100 untuk sakit).
       $leave_fine = 0;
-      if($employee['is_fine_system'] == '1' && $in['presence_type'] != 'normal'){
+      if($employee['is_fine_system'] == '1'
+          && $in['presence_type'] != 'normal'
+          && $in['presence_type'] != 'sakit'){
         $fine_percent_leave = 100 - $in['presence_get_paid'];
         if($fine_percent_leave > 0){
           $amount_day_fine = round(($fine_percent_leave / 100) * $salary_per_day);

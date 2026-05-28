@@ -336,11 +336,17 @@ class leave extends CI_Controller{
 				$this->leave->update($data, $leave_id);
 
 				if($p['status'] == 'approve'){
+					// Aturan: leave_type='sakit' selalu dibayar penuh (potongan 0%),
+					// terlepas dari acc_potongan yang dipilih approver.
+					if($leave['leave_type'] == 'sakit'){
+						$potongan = 0;
+					}
+
 					$range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
 					$this->db->where('user_id', $leave['user_id'])
 							 ->where_in('flow_date', $range)
 							 ->delete('presence');
-					
+
 					foreach ($range as $row) {
 						$presence[] = [
 							'user_id' 	 		=> $leave['user_id'],
