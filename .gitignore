@@ -94,6 +94,10 @@ test_db3.php
 !tests/fixtures/**/*.json
 !tests/fixtures/**/*.sql
 
+# Allow specific schema migration scripts under database/ (per file, supaya
+# tidak accidentally expose data karyawan/jadwal yang juga di-stage di sini).
+!database/add_early_leave_columns.sql
+
 # User Guide
 /user_guide/
 user_guide_src/build/*
