@@ -35,7 +35,7 @@ class Payroll extends CI_Controller{
 				$branch_id = $this->userdata->branch_id;
 			}
 
-			if(in_array($this->role, ['employee', 'supervisor'])){
+			if(in_array($this->role, ['employee'])){
 				$year = $this->input->get('year') ? $this->input->get('year') : date('Y');
 				$data['list'] = $this->_get_employee_payroll_data($year, $this->userdata->user_id);
 				$data['year'] = $year;
@@ -80,7 +80,7 @@ class Payroll extends CI_Controller{
 			$data['branch_id']  = $branch_id;
 			$pass = true;
 
-			if($this->role == 'employee' || $this->role == 'supervisor'){
+			if($this->role == 'employee'){
 				if(empty($data['payroll'])){
 					$pass = false;
 				}	
@@ -95,7 +95,7 @@ class Payroll extends CI_Controller{
 					$comp['attendance'] = $this->presence->get_attendance_by_branch($branch_id, $month, $year, $overtime);
 				
 				}else{
-					$employee_id = $this->role == 'employee' || $this->role == 'supervisor' ? $this->userdata->user_id : '';
+					$employee_id = $this->role == 'employee' ? $this->userdata->user_id : '';
 					$table = '_payrollTableDone';
 
 					$order_by = [
@@ -403,7 +403,7 @@ class Payroll extends CI_Controller{
 			$data['branch_id']     = $branch_id;
 			$employee_pass = true;
 
-			if($this->role == 'employee' || $this->role == 'supervisor'){
+			if($this->role == 'employee'){
 				if($employee_id != $this->userdata->user_id){
 					$employee_pass = false;
 				}

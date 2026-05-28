@@ -210,11 +210,11 @@ class Presence extends CI_Controller{
 	}
 
 	public function update(){
-		if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor']) && $this->input->is_ajax_request()){
+		if(in_array($this->role, ['admin', 'admin-branch', 'hr']) && $this->input->is_ajax_request()){
 			$p   = $this->input->post();
 
 			$find['users.id'] = $p['user_id'];
-			if(!in_array($this->role, ['admin', 'supervisor'])){
+			if($this->role != 'admin'){
 				$find['position.branch_id'] = $this->userdata->branch_id;
 			}
 			$cek = $this->employee->get_detail($find);
@@ -1228,7 +1228,7 @@ class Presence extends CI_Controller{
 	}
 
 	public function sync_cloud(){
-		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch', 'supervisor'])){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1276,7 +1276,7 @@ class Presence extends CI_Controller{
 	}
 
 	public function sync_pray_cloud(){
-		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch', 'supervisor'])){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1323,7 +1323,7 @@ class Presence extends CI_Controller{
 	}
 
 	public function clear_period(){
-		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch', 'supervisor'])){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1897,7 +1897,7 @@ class Presence extends CI_Controller{
 
 
 	public function upload_work_schedule(){
-		if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
+		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
 			$file_mimes = array('application/octet-stream', 'application/vnd.ms-excel', 'application/x-csv', 'text/x-csv', 'text/csv', 'application/csv', 'application/excel', 'application/vnd.msexcel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
  			
 			$extension = isset($_FILES['excel_file']['name']) ? strtolower(pathinfo($_FILES['excel_file']['name'], PATHINFO_EXTENSION)) : '';
@@ -2072,7 +2072,7 @@ class Presence extends CI_Controller{
 	}
 
 	public function save_work_schedule_manual(){
-		if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
+		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -2162,7 +2162,7 @@ class Presence extends CI_Controller{
 	}
 
 	public function load_work_schedule_excel(){
-		if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
+		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
 			$file_mimes = array('application/octet-stream', 'application/vnd.ms-excel', 'application/x-csv', 'text/x-csv', 'text/csv', 'application/csv', 'application/excel', 'application/vnd.msexcel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 			$extension = isset($_FILES['excel_file']['name']) ? strtolower(pathinfo($_FILES['excel_file']['name'], PATHINFO_EXTENSION)) : '';
 			if(!isset($_FILES['excel_file']['name']) || (!in_array($_FILES['excel_file']['type'], $file_mimes) && !in_array($extension, ['csv', 'xls', 'xlsx']))){
@@ -2259,7 +2259,7 @@ class Presence extends CI_Controller{
 	}
 
 	public function copy_previous_work_schedule(){
-		if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
+		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){

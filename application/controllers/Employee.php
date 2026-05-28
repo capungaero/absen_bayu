@@ -51,7 +51,7 @@ class Employee extends CI_Controller{
 	}
 
 	public function detail($id){
-		if($this->role == 'admin'){
+		if(in_array($this->role, ['admin', 'admin-branch'])){
 			$cek = $this->employee->get_detail('employee.id', $id);
 
 			if($cek->num_rows() > 0){
@@ -68,7 +68,7 @@ class Employee extends CI_Controller{
 	}
 
 	public function insert(){
-		if($this->input->is_ajax_request() && $this->role == 'admin'){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$p = $this->input->post();
 			$p['location'] = isset($p['location']) ? trim($p['location']) : null;
 
@@ -218,7 +218,7 @@ class Employee extends CI_Controller{
 
 
 	public function update(){
-		if($this->input->is_ajax_request() && $this->role == 'admin'){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$p  = $this->input->post();
 			$p['location'] = isset($p['location']) ? trim($p['location']) : null;
 			$p['salary'] = format_angka($p['salary']);
@@ -375,7 +375,7 @@ class Employee extends CI_Controller{
 	}
 
 	public function delete(){
-		if($this->input->is_ajax_request() && ($this->role == 'admin') || $this->role == 'admin-branch'){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$data = $this->employee->get_detail('users.id', $this->input->post('id'))->row_array();
 			if($this->employee->delete($this->input->post('id'))){
 				$res = [
@@ -396,7 +396,7 @@ class Employee extends CI_Controller{
 	}
 
 	public function change_status(){
-		if($this->input->is_ajax_request() && ($this->role == 'admin') || $this->role == 'admin-branch'){
+		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 
 			$find['users.id'] = $this->input->post('id');
 
