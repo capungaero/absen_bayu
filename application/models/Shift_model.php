@@ -112,12 +112,14 @@ Class Shift_model extends CI_Model{
     public function get_dataTable($find = array()){
       $dt = $this->datatables->init();
 
+      // is_active sengaja diqualify ke shift.is_active karena kolom ini juga
+      // ada di tabel branch -> tanpa prefix MySQL throws 1052 ambiguous.
       $select = 'shift.id, branch_id, branch_code, branch_name, city, shift.created_at, shift.updated_at,
                         DATE_FORMAT(shift.created_at, "%d %M %Y %H:%i") AS created_at_string,
                         DATE_FORMAT(shift.updated_at, "%d %M %Y %H:%i") AS updated_at_string,
-                        shift_name, shift_code, start_time, end_time, start_time_in, start_time_late, start_time_out, end_time_in, end_time_out, late_amount_start, late_amount_multiple_start, late_multiple_count_start, late_amount_rest, late_amount_multiple_rest, late_multiple_count_rest, start_time_rest, end_time_rest, rest_time_range, 
+                        shift_name, shift_code, start_time, end_time, start_time_in, start_time_late, start_time_out, end_time_in, end_time_out, late_amount_start, late_amount_multiple_start, late_multiple_count_start, late_amount_rest, late_amount_multiple_rest, late_multiple_count_rest, start_time_rest, end_time_rest, rest_time_range,
                           start_time_rest_friday, end_time_rest_friday, rest_time_range_friday,
-                          late_amount_max_start, late_amount_max_rest, is_active';
+                          late_amount_max_start, late_amount_max_rest, shift.is_active AS is_active';
 
       if(empty($find)){
         $dt->select($select)
