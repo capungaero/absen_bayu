@@ -44,7 +44,7 @@ class Sync extends CI_Controller {
             show_error('Bad Request', 400);
         }
 
-        $sn = $this->_sanitize_machine_sn($this->input->post('machine_sn', true));
+        $sn = attlog_sanitize_machine_sn($this->input->post('machine_sn', true));
         if (empty($sn)) {
             echo json_encode(['success' => false, 'message' => 'Machine SN diperlukan dan hanya boleh berisi huruf, angka, underscore, atau strip.']);
             return;
@@ -134,7 +134,7 @@ class Sync extends CI_Controller {
 
         $data = [
             'name'              => $this->input->post('name', true),
-            'machine_sn'        => $this->_sanitize_machine_sn($this->input->post('machine_sn', true)),
+            'machine_sn'        => attlog_sanitize_machine_sn($this->input->post('machine_sn', true)),
             'machine_type'      => $this->input->post('machine_type', true) === 'pray' ? 'pray' : 'attendance',
             'password'          => $this->input->post('password', true),
             'branch_id'         => $branch_id,
@@ -181,7 +181,7 @@ class Sync extends CI_Controller {
 
         $data = [
             'name'              => $this->input->post('name', true),
-            'machine_sn'        => $this->_sanitize_machine_sn($this->input->post('machine_sn', true)),
+            'machine_sn'        => attlog_sanitize_machine_sn($this->input->post('machine_sn', true)),
             'machine_type'      => $this->input->post('machine_type', true) === 'pray' ? 'pray' : 'attendance',
             'password'          => $this->input->post('password', true),
             'branch_id'         => $branch_id,
@@ -254,7 +254,7 @@ class Sync extends CI_Controller {
         $year  = (int) $this->input->post('year') ?: (int) date('Y');
 
         $machine = $this->sync->get_by_id($id);
-        $machine_sn = $machine ? $this->_sanitize_machine_sn($machine['machine_sn']) : '';
+        $machine_sn = $machine ? attlog_sanitize_machine_sn($machine['machine_sn']) : '';
         if (!$machine || !$this->_can_access_machine($machine) || empty($machine_sn)) {
             echo json_encode(['success' => false, 'message' => 'Mesin tidak ditemukan atau SN belum diisi.']);
             return;
@@ -341,11 +341,6 @@ class Sync extends CI_Controller {
 
         $branch = $this->branch->get_active_detail('id', (int) $branch_id)->row_array();
         return !empty($branch) ? (int) $branch['id'] : null;
-    }
-
-    private function _sanitize_machine_sn($sn) {
-        $sn = trim((string) $sn);
-        return preg_match('/^[A-Za-z0-9_-]+$/', $sn) ? $sn : '';
     }
 
     private function _can_access_machine($machine) {

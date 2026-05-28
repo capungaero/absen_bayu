@@ -389,7 +389,7 @@ class Wa extends CI_Controller {
         $raw_rows = 0;
 
         foreach ($machines as $machine) {
-            $machine_sn = $this->_sanitize_machine_sn($machine['machine_sn']);
+            $machine_sn = attlog_sanitize_machine_sn($machine['machine_sn']);
             if ($machine_sn === '' || $machine['password'] === '') {
                 $failed[] = $machine['name'].' (SN/password tidak valid)';
                 continue;
@@ -487,18 +487,18 @@ class Wa extends CI_Controller {
             foreach ($times as $time) {
                 $datetime = $today.' '.$time;
 
-                if ($this->_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && empty($payload['entry_time'])) {
+                if (attlog_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && empty($payload['entry_time'])) {
                     $payload['entry_time'] = $datetime;
                     $payload['entry_time_late'] = $this->_minutes_between($shift['start_time_late'], $time);
                     continue;
                 }
 
-                if ($this->_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && empty($payload['out_time'])) {
+                if (attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && empty($payload['out_time'])) {
                     $payload['out_time'] = $datetime;
                     continue;
                 }
 
-                if ($this->_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])) {
+                if (attlog_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])) {
                     if (empty($payload['rest_time_in'])) {
                         $payload['rest_time_in'] = $datetime;
                     } elseif (empty($payload['rest_time_out'])) {
@@ -604,18 +604,6 @@ class Wa extends CI_Controller {
         return 'updated';
     }
 
-    private function _time_between($time, $start, $end) {
-        if ($start === null || $end === null || $start === '' || $end === '') {
-            return false;
-        }
-
-        if ($start <= $end) {
-            return $time >= $start && $time <= $end;
-        }
-
-        return $time >= $start || $time <= $end;
-    }
-
     private function _minutes_between($from, $to) {
         if ($from === null || $from === '' || $to === null || $to === '') {
             return 0;
@@ -631,10 +619,5 @@ class Wa extends CI_Controller {
 
     private function _download_cloud_attlog($sn, $password) {
         return $this->cloud_attlog_client->download_single($sn, $password);
-    }
-
-    private function _sanitize_machine_sn($sn) {
-        $sn = trim((string) $sn);
-        return preg_match('/^[A-Za-z0-9_-]+$/', $sn) ? $sn : '';
     }
 }

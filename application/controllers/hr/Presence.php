@@ -746,7 +746,7 @@ class Presence extends CI_Controller{
 				    	if($presence > 0){
 
 				    		if(!isset($input[$employee['id']][$date])){
-					    		$input[$employee['id']][$date] = $this->_payload_pray();
+					    		$input[$employee['id']][$date] = attlog_payload_pray();
 					    	}
 
 				    		$friday = get_dayname($date) == 'Jumat' ? true : false;
@@ -1018,13 +1018,13 @@ class Presence extends CI_Controller{
 								  ->get('users_shift_additional')->row_array();
 
 				sort($row['time']);
-				$payload = $this->_payload();
+				$payload = attlog_payload();
 				$payload['user_id'] = $employee['id'];
 				$payload['flow_date'] = $date;
 				$payload['created_at'] = $created_at;
 
 				if(!$use_schedule){
-					$this->_apply_attlog_fallback($payload, $date, $row['time']);
+					attlog_apply_fallback($payload, $date, $row['time']);
 					$input[$employee['id']][$date] = $payload;
 					$fallback_rows++;
 					continue;
@@ -1033,7 +1033,7 @@ class Presence extends CI_Controller{
 				if(empty($shift)){
 					$no_schedule++;
 					if($method == 'sync'){
-						$this->_apply_attlog_fallback($payload, $date, $row['time']);
+						attlog_apply_fallback($payload, $date, $row['time']);
 						$input[$employee['id']][$date] = $payload;
 						$fallback_rows++;
 					}
@@ -1042,18 +1042,18 @@ class Presence extends CI_Controller{
 
 				foreach($row['time'] as $time){
 					$d_day = $date.' '.$time;
-					if($this->_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $payload['entry_time'] == ''){
+					if(attlog_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $payload['entry_time'] == ''){
 						$payload['entry_time'] = $d_day;
 						$payload['entry_time_late'] = late_minutes($shift['start_time_late'], $time);
 						continue;
 					}
 
-					if($this->_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && $payload['out_time'] == ''){
+					if(attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && $payload['out_time'] == ''){
 						$payload['out_time'] = $d_day;
 						continue;
 					}
 
-					if($this->_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])){
+					if(attlog_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])){
 						if($payload['rest_time_in'] == ''){
 							$payload['rest_time_in'] = $d_day;
 						}else if($payload['rest_time_out'] == ''){
@@ -1067,7 +1067,7 @@ class Presence extends CI_Controller{
 				if($payload['entry_time'] == '' && $payload['out_time'] == '' && $payload['rest_time_in'] == '' && $payload['rest_time_out'] == ''){
 					$no_window_match++;
 					if($method == 'sync'){
-						$this->_apply_attlog_fallback($payload, $date, $row['time']);
+						attlog_apply_fallback($payload, $date, $row['time']);
 						$input[$employee['id']][$date] = $payload;
 						$fallback_rows++;
 					}
@@ -1366,20 +1366,12 @@ class Presence extends CI_Controller{
 		]);
 	}
 
-	private function _presence_storage_dir($month, $year){
-		$dir = FCPATH.'uploads'.DIRECTORY_SEPARATOR.'attendance'.DIRECTORY_SEPARATOR.$year.DIRECTORY_SEPARATOR.str_pad($month, 2, '0', STR_PAD_LEFT);
-		if(!is_dir($dir)){
-			mkdir($dir, 0777, true);
-		}
-		return $dir;
-	}
-
 	private function _save_cloud_attlog_files($machines, $month, $year){
-		$dir = $this->_presence_storage_dir($month, $year);
+		$dir = attlog_presence_storage_dir($month, $year);
 		$paths = [];
 		$stamp = date('Ymd_His');
 		foreach($machines as $machine){
-			$sn = $this->_sanitize_machine_sn($machine['sn']);
+			$sn = attlog_sanitize_machine_sn($machine['sn']);
 			if($sn == ''){
 				continue;
 			}
@@ -1390,22 +1382,8 @@ class Presence extends CI_Controller{
 		return $paths;
 	}
 
-	private function _sanitize_machine_sn($sn){
-		$sn = trim((string)$sn);
-		return preg_match('/^[A-Za-z0-9_-]+$/', $sn) ? $sn : '';
-	}
-
-	private function _presence_period_range($month, $year){
-		$month = str_pad($month, 2, '0', STR_PAD_LEFT);
-		$raw = strtotime($year.'-'.$month.'-10 -1 months');
-		return [
-			'from' => date('Y-m-'.START_PAYROLL_DATE, $raw),
-			'to' => $year.'-'.$month.'-'.END_PAYROLL_DATE
-		];
-	}
-
 	private function _normalize_sync_from_date($month, $year, $date){
-		$period = $this->_presence_period_range($month, $year);
+		$period = attlog_presence_period_range($month, $year);
 		$date = trim((string)$date);
 		if($date == ''){
 			return $period['from'];
@@ -1430,7 +1408,7 @@ class Presence extends CI_Controller{
 
 	private function _build_attlog_excel($machines, $branch_id, $month, $year, $from_date = null){
 		$month = str_pad($month, 2, '0', STR_PAD_LEFT);
-		$period = $this->_presence_period_range($month, $year);
+		$period = attlog_presence_period_range($month, $year);
 		$from = !empty($from_date) ? $from_date : $period['from'];
 		$to = $period['to'];
 
@@ -1496,7 +1474,7 @@ class Presence extends CI_Controller{
 			$sheet->getColumnDimension($column)->setWidth($width);
 		}
 
-		$dir = $this->_presence_storage_dir($month, $year);
+		$dir = attlog_presence_storage_dir($month, $year);
 		$path = $dir.DIRECTORY_SEPARATOR.'absen_'.$month.'_'.substr($year, -2).'.xls';
 		$old_error_reporting = error_reporting();
 		error_reporting($old_error_reporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
@@ -1531,7 +1509,7 @@ class Presence extends CI_Controller{
 		$machines = [];
 
 		foreach($rows as $row){
-			$sn = $this->_sanitize_machine_sn($row['machine_sn']);
+			$sn = attlog_sanitize_machine_sn($row['machine_sn']);
 			if($sn == '' || $row['password'] === ''){
 				continue;
 			}
@@ -1637,13 +1615,13 @@ class Presence extends CI_Controller{
 				$shift = isset($shift_map[$shift_key]) ? $shift_map[$shift_key] : [];
 
 				sort($row['time']);
-				$input[$employee['id']][$date] = $this->_payload();
+				$input[$employee['id']][$date] = attlog_payload();
 				$input[$employee['id']][$date]['user_id'] = $employee['id'];
 				$input[$employee['id']][$date]['flow_date'] = $date;
 				$input[$employee['id']][$date]['created_at'] = $created_at;
 
 				if(!$use_schedule){
-					$this->_apply_attlog_fallback($input[$employee['id']][$date], $date, $row['time']);
+					attlog_apply_fallback($input[$employee['id']][$date], $date, $row['time']);
 					$fallback_rows++;
 					continue;
 				}
@@ -1656,18 +1634,18 @@ class Presence extends CI_Controller{
 
 				foreach($row['time'] as $time){
 					$d_day = $date.' '.$time;
-					if($this->_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $input[$employee['id']][$date]['entry_time'] == ''){
+					if(attlog_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $input[$employee['id']][$date]['entry_time'] == ''){
 						$input[$employee['id']][$date]['entry_time'] = $d_day;
 						$input[$employee['id']][$date]['entry_time_late'] = late_minutes($shift['start_time_late'], $time);
 						continue;
 					}
 
-					if($this->_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && $input[$employee['id']][$date]['out_time'] == ''){
+					if(attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && $input[$employee['id']][$date]['out_time'] == ''){
 						$input[$employee['id']][$date]['out_time'] = $d_day;
 						continue;
 					}
 
-					if($this->_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])){
+					if(attlog_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])){
 						if($input[$employee['id']][$date]['rest_time_in'] == ''){
 							$input[$employee['id']][$date]['rest_time_in'] = $d_day;
 						}else if($input[$employee['id']][$date]['rest_time_out'] == ''){
@@ -1835,7 +1813,7 @@ class Presence extends CI_Controller{
 				}
 
 				if(!isset($input[$employee['id']][$date])){
-					$input[$employee['id']][$date] = $this->_payload_pray();
+					$input[$employee['id']][$date] = attlog_payload_pray();
 				}
 
 				$friday = get_dayname($date) == 'Jumat';
@@ -1984,65 +1962,6 @@ class Presence extends CI_Controller{
 		return $result['map'];
 	}
 
-	private function _time_between($time, $start, $end){
-		if($start === null || $end === null || $start === '' || $end === ''){
-			return false;
-		}
-
-		if($start <= $end){
-			return $time >= $start && $time <= $end;
-		}
-
-		return $time >= $start || $time <= $end;
-	}
-
-	private function _apply_attlog_fallback(&$payload, $date, $times){
-		sort($times);
-		$payload['entry_time'] = $date.' '.$times[0];
-		if(count($times) > 1){
-			$payload['out_time'] = $date.' '.$times[count($times) - 1];
-		}
-	}
-
-	private function _payload(){
-		return [
-    		'user_id' 	 	   => null,
-    		'entry_time' 	   => null,
-    		'out_time'	 	   => null,
-    		'entry_time_late'  => 0,
-    		'rest_time_in'     => null,
-    		'rest_time_out'	   => null,
-    		'rest_time_late'   => 0,
-    		'flow_date'        => '',
-    		'input_by'	       => 'system',
-    		'presence_status'  => 'approved',
-    		'is_overtime'      => '0',
-    	];
-	}
-
-	private function _payload_pray(){
-		return [
-			'flag'			   => false,
-    		'subuh_time_in'    => null,
-    		'subuh_time_out'   => null,
-    		'subuh_time_late'  => 0,
-    		'dzuhur_time_in'   => null,
-    		'dzuhur_time_out'  => null,
-    		'dzuhur_time_late' => 0,
-    		'ashar_time_in'    => null,
-    		'ashar_time_out'   => null,
-    		'ashar_time_late'  => 0,
-    		'maghrib_time_in'  => null,
-    		'maghrib_time_out' => null,
-    		'maghrib_time_late'=> 0,
-    		'isha_time_in'     => null,
-    		'isha_time_out'	   => null,
-    		'isha_time_late'   => 0,
-    		'friday_time_in'   => null,
-    		'friday_time_out'  => null,
-    		'friday_time_late' => 0
-    	];
-	}
 
 	public function upload_work_schedule(){
 		if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){

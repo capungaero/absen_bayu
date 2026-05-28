@@ -364,7 +364,7 @@ class Attendance extends CI_Controller {
 
         $date_from  = $this->input->get('date_from', true);
         $date_to    = $this->input->get('date_to', true);
-        $machine_sn = $this->_sanitize_machine_sn($this->input->get('machine_sn', true));
+        $machine_sn = attlog_sanitize_machine_sn($this->input->get('machine_sn', true));
 
         // Filter cabang: admin bisa pilih, non-admin pakai cabang sendiri
         $is_admin = $this->role === 'admin';
@@ -600,10 +600,6 @@ class Attendance extends CI_Controller {
         $this->template->load('layout/admin', 'attendance/machine_report', $data);
     }
 
-    private function _sanitize_machine_sn($sn) {
-        $sn = trim((string) $sn);
-        return preg_match('/^[A-Za-z0-9_-]+$/', $sn) ? $sn : '';
-    }
 
     private function _get_branch_id() {
         $user_id = $this->userdata->id;
