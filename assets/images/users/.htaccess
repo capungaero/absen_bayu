@@ -1,0 +1,26 @@
+# Disallow script execution in upload directory.
+# Even if an attacker uploads a file with PHP content masquerading as an image,
+# the server will refuse to interpret it as code.
+
+<FilesMatch "\.(php|phtml|phar|php5|php7|php8|pl|py|jsp|asp|aspx|sh|cgi|bat|exe|com|inc|htaccess)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php5.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+RemoveHandler .php .phtml .phar .php5 .php7 .php8
+RemoveType .php .phtml .phar .php5 .php7 .php8
+
+Options -ExecCGI
+AddType text/plain .php .phtml .phar .php5 .php7 .php8

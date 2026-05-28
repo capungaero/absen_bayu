@@ -92,9 +92,8 @@
                                 <?php 
                                     $n = $total = 0; 
                                     $p = $this->input->get();
-                                    $branch_string = isset($p['branch_id']) ? '?branch_id='.$p['branch_id'] : ''; 
-                                    dd($list);
-                                    foreach($list as $row){ $n++; 
+                                    $branch_string = isset($p['branch_id']) ? '?branch_id='.$p['branch_id'] : '';
+                                    foreach($list as $row){ $n++;
                                         if($row['num'] < 10){
                                             $row['num'] = "0".$row['num'];
                                         }

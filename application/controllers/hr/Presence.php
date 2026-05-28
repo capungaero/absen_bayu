@@ -1,5 +1,5 @@
 <?php 
-require('./lib/vendor/autoload.php');
+require_once FCPATH.'lib/vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Csv;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;

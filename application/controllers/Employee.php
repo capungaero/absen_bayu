@@ -1,5 +1,5 @@
 <?php 
-require('./lib/vendor/autoload.php');
+require_once FCPATH.'lib/vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Csv;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -671,8 +671,6 @@ class Employee extends CI_Controller{
 
 			    			$cek = $this->db->get('users');
 			    			if($cek->num_rows() > 0){
-			    				dd($cek->row_array());
-			    				dd($value['data']);
 			    				$status = false;
 			    				$msg    = "Terdapat data duplikat yang sudah ada pada sistem <br> 
 			    						   Field &nbsp;: ".$value['label']."<br>

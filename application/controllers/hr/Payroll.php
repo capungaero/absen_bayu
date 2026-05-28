@@ -1,7 +1,7 @@
 <?php 
 
-require('./lib/vendor/autoload.php');
-require('./application/libraries/dompdf/autoload.inc.php');
+require_once FCPATH.'lib/vendor/autoload.php';
+require_once FCPATH.'application/libraries/dompdf/autoload.inc.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Csv;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
