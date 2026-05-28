@@ -336,8 +336,11 @@ class Presence extends CI_Controller{
 				];
 
 				$date = date('Y-m-d', strtotime($p['date']));
+				$is_early_leave = !empty($p['is_early_leave']) && $p['is_early_leave'] != '0';
 
-				$check_time = $this->presence->check_available_attendance($p['user_id'], $date, $time);
+				$check_time = $this->presence->check_available_attendance(
+					$p['user_id'], $date, $time, true, $is_early_leave
+				);
 
 				if($check_time !== false){
 
@@ -359,13 +362,27 @@ class Presence extends CI_Controller{
 					if($entry != null){
 						$entry_time_late = late_minutes($adt['start_time_late'], $entry);
 					}
-					
+
 					$rest_time_late = 0;
 					if($rest_out != null){
 						$rto = $p['rest_time_out'].":00";
 						$rest_limit = date('H:i:s', strtotime($rest_in." +".$adt['rest_time_range']." minutes"));
 						if($rto <= $adt['end_time_rest']){
 							$rest_time_late = late_minutes($rest_limit, $rto);
+						}
+					}
+
+					// Izin Pulang Cepat: hitung kekurangan + status tidak hadir
+					// kalau jam kerja net < 5 jam (300 menit).
+					$early_leave_short_minutes = 0;
+					$presence_status = 'approved';
+					if($is_early_leave && !empty($adt)){
+						$early_leave_short_minutes = presence_early_leave_short_minutes(
+							$adt, $entry, $out, $rest_in, $rest_out
+						);
+						$net_minutes = presence_net_work_minutes($entry, $out, $rest_in, $rest_out);
+						if($net_minutes < 300){
+							$presence_status = 'deny';
 						}
 					}
 
@@ -381,7 +398,10 @@ class Presence extends CI_Controller{
 						'input_by'	  	  => 'manual',
 						'is_overtime' 	  => $p['overtime'],
 						'input_by_user_id' => $this->userdata->id,
-						'flow_date'		  => $date
+						'flow_date'		  => $date,
+						'is_early_leave'  => $is_early_leave ? 1 : 0,
+						'early_leave_short_minutes' => $early_leave_short_minutes,
+						'presence_status' => $presence_status,
 					];
 
 					$check = $this->presence->get_detail([
@@ -407,8 +427,15 @@ class Presence extends CI_Controller{
 								'flow_date' => $date
 							 ])->row_array();
 
+						// Warna baris: deny = merah (tidak hadir < 5 jam),
+						// is_early_leave = biru (PLA), normal lengkap = hijau,
+						// salah satu kosong = kuning (hadir sebagian), kosong = merah.
 						$color = '';
-						if($p['entry_time'] != '' && $p['out_time'] != ''){
+						if($presence_status === 'deny'){
+							$color = 'f46a6a';
+						}else if($is_early_leave){
+							$color = '5b73e8'; // bootstrap primary/blue
+						}else if($p['entry_time'] != '' && $p['out_time'] != ''){
 							$color = '34c38f';
 						}else if($p['entry_time'] == '' && $p['out_time'] == ''){
 							$color = 'f46a6a';
@@ -430,6 +457,9 @@ class Presence extends CI_Controller{
 								'rest_time_late' => $rest_time_late,
 								'overtime'   => $p['overtime'],
 								'late_work_status' => false,
+								'is_early_leave' => $is_early_leave ? 1 : 0,
+								'early_leave_short_minutes' => $early_leave_short_minutes,
+								'presence_status' => $presence_status,
 								'update'	 => indonesian_date($time, true)
 							]
 						];

@@ -138,6 +138,8 @@ Class Presence_daily_report_model extends CI_Model{
          'isha_time_late' => (int)$row['isha_time_late'],
          'presence_type' => $row['presence_type'],
          'presence_status' => $row['presence_status'],
+         'is_early_leave' => isset($row['is_early_leave']) ? (int)$row['is_early_leave'] : 0,
+         'early_leave_short_minutes' => isset($row['early_leave_short_minutes']) ? (int)$row['early_leave_short_minutes'] : 0,
          'input_by' => $row['input_by'],
          'source_updated_at' => !empty($row['updated_at']) ? $row['updated_at'] : $row['created_at'],
          'updated_at' => date('Y-m-d H:i:s')

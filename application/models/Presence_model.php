@@ -544,7 +544,7 @@ Class Presence_model extends CI_Model{
   }
 
 
-  public function check_available_attendance($user_id, $date_search, $time, $set_time = true){
+  public function check_available_attendance($user_id, $date_search, $time, $set_time = true, $allow_early_out = false){
       $status = false;
       $work = $this->db->where([
                           'user_id' => $user_id,
@@ -557,7 +557,7 @@ Class Presence_model extends CI_Model{
         $s1 = $s2 = $s3 = $s4 = false;
 
         if($time['entry'] != ''){
-          if(strtotime($time['entry']) >= strtotime($work['start_time_in']) && 
+          if(strtotime($time['entry']) >= strtotime($work['start_time_in']) &&
              strtotime($time['entry']) <= strtotime($work['start_time_out'])){
             $s1 = true;
           }
@@ -567,7 +567,12 @@ Class Presence_model extends CI_Model{
         }
 
         if($time['out'] != ''){
-          if(strtotime($time['out']) >= strtotime($work['end_time_in']) && 
+          if($allow_early_out){
+            // Izin Pulang Cepat: out_time boleh < end_time_in selama masih
+            // setelah entry_time. Window normal end_time_in/out tidak dipakai.
+            $entry_ts = $time['entry'] != '' ? strtotime($time['entry']) : 0;
+            $s2 = strtotime($time['out']) > $entry_ts;
+          }else if(strtotime($time['out']) >= strtotime($work['end_time_in']) &&
              strtotime($time['out']) <= strtotime($work['end_time_out'])){
             $s2 = true;
           }

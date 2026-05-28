@@ -27,6 +27,16 @@ ALTER TABLE `presence`
 CREATE INDEX `idx_presence_early_leave`
   ON `presence` (`is_early_leave`, `flow_date`);
 
+ALTER TABLE `presence_daily_report`
+  ADD COLUMN `is_early_leave` TINYINT(1) NOT NULL DEFAULT 0
+    COMMENT 'Mirror dari presence.is_early_leave' AFTER `presence_status`,
+  ADD COLUMN `early_leave_short_minutes` INT NOT NULL DEFAULT 0
+    COMMENT 'Mirror dari presence.early_leave_short_minutes'
+    AFTER `is_early_leave`;
+
+CREATE INDEX `idx_pdr_early_leave`
+  ON `presence_daily_report` (`is_early_leave`, `flow_date`);
+
 -- Code di Payroll::save_deduction() sudah refer ke deduction_note, tapi
 -- skema lama tidak punya kolom ini -> insert silently kena warning/dropped.
 -- Tambah sekarang supaya konsisten dan bisa simpan keterangan potongan.
