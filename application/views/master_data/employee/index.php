@@ -215,7 +215,7 @@
                     <div class="col-md-6">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Password</label>
-                            <input type="password" class="form-control" required="" placeholder="Masukkan password..." name="password">
+                            <input type="password" class="form-control" required="" placeholder="Masukkan password..." name="password" autocomplete="new-password">
                         </div>
                     </div>
 
@@ -427,8 +427,8 @@
                     <div class="col-md-6">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Password</label>
-                            <input type="password" class="form-control" placeholder="Masukkan password..." name="password" id="e_password">
-                            <small>*Ketik password, jika ingin mengubah</small>
+                            <input type="password" class="form-control" placeholder="Kosongkan jika tidak ingin mengubah" name="password" id="e_password" autocomplete="new-password">
+                            <small>*Ketik password baru hanya jika ingin mengubah. Jangan biarkan browser autofill.</small>
                         </div>
                     </div>
 

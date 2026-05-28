@@ -225,6 +225,15 @@ class Employee extends CI_Controller{
 			$p['overtime_hour_rate'] = format_angka($p['overtime_hour_rate']);
 			$id = $p['id_employee']; unset($p['id_employee']);
 
+			// Bug fix: password field di edit modal harus opsional. Browser autofill
+			// kadang menulis password admin sendiri ke field ini, lalu admin
+			// tidak sadar Save dan password karyawan tertimpa. Trim + unset key
+			// kalau kosong supaya ion_auth->update tidak menyentuh kolom password.
+			$p['password'] = isset($p['password']) ? trim($p['password']) : '';
+			if($p['password'] === ''){
+				unset($p['password']);
+			}
+
 			if($p['salary_minimum'] != ''){
 				$p['salary_minimum'] = format_angka($p['salary_minimum']);
 			}
@@ -247,7 +256,7 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_rules('email', 'Email', 'required');
 			$this->form_validation->set_rules('salary', 'Gaji', 'required|numeric|greater_than[0]');
 
-			if($p['password'] != ''){
+			if(!empty($p['password'])){
 				$this->form_validation->set_rules('password', 'Password', 'required|min_length[6]');
 			}
 			
