@@ -71,6 +71,7 @@ config.json
 /uploads/
 /dokumen/
 /payroll-slip/
+/dump/
 
 # Tooling specific
 .agents/
