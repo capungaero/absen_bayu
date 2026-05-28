@@ -1,0 +1,50 @@
+---
+# cPanel Git Version Control deployment task.
+#
+# Dipakai untuk auto-deploy dari bare repo /home/kobf5633/repositories/absen_bayu
+# ke direktori web yang dilayani Apache. Trigger:
+#   * cPanel UI: "Manage" -> "Pull or Deploy" -> "Update from Remote" lalu
+#     "Deploy HEAD Commit". Tab ini jalan kalau .cpanel.yml ada di root commit.
+#   * SSH: cd ~/repositories/absen_bayu && git checkout-index ... lalu /usr/local/cpanel/bin/yml-deploy
+#
+# Sebelum deploy pertama, pastikan:
+#   1. $DEPLOYPATH sudah dibuat: mkdir -p ~/public_html/absen_bayu
+#   2. application/config/database.php tidak ditimpa creds dev kalau pakai
+#      file lokal. Kalau pakai env vars (default config.php), set di
+#      .htaccess / cPanel "Setup PHP" -> "Environment Variables":
+#          ABSEN_DB_HOST=localhost
+#          ABSEN_DB_USER=...
+#          ABSEN_DB_PASS=...
+#          ABSEN_DB_NAME=...
+#   3. composer install (untuk vendor/ yang gitignored) sudah dijalankan.
+#      Atau commit vendor/ via .gitignore exception sementara.
+#   4. Jalankan migrasi: mysql ... < database/add_early_leave_columns.sql
+#
+# Ubah DEPLOYPATH sesuai lokasi hosting. Default-nya ~/public_html/absen_bayu.
+# Kalau mau deploy ke root public_html (domain langsung), set DEPLOYPATH=
+# /home/kobf5633/public_html/.
+
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/kobf5633/public_html/absen_bayu/
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/cp -Rp application $DEPLOYPATH
+    - /bin/cp -Rp assets $DEPLOYPATH
+    - /bin/cp -Rp database $DEPLOYPATH
+    - /bin/cp -Rp lib $DEPLOYPATH
+    - /bin/cp -Rp system $DEPLOYPATH
+    - /bin/cp -p .htaccess $DEPLOYPATH
+    - /bin/cp -p composer.json $DEPLOYPATH
+    - /bin/cp -p index.php $DEPLOYPATH
+    - /bin/cp -p readme.rst $DEPLOYPATH
+    # Pastikan upload dirs writeable; cPanel default umumnya 755 yang OK
+    # untuk apache shared-user, tapi explicit chmod aman.
+    - /bin/chmod -R 775 ${DEPLOYPATH}assets/images/users
+    - /bin/chmod -R 775 ${DEPLOYPATH}assets/images/cv
+    - /bin/chmod -R 775 ${DEPLOYPATH}assets/file
+    - /bin/chmod -R 775 ${DEPLOYPATH}assets/images/hr/leave
+    - /bin/chmod -R 775 ${DEPLOYPATH}assets/images/hr/overtime
+    # application/cache + application/logs di-skip dari git tapi harus ada
+    # supaya CI tidak fatal.
+    - /bin/mkdir -p ${DEPLOYPATH}application/cache ${DEPLOYPATH}application/logs ${DEPLOYPATH}uploads/attendance
+    - /bin/chmod -R 775 ${DEPLOYPATH}application/cache ${DEPLOYPATH}application/logs ${DEPLOYPATH}uploads

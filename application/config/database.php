@@ -73,20 +73,31 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $active_group = 'default';
 $query_builder = TRUE;
 
+// Production override via env vars. Set di hosting lewat:
+//   * .htaccess: SetEnv ABSEN_DB_HOST localhost   (dst.)
+//   * cPanel UI: "Setup PHP" -> "Environment Variables"
+//   * Server SetEnv di Apache vhost.
+// Kalau env tidak diset, fallback ke nilai dev di sini (root@127.0.0.1
+// tanpa password) supaya laptop lokal & smoke test tetap jalan apa adanya.
+function _absen_env($key, $default) {
+	$v = getenv($key);
+	return ($v === false || $v === '') ? $default : $v;
+}
+
 $db['default'] = array(
 	'dsn'	=> '',
-	'hostname' => '127.0.0.1',
-	'port'     => 3306,
-	'username' => 'root',
-	'password' => '',
-	'database' => 'newtiffa_timesheet',
+	'hostname' => _absen_env('ABSEN_DB_HOST', '127.0.0.1'),
+	'port'     => (int) _absen_env('ABSEN_DB_PORT', 3306),
+	'username' => _absen_env('ABSEN_DB_USER', 'root'),
+	'password' => _absen_env('ABSEN_DB_PASS', ''),
+	'database' => _absen_env('ABSEN_DB_NAME', 'newtiffa_timesheet'),
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
 	'db_debug' => (ENVIRONMENT !== 'production'),
 	'cache_on' => FALSE,
 	'cachedir' => '',
-	'char_set' => 'utf8',
+	'char_set' => _absen_env('ABSEN_DB_CHARSET', 'utf8'),
 	'dbcollat' => 'utf8_general_ci',
 	'swap_pre' => '',
 	'encrypt' => FALSE,
