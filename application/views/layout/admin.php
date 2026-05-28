@@ -288,6 +288,7 @@
                                             <a href="<?= site_url('attendance') ?>" class="dropdown-item"><i class="mdi mdi-account-check"></i> Data Kehadiran</a>
                                             <a href="<?= site_url('attendance/daily_report') ?>" class="dropdown-item"><i class="mdi mdi-calendar-check"></i> Rekap Absensi Harian</a>
                                             <a href="<?= site_url('attendance/machine_report') ?>" class="dropdown-item"><i class="mdi mdi-fingerprint"></i> Report Absen Mesin</a>
+                                            <a href="<?= site_url('attendance/early_leave_report') ?>" class="dropdown-item"><i class="mdi mdi-clock-alert-outline"></i> Rekap Izin Pulang Cepat</a>
                                         </div>
                                     </li>
                                 <?php } ?>

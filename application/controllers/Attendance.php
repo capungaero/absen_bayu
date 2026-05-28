@@ -600,6 +600,142 @@ class Attendance extends CI_Controller {
         $this->template->load('layout/admin', 'attendance/machine_report', $data);
     }
 
+    // =========================================================================
+    // REKAP IZIN PULANG CEPAT (PLA) — per periode payroll
+    // =========================================================================
+
+    public function early_leave_report() {
+        $is_admin = $this->role === 'admin';
+        if ($is_admin) {
+            $branch_id_raw = $this->input->get('branch_id', true);
+            $branch_id = ($branch_id_raw !== '' && $branch_id_raw !== null) ? (int) $branch_id_raw : null;
+        } else {
+            $branch_id = $this->_get_branch_id();
+        }
+
+        $month = (int) $this->input->get('month', true);
+        $year  = (int) $this->input->get('year', true);
+        if ($month < 1 || $month > 12) { $month = (int) date('m'); }
+        if ($year < 2000 || $year > 2100) { $year = (int) date('Y'); }
+
+        $period = attlog_presence_period_range($month, $year);
+        $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+
+        $rows = $this->_get_early_leave_rows($branch_id, $period['from'], $period['to']);
+        $report = $this->_build_early_leave_report($rows, $days_in_month);
+
+        $data = [
+            'branches'      => $this->branch->get_data(['branch_name' => 'ASC'])->result_array(),
+            'branch_id'     => $branch_id,
+            'month'         => $month,
+            'year'          => $year,
+            'period'        => $period,
+            'days_in_month' => $days_in_month,
+            'report'        => $report,
+            'is_admin'      => $is_admin,
+        ];
+
+        $this->template->load('layout/admin', 'attendance/early_leave_report', $data);
+    }
+
+    /**
+     * Ambil semua row PLA per user dalam range tanggal (presence_status approved
+     * supaya konsisten dengan _seed_early_leave_deductions di Payroll).
+     */
+    private function _get_early_leave_rows($branch_id, $from, $to) {
+        $this->db->select("
+                presence.id AS presence_id,
+                presence.user_id,
+                presence.flow_date,
+                presence.entry_time,
+                presence.out_time,
+                presence.rest_time_in,
+                presence.rest_time_out,
+                presence.early_leave_short_minutes,
+                presence.presence_status,
+                users.employee_code,
+                users.first_name,
+                users.last_name,
+                users.salary,
+                position.position_name,
+                position.branch_id,
+                branch.branch_name,
+                subdivision.subdivision_name
+            ", false)
+            ->from('presence')
+            ->join('users', 'users.id = presence.user_id')
+            ->join('position', 'position.id = users.position_id')
+            ->join('branch', 'branch.id = position.branch_id')
+            ->join('subdivision', 'subdivision.id = users.subdivision_id', 'LEFT')
+            ->where('presence.is_early_leave', 1)
+            ->where('presence.presence_status', 'approved')
+            ->where('presence.flow_date >=', $from)
+            ->where('presence.flow_date <=', $to);
+
+        if (!empty($branch_id)) {
+            $this->db->where('position.branch_id', (int) $branch_id);
+        }
+
+        return $this->db->order_by('branch.branch_name, users.first_name, presence.flow_date', 'ASC')
+                        ->get()->result_array();
+    }
+
+    /**
+     * Bangun struktur rekap: per-user agregasi + total.
+     */
+    private function _build_early_leave_report($rows, $days_in_month) {
+        $per_user = [];
+        foreach ($rows as $row) {
+            $uid = (int) $row['user_id'];
+            if (!isset($per_user[$uid])) {
+                $per_user[$uid] = [
+                    'user_id'        => $uid,
+                    'employee_code'  => $row['employee_code'],
+                    'name'           => trim($row['first_name'].' '.$row['last_name']),
+                    'salary'         => (int) $row['salary'],
+                    'branch_name'    => $row['branch_name'],
+                    'position_name'  => $row['position_name'],
+                    'subdivision'    => $row['subdivision_name'],
+                    'dates'          => [],
+                    'total_short_minutes' => 0,
+                ];
+            }
+            $per_user[$uid]['dates'][] = [
+                'flow_date'  => $row['flow_date'],
+                'entry_time' => $row['entry_time'],
+                'out_time'   => $row['out_time'],
+                'short_minutes' => (int) $row['early_leave_short_minutes'],
+            ];
+            $per_user[$uid]['total_short_minutes'] += (int) $row['early_leave_short_minutes'];
+        }
+
+        $total_short = 0;
+        $total_amount = 0;
+        foreach ($per_user as &$u) {
+            $u['hourly_rate'] = presence_hourly_rate($u['salary'], $days_in_month);
+            $u['deduction_amount'] = presence_early_leave_deduction_amount(
+                $u['salary'], $days_in_month, $u['total_short_minutes']
+            );
+            $total_short  += $u['total_short_minutes'];
+            $total_amount += $u['deduction_amount'];
+        }
+        unset($u);
+
+        // Stable sort: by branch + name (sudah disort di SQL, tapi pastikan kalau builder iterates by-key)
+        $list = array_values($per_user);
+        usort($list, function ($a, $b) {
+            $c = strcmp($a['branch_name'] ?? '', $b['branch_name'] ?? '');
+            return $c !== 0 ? $c : strcmp($a['name'], $b['name']);
+        });
+
+        return [
+            'per_user'          => $list,
+            'total_users'       => count($list),
+            'total_short_minutes' => $total_short,
+            'total_amount'      => $total_amount,
+        ];
+    }
+
 
     private function _get_branch_id() {
         $user_id = $this->userdata->id;

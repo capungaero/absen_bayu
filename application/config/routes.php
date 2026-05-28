@@ -212,6 +212,7 @@ $route['cancel_status_leave/(:num)'] = 'hr/Leave/cancel_status/$1';
 $route['attendance']                    = 'Attendance/index';
 $route['attendance/daily_report']       = 'Attendance/daily_report';
 $route['attendance/machine_report']     = 'Attendance/machine_report';
+$route['attendance/early_leave_report'] = 'Attendance/early_leave_report';
 
 $route['panel/master_data/user'] 	= 'User';
 $route['insert_user']		   		= 'User/insert';
