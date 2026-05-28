@@ -10,6 +10,7 @@ class Wa extends CI_Controller {
         $this->load->model('sync_model', 'sync');
         $this->load->library('kirimi_wa');
         $this->load->library('attendance_employee_resolver');
+        $this->load->library('cloud_attlog_client');
 
         $is_cron = $this->router->fetch_method() === 'cron';
 
@@ -629,53 +630,11 @@ class Wa extends CI_Controller {
     }
 
     private function _download_cloud_attlog($sn, $password) {
-        $base = 'http://solutioncloud.co.id/';
-        $cookie = tempnam(sys_get_temp_dir(), 'wa_attlog_');
-        $login = $this->_cloud_request($base.'sc_pro.asp', [
-            'sn' => $sn,
-            'pass' => $password,
-        ], $cookie);
-
-        if ($login === false) {
-            @unlink($cookie);
-            return false;
-        }
-
-        $data = $this->_cloud_request($base.'download.asp', null, $cookie);
-        @unlink($cookie);
-
-        if ($data === false || strpos($data, "\t") === false) {
-            return false;
-        }
-
-        return $data;
+        return $this->cloud_attlog_client->download_single($sn, $password);
     }
 
     private function _sanitize_machine_sn($sn) {
         $sn = trim((string) $sn);
         return preg_match('/^[A-Za-z0-9_-]+$/', $sn) ? $sn : '';
-    }
-
-    private function _cloud_request($url, $post = null, $cookie = null) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
-        if ($cookie) {
-            curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie);
-            curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie);
-        }
-        if ($post !== null) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
-        }
-
-        $response = curl_exec($ch);
-        $error = curl_errno($ch);
-        curl_close($ch);
-
-        return $error ? false : $response;
     }
 }

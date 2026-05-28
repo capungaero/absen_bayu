@@ -7,6 +7,7 @@ class Sync extends CI_Controller {
         parent::__construct();
         $this->load->model('sync_model', 'sync');
         $this->load->model('branch_model', 'branch');
+        $this->load->library('cloud_attlog_client');
 
         if (!$this->ion_auth->logged_in()) {
             redirect('');
@@ -315,39 +316,7 @@ class Sync extends CI_Controller {
     // -------------------------------------------------------------------------
 
     private function _cloud_download($sn, $password) {
-        $base   = 'http://solutioncloud.co.id/';
-        $cookie = tempnam(sys_get_temp_dir(), 'sc_');
-
-        $login = $this->_cloud_request($base.'sc_pro.asp', ['sn' => $sn, 'pass' => $password], $cookie);
-        if ($login === false) { @unlink($cookie); return false; }
-
-        $data = $this->_cloud_request($base.'download.asp', null, $cookie);
-        @unlink($cookie);
-
-        // Validasi minimal: harus ada tab (kolom terpisah tab)
-        if ($data === false || strpos($data, "\t") === false) { return false; }
-        return $data;
-    }
-
-    private function _cloud_request($url, $post = null, $cookie = null) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
-        if ($cookie) {
-            curl_setopt($ch, CURLOPT_COOKIEJAR,  $cookie);
-            curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie);
-        }
-        if ($post !== null) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
-        }
-        $response = curl_exec($ch);
-        $error    = curl_errno($ch);
-        curl_close($ch);
-        return $error ? false : $response;
+        return $this->cloud_attlog_client->download_single($sn, $password);
     }
 
     // =========================================================================

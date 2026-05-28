@@ -18,6 +18,7 @@ class Presence extends CI_Controller{
 		$this->load->model('position_model', 'position');
 		$this->load->model('presence_daily_report_model', 'daily_report');
 		$this->load->library('attendance_employee_resolver');
+		$this->load->library('cloud_attlog_client');
 
 		if(!$this->ion_auth->logged_in()){
 			redirect('');
@@ -1517,13 +1518,11 @@ class Presence extends CI_Controller{
 	}
 
 	private function _download_cloud_attlogs(){
-		$machines = $this->_active_sync_machines('attendance');
-		return $this->_download_cloud_attlogs_batch($machines);
+		return $this->cloud_attlog_client->download_batch($this->_active_sync_machines('attendance'));
 	}
 
 	private function _download_pray_cloud_attlogs(){
-		$machines = $this->_active_sync_machines('pray');
-		return $this->_download_cloud_attlogs_batch($machines);
+		return $this->cloud_attlog_client->download_batch($this->_active_sync_machines('pray'));
 	}
 
 	private function _active_sync_machines($type){
@@ -1546,202 +1545,8 @@ class Presence extends CI_Controller{
 		return $machines;
 	}
 
-	private function _cloud_base_url(){
-		$base = $this->config->item('solutioncloud_base_url');
-		$base = is_string($base) && trim($base) !== '' ? trim($base) : 'http://solutioncloud.co.id/';
-		return rtrim($base, '/').'/';
-	}
-
-	private function _is_valid_attlog_response($data){
-		if(!is_string($data) || trim($data) === ''){ return false; }
-		if(stripos($data, '<html') !== false || stripos($data, '<!doctype') !== false){ return false; }
-		if(strpos($data, "\t") === false){ return false; }
-		return true;
-	}
-
-	private function _download_cloud_attlogs_batch($machines){
-		if(empty($machines)){
-			return false;
-		}
-
-		$base = $this->_cloud_base_url();
-		$states = [];
-
-		foreach($machines as $index => $machine){
-			$cookie = tempnam(sys_get_temp_dir(), 'solutioncloud_');
-			$states[$index] = [
-				'sn' => $machine['sn'],
-				'pass' => $machine['pass'],
-				'cookie' => $cookie,
-				'login_ok' => false,
-				'last_error' => ''
-			];
-		}
-
-		foreach($states as $index => $state){
-			$login = $this->_cloud_request($base.'sc_pro.asp', [
-				'sn' => $state['sn'],
-				'pass' => $state['pass']
-			], $state['cookie']);
-			$states[$index]['login_ok'] = $login['ok'];
-			if(!$login['ok']){
-				$states[$index]['last_error'] = $login['error'];
-			}
-		}
-
-		$download_handles = [];
-		foreach($states as $index => $state){
-			if(empty($state['login_ok'])){
-				continue;
-			}
-			$download_handles[$index] = $this->_cloud_request_handle($base.'download.asp', null, $state['cookie']);
-		}
-
-		$download_results = empty($download_handles) ? [] : $this->_cloud_multi_exec($download_handles);
-		$machines_data = [];
-		$downloaded = [];
-		$failed = [];
-
-		foreach($states as $index => $state){
-			$data = isset($download_results[$index]) ? $download_results[$index] : false;
-			if((!$this->_is_valid_attlog_response($data)) && !empty($state['login_ok'])){
-				$retry = $this->_cloud_request($base.'download.asp', null, $state['cookie']);
-				$data = $retry['ok'] ? $retry['body'] : false;
-			}
-			@unlink($state['cookie']);
-			if(!$this->_is_valid_attlog_response($data)){
-				$failed[] = $state['sn'];
-				continue;
-			}
-
-			$downloaded[] = $state['sn'];
-			$machines_data[] = [
-				'sn' => $state['sn'],
-				'raw' => $data
-			];
-		}
-
-		if(empty($machines_data)){
-			return false;
-		}
-
-		return [
-			'machines' => $machines_data,
-			'downloaded' => $downloaded,
-			'failed' => $failed
-		];
-	}
-
 	private function _download_cloud_attlog($sn, $password){
-		$base = $this->_cloud_base_url();
-		$cookie = tempnam(sys_get_temp_dir(), 'solutioncloud_');
-		$login = $this->_cloud_request($base.'sc_pro.asp', [
-			'sn' => $sn,
-			'pass' => $password
-		], $cookie);
-
-		if(!$login['ok']){
-			@unlink($cookie);
-			return false;
-		}
-
-		$data = $this->_cloud_request($base.'download.asp', null, $cookie);
-		@unlink($cookie);
-
-		if(!$data['ok'] || !$this->_is_valid_attlog_response($data['body'])){
-			return false;
-		}
-
-		return $data['body'];
-	}
-
-	private function _cloud_request_handle($url, $post = null, $cookie = null){
-		$ch = curl_init($url);
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-		curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-		curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
-
-		if($cookie){
-			curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie);
-			curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie);
-		}
-
-		if($post !== null){
-			curl_setopt($ch, CURLOPT_POST, true);
-			curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
-		}
-
-		return $ch;
-	}
-
-	private function _cloud_multi_exec($handles){
-		$multi = curl_multi_init();
-		foreach($handles as $handle){
-			curl_multi_add_handle($multi, $handle);
-		}
-
-		do{
-			$status = curl_multi_exec($multi, $running);
-			if($running){
-				curl_multi_select($multi, 1);
-			}
-		}while($running && $status == CURLM_OK);
-
-		$results = [];
-		foreach($handles as $key => $handle){
-			$error = curl_errno($handle);
-			$results[$key] = $error ? false : curl_multi_getcontent($handle);
-			curl_multi_remove_handle($multi, $handle);
-			curl_close($handle);
-		}
-		curl_multi_close($multi);
-
-		return $results;
-	}
-
-	private function _cloud_request($url, $post = null, $cookie = null){
-		$ch = curl_init($url);
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
-		curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-		curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0');
-
-		if($cookie){
-			curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie);
-			curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie);
-		}
-
-		if($post !== null){
-			curl_setopt($ch, CURLOPT_POST, true);
-			curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
-		}
-
-		$response = curl_exec($ch);
-		$errno = curl_errno($ch);
-		$error = curl_error($ch);
-		$http_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-		curl_close($ch);
-
-		if($errno || $response === false || $http_code >= 400){
-			return [
-				'ok' => false,
-				'body' => false,
-				'http_code' => $http_code,
-				'errno' => $errno,
-				'error' => $error
-			];
-		}
-
-		return [
-			'ok' => true,
-			'body' => $response,
-			'http_code' => $http_code,
-			'errno' => 0,
-			'error' => ''
-		];
+		return $this->cloud_attlog_client->download_single($sn, $password);
 	}
 
 	private function _import_attlog_dat($raw, $branch_id, $month, $year, $preserve_existing = false, $use_schedule = true){
