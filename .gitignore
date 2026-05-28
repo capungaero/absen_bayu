@@ -87,6 +87,11 @@ claude-flow.config.json
 test-cookie.txt
 test_db3.php
 
+# Allow attendance import test fixtures (override *.dat / *.csv ignores above)
+!tests/fixtures/**/*.dat
+!tests/fixtures/**/*.csv
+!tests/fixtures/**/*.json
+
 # User Guide
 /user_guide/
 user_guide_src/build/*

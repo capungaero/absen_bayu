@@ -19,6 +19,7 @@ class Presence extends CI_Controller{
 		$this->load->model('presence_daily_report_model', 'daily_report');
 		$this->load->library('attendance_employee_resolver');
 		$this->load->library('cloud_attlog_client');
+		$this->load->library('attlog_parser');
 
 		if(!$this->ion_auth->logged_in()){
 			redirect('');
@@ -1528,35 +1529,15 @@ class Presence extends CI_Controller{
 	}
 
 	private function _import_attlog_dat($raw, $branch_id, $month, $year, $preserve_existing = false, $use_schedule = true){
-		$lines = preg_split('/\r\n|\r|\n/', trim($raw));
-		$row_data = [];
-		$total_lines = 0;
-		$raw_count = 0;
-		$invalid_count = 0;
-		$raw = strtotime($year.'-'.$month.'-10 -1 months');
-		$from = date('Y-m-'.START_PAYROLL_DATE, $raw);
-		$to = $year.'-'.$month.'-'.END_PAYROLL_DATE;
+		$period = attlog_presence_period_range($month, $year);
+		$from = $period['from'];
+		$to = $period['to'];
 
-		foreach($lines as $line){
-			$line = trim($line);
-			if($line == ''){ continue; }
-			$total_lines++;
-
-			$cols = preg_split('/\s+/', $line);
-			if(count($cols) < 3){ $invalid_count++; continue; }
-
-			$finger_id = trim($cols[0]);
-			$datetime = $cols[1].' '.$cols[2];
-			$timestamp = strtotime($datetime);
-			if(!$timestamp){ $invalid_count++; continue; }
-
-			$date = date('Y-m-d', $timestamp);
-			if($date < $from || $date > $to){ continue; }
-
-			$row_data[$finger_id][$date]['date'] = $date;
-			$row_data[$finger_id][$date]['time'][] = date('H:i:s', $timestamp);
-			$raw_count++;
-		}
+		$parsed = $this->attlog_parser->parse_taps($raw, $from, $to);
+		$row_data = $parsed['rows'];
+		$total_lines = $parsed['stats']['total_lines'];
+		$raw_count = $parsed['stats']['raw_count'];
+		$invalid_count = $parsed['stats']['invalid_count'];
 
 		if(empty($row_data)){
 			return [
