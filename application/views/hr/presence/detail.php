@@ -273,6 +273,13 @@ table tbody th {
                                         </div>
                                     </div>
 
+                                    <div class="col-md-12">
+                                        <div class="mt-2">
+                                            <span class="mt-2" style="padding: 0.5px; padding-right: 20px; background-color: #5b73e8"></span> &nbsp;Pulang Lebih Awal
+                                            &emsp;
+                                        </div>
+                                    </div>
+
                                     <div class="col-md-12 mt-2">
                                         <span class="badge bg-primary" style="border: 1px solid #5b73e8">K</span>
                                         &nbsp;Keterlambatan Presensi Kerja <br>
@@ -293,7 +300,11 @@ table tbody th {
                                          &nbsp;Lembur Sudah Disetujui<br>
                                     </div>
 
-                                    
+                                    <div class="col-md-12 mt-2">
+                                        <span class="badge bg-primary" style="border: 1px solid #5b73e8">PLA</span>
+                                         &nbsp;Izin Pulang Lebih Awal<br>
+                                    </div>
+
                                 </div>
 
                             </div>
@@ -393,18 +404,25 @@ table tbody th {
                                     <?php $x = 0; foreach ($row['workday'] as $workday){ $x++;
                                         $work_in = false;
                                         $string_date = date('Y-m-d', strtotime($workday['date']));
+                                        $row_is_early_leave = !empty($workday['present']['detail']['is_early_leave']);
+                                        $row_status = isset($workday['present']['detail']['presence_status']) ? $workday['present']['detail']['presence_status'] : '';
+                                        $row_short_minutes = isset($workday['present']['detail']['early_leave_short_minutes']) ? (int)$workday['present']['detail']['early_leave_short_minutes'] : 0;
 
                                         if($workday['present']['status'] || $workday['present']['half'] != ''){
                                             $work_in = true;
                                             $presence_in++;
-                                            
-                                            if($workday['present']['status']){
+
+                                            if($row_is_early_leave && $row_status !== 'deny'){
+                                                // Izin Pulang Cepat: warna biru, tetap hitung kehadiran.
+                                                $color = '5b73e8';
+                                                $num_present++;
+                                            }else if($workday['present']['status']){
                                                 $color = '34c38f';
                                                 $num_present++;
                                             }else{
                                                 $color = 'f1b44c';
                                             }
-                                            
+
                                             $code  = $workday['code'];
                                             $total_work++;
                                             $s[$string_date]++;
@@ -457,7 +475,17 @@ table tbody th {
                                                 $late_work_txt = "<span style='border: 0.2px solid #5b73e8' class='badge bg-primary late_work_status' id='late_work_status_".$row_id."'>K</span>";
                                             }
                                         }
-                                        
+
+                                        // Badge PLA: tampil saat Izin Pulang Cepat dan kehadiran masih dihitung
+                                        // (presence_status != deny). Hour short ditaruh di tooltip.
+                                        $early_leave_badge_txt = '';
+                                        if($row_is_early_leave && $row_status !== 'deny'){
+                                            $short_label = $row_short_minutes > 0
+                                                ? sprintf(' (-%dj %dm)', intdiv($row_short_minutes, 60), $row_short_minutes % 60)
+                                                : '';
+                                            $early_leave_badge_txt = "<span style='border: 0.2px solid #5b73e8' class='badge bg-primary early_leave_status' id='early_leave_status_".$row_id."' title='Izin Pulang Lebih Awal".$short_label."'>PLA</span>";
+                                        }
+
                                         $attr = 'data-id="'.$row['employee']['id'].'"
                                                  data-code="'.$row['employee']['code'].'"
                                                  data-name="'.$row['employee']['name'].'"
@@ -483,6 +511,9 @@ table tbody th {
                                                  data-presence-input-by="'.$input_by.'"
                                                  data-presence-created-at="'.indonesian_date($created_at, true).'"
                                                  data-presence-input-by="'.$input_by.'"
+                                                 data-presence-is-early-leave="'.($row_is_early_leave ? '1' : '0').'"
+                                                 data-presence-early-leave-short="'.$row_short_minutes.'"
+                                                 data-presence-status="'.htmlspecialchars($row_status, ENT_QUOTES).'"
                                                  data-row="'.$row_id.'"
                                                  ';
 
@@ -532,9 +563,12 @@ table tbody th {
                                             <div>
                                                 <span id="late_work_status_body_<?= $row_id ?>">
                                                     <?= $late_work_status ? $late_work_txt : "" ?>
-                                                </span> 
+                                                </span>
                                                 <span id="late_pray_status_body_<?= $row_id ?>">
                                                     <?= $late_pray_status ? $late_pray_txt : "" ?>
+                                                </span>
+                                                <span id="early_leave_status_body_<?= $row_id ?>">
+                                                    <?= $early_leave_badge_txt ?>
                                                 </span>
                                                 <span id="overtime_presence_<?= $row_id ?>">
                                                     <?php 
@@ -743,11 +777,20 @@ table tbody th {
                                         <?php if(empty($payroll) && ($role == 'admin' || $role == 'admin-branch')){ ?>
                                             <div class="col-md-6 mt-3">
                                                 <a href="javascript:void(0)" id="btnTimeSheet" class="btn btn-outline-info btn-sm"><i class="fa fa-clock"></i> Input Otomatis Waktu Kerja</a>
-                                                
+
                                             </div>
                                             <div class="col-md-6">
                                                 <input class="mt-3" type="checkbox" name="overtime" id="overtime"> Lembur <br>
                                                 <small>*Waktu kerja dianggap jam lembur</small>
+                                            </div>
+                                            <div class="col-md-12 mt-2">
+                                                <input type="checkbox" name="is_early_leave" id="is_early_leave"> Izin Pulang Cepat (PLA) <br>
+                                                <small>*Centang supaya bisa input Jam Selesai sebelum jam pulang shift.<br>
+                                                Kekurangan jam dihitung otomatis dan jadi potongan gaji.
+                                                Jika jam kerja efektif &lt; 5 jam, kehadiran ditandai TIDAK HADIR.</small>
+                                                <div class="mt-1" id="early_leave_short_wrap" style="display:none">
+                                                    <small><b>Kekurangan jam:</b> <span id="early_leave_short_text">-</span></small>
+                                                </div>
                                             </div>
                                         <?php } ?>
 
@@ -1110,6 +1153,17 @@ table tbody th {
 
         $('#overtime').prop('checked', a.attr('data-presence-overtime') == '1' ?  true : false);
 
+        var elIsEarly = a.attr('data-presence-is-early-leave') == '1';
+        var elShort   = parseInt(a.attr('data-presence-early-leave-short') || '0', 10);
+        $('#is_early_leave').prop('checked', elIsEarly);
+        if(elIsEarly && elShort > 0){
+            var h = Math.floor(elShort / 60), m = elShort % 60;
+            $('#early_leave_short_text').text(h + 'j ' + m + 'm');
+            $('#early_leave_short_wrap').show();
+        }else{
+            $('#early_leave_short_wrap').hide();
+        }
+
         if(a.attr('data-presence-id') != ''){
             $('#bodyPresence-created-at').show();
             $('#presence-created-at').text(a.attr('data-presence-created-at'));
@@ -1307,6 +1361,7 @@ table tbody th {
         var btn     = $('#btnUpdate_workhour');
         var message = "";
         var overtime = $('#overtime').prop("checked") ? '1' : '0';
+        var isEarlyLeave = $('#is_early_leave').prop("checked") ? '1' : '0';
 
         $.ajax({
             url         : "<?= site_url('update_workhour') ?>",
@@ -1321,6 +1376,7 @@ table tbody th {
                 rest_time_out : $('#rest_time_out').val(),
                 row_id     : $('#row_id').val(),
                 overtime   : overtime,
+                is_early_leave : isEarlyLeave,
                 myToken    : "<?php echo $this->security->get_csrf_hash() ?>"
             },
             beforeSend  : function(){
@@ -1350,6 +1406,24 @@ table tbody th {
                     }else{
                         $('#late_work_status_body_'+ row_id).html("<span style='border: 0.2px solid #5b73e8' class='badge bg-primary late_work_status' id='late_work_status_"+row_id+"'>K</span>")
                     }
+
+                    // PLA badge: tampil/hilang sesuai is_early_leave dan presence_status != deny.
+                    var elShort = parseInt(r.early_leave_short_minutes || 0, 10);
+                    var elIs    = (r.is_early_leave == '1' || r.is_early_leave === 1) && r.presence_status !== 'deny';
+                    if(elIs){
+                        var shortLabel = '';
+                        if(elShort > 0){
+                            shortLabel = ' (-' + Math.floor(elShort/60) + 'j ' + (elShort % 60) + 'm)';
+                        }
+                        $('#early_leave_status_body_'+ row_id).html(
+                            "<span style='border: 0.2px solid #5b73e8' class='badge bg-primary early_leave_status' id='early_leave_status_"+row_id+"' title='Izin Pulang Lebih Awal"+shortLabel+"'>PLA</span>"
+                        );
+                    }else{
+                        $('#early_leave_status_body_'+ row_id).empty();
+                    }
+                    $('#'+row_id).attr('data-presence-is-early-leave', elIs ? '1' : '0');
+                    $('#'+row_id).attr('data-presence-early-leave-short', elShort);
+                    $('#'+row_id).attr('data-presence-status', r.presence_status || '');
 
                     //$('#formUpdate')[0].reset();
                     //window.location.reload();
