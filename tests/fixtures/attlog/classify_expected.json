@@ -1,0 +1,66 @@
+{
+    "rows": {
+        "1": {
+            "2026-05-10": {
+                "user_id": 1,
+                "entry_time": "2026-05-10 07:48:32",
+                "out_time": "2026-05-10 17:02:01",
+                "entry_time_late": 0,
+                "rest_time_in": "2026-05-10 12:01:15",
+                "rest_time_out": "2026-05-10 13:05:42",
+                "rest_time_late": 4,
+                "flow_date": "2026-05-10",
+                "input_by": "system",
+                "presence_status": "approved",
+                "is_overtime": "0",
+                "created_at": "2026-05-12 10:00:00"
+            },
+            "2026-05-11": {
+                "user_id": 1,
+                "entry_time": "2026-05-11 08:05:30",
+                "out_time": "2026-05-11 17:00:00",
+                "entry_time_late": 15,
+                "rest_time_in": null,
+                "rest_time_out": null,
+                "rest_time_late": 0,
+                "flow_date": "2026-05-11",
+                "input_by": "system",
+                "presence_status": "approved",
+                "is_overtime": "0",
+                "created_at": "2026-05-12 10:00:00"
+            }
+        },
+        "2": {
+            "2026-05-10": {
+                "user_id": 2,
+                "entry_time": "2026-05-10 07:50:07",
+                "out_time": "2026-05-10 16:30:00",
+                "entry_time_late": 0,
+                "rest_time_in": null,
+                "rest_time_out": null,
+                "rest_time_late": 0,
+                "flow_date": "2026-05-10",
+                "input_by": "system",
+                "presence_status": "approved",
+                "is_overtime": "0",
+                "created_at": "2026-05-12 10:00:00"
+            }
+        }
+    },
+    "to_delete": {
+        "1": [
+            "2026-05-10",
+            "2026-05-11"
+        ],
+        "2": [
+            "2026-05-10"
+        ]
+    },
+    "stats": {
+        "matched_employee": 3,
+        "missing_employee": 0,
+        "no_schedule": 0,
+        "no_window_match": 0,
+        "fallback_rows": 0
+    }
+}

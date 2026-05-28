@@ -1388,20 +1388,12 @@ class Presence extends CI_Controller{
 		}
 
 		$created_at = date('Y-m-d H:i:s');
-		$input = $to_delete = [];
 		$existing_presence = [];
-		$matched_employee = 0;
-		$missing_employee = 0;
-		$no_schedule = 0;
-		$no_window_match = 0;
-		$fallback_rows = 0;
-		$fallback_rows = 0;
 		$unique_finger_ids = count($row_data);
 		$employee_matcher = $this->_build_employee_matcher_by_finger_date($row_data, $from, $to);
 		$employee_map = $employee_matcher['map'];
 		$match_message = $this->_employee_match_message($employee_matcher['stats']);
 		$shift_map = [];
-		$existing_presence = [];
 		$user_ids = $this->_employee_ids_from_matcher($employee_map);
 
 		if($use_schedule && !empty($user_ids)){
@@ -1418,73 +1410,14 @@ class Presence extends CI_Controller{
 			}
 		}
 
-		foreach($row_data as $finger_id => $dates){
-			foreach($dates as $row){
-				$date = $row['date'];
-				$employee = isset($employee_map[$finger_id][$date]) ? $employee_map[$finger_id][$date] : null;
-
-				if(empty($employee)){
-					$missing_employee++;
-					continue;
-				}
-				$matched_employee++;
-
-				if(!isset($to_delete[$employee['id']])){ $to_delete[$employee['id']] = []; }
-				if(!in_array($date, $to_delete[$employee['id']])){ $to_delete[$employee['id']][] = $date; }
-
-				$shift_key = $employee['id'].'|'.$date;
-				$shift = isset($shift_map[$shift_key]) ? $shift_map[$shift_key] : [];
-
-				sort($row['time']);
-				$input[$employee['id']][$date] = attlog_payload();
-				$input[$employee['id']][$date]['user_id'] = $employee['id'];
-				$input[$employee['id']][$date]['flow_date'] = $date;
-				$input[$employee['id']][$date]['created_at'] = $created_at;
-
-				if(!$use_schedule){
-					attlog_apply_fallback($input[$employee['id']][$date], $date, $row['time']);
-					$fallback_rows++;
-					continue;
-				}
-
-				if(empty($shift)){
-					$no_schedule++;
-					unset($input[$employee['id']][$date]);
-					continue;
-				}
-
-				foreach($row['time'] as $time){
-					$d_day = $date.' '.$time;
-					if(attlog_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && $input[$employee['id']][$date]['entry_time'] == ''){
-						$input[$employee['id']][$date]['entry_time'] = $d_day;
-						$input[$employee['id']][$date]['entry_time_late'] = late_minutes($shift['start_time_late'], $time);
-						continue;
-					}
-
-					if(attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && $input[$employee['id']][$date]['out_time'] == ''){
-						$input[$employee['id']][$date]['out_time'] = $d_day;
-						continue;
-					}
-
-					if(attlog_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])){
-						if($input[$employee['id']][$date]['rest_time_in'] == ''){
-							$input[$employee['id']][$date]['rest_time_in'] = $d_day;
-						}else if($input[$employee['id']][$date]['rest_time_out'] == ''){
-							$input[$employee['id']][$date]['rest_time_out'] = $d_day;
-							$limit = date('H:i:s', strtotime($input[$employee['id']][$date]['rest_time_in'].' +'.$shift['rest_time_range'].' minutes'));
-							$input[$employee['id']][$date]['rest_time_late'] = late_minutes($limit, $time);
-						}
-					}
-				}
-
-				if($input[$employee['id']][$date]['entry_time'] == '' && $input[$employee['id']][$date]['out_time'] == '' && $input[$employee['id']][$date]['rest_time_in'] == '' && $input[$employee['id']][$date]['rest_time_out'] == ''){
-					unset($input[$employee['id']][$date]);
-					$no_window_match++;
-					continue;
-				}
-
-			}
-		}
+		$classified = $this->attlog_parser->classify_taps($row_data, $employee_map, $shift_map, $use_schedule, $created_at);
+		$input = $classified['rows'];
+		$to_delete = $classified['to_delete'];
+		$matched_employee = $classified['stats']['matched_employee'];
+		$missing_employee = $classified['stats']['missing_employee'];
+		$no_schedule = $classified['stats']['no_schedule'];
+		$no_window_match = $classified['stats']['no_window_match'];
+		$fallback_rows = $classified['stats']['fallback_rows'];
 
 		$data = [];
 		foreach($input as $dates){
