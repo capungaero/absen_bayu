@@ -1118,7 +1118,7 @@ class Presence extends CI_Controller{
 
 		$this->db->where('flow_date >=', $from)
 				 ->where('flow_date <=', $to)
-				 ->where('user_id IN (SELECT users.id FROM users JOIN position ON position.id = users.position_id WHERE position.branch_id = '.$this->db->escape($branch_id).')', null, false)
+				 ->where('user_id IN (SELECT users.id FROM users JOIN position ON position.id = users.position_id WHERE position.branch_id = '.(int) $branch_id.')', null, false)
 				 ->delete('presence');
 
 		return $this->db->affected_rows();
@@ -2051,7 +2051,8 @@ class Presence extends CI_Controller{
 				    	}
 				    	
 				    	foreach($delete as $key => $val){
-				    		$this->db->where('additional_date BETWEEN "'.$val[0].'" AND "'.$val[1].'"')
+				    		$this->db->where('additional_date >=', $val[0])
+				    			 ->where('additional_date <=', $val[1])
 				    			 ->where('user_id', $key)
 				    			 ->delete('users_shift_additional');
 				    	}

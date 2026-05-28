@@ -1346,7 +1346,7 @@ class Presence extends CI_Controller{
 
 		$this->db->where('flow_date >=', $from)
 				 ->where('flow_date <=', $to)
-				 ->where('user_id IN (SELECT users.id FROM users JOIN position ON position.id = users.position_id WHERE position.branch_id = '.$this->db->escape($branch_id).')', null, false)
+				 ->where('user_id IN (SELECT users.id FROM users JOIN position ON position.id = users.position_id WHERE position.branch_id = '.(int) $branch_id.')', null, false)
 				 ->delete('presence');
 
 		return $this->db->affected_rows();

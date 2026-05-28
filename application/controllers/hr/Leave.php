@@ -57,8 +57,8 @@ class leave extends CI_Controller{
 			$p = $this->input->post();
 			$p['leave_proof'] = '';
 			$this->form_validation->set_data($p);
-			$this->form_validation->set_rules('leave_start', 'Tanggal Mulai', 'required');
-			$this->form_validation->set_rules('leave_end', 'Tanggal Selesai', 'required');
+			$this->form_validation->set_rules('leave_start', 'Tanggal Mulai', 'required|regex_match[/^\d{4}-\d{2}-\d{2}$/]');
+			$this->form_validation->set_rules('leave_end', 'Tanggal Selesai', 'required|regex_match[/^\d{4}-\d{2}-\d{2}$/]');
 			$this->form_validation->set_rules('leave_type', 'Jenis Izin', 'required|in_list[izin,sakit,cuti]');
 			$this->form_validation->set_rules('leave_reason', 'Alasan Izin', 'required');
 
@@ -83,20 +83,28 @@ class leave extends CI_Controller{
 				if(strtotime($p['leave_start']) <= strtotime($p['leave_end'])){
 					$listDayLeave = get_daterange_list($p['leave_start'], $p['leave_end']);
 
-					$checkPresence = $this->db->where('flow_date BETWEEN "'.$p['leave_start'].'" AND "'.$p['leave_end'].'"')
+					$checkPresence = $this->db->where('flow_date >=', $p['leave_start'])
+											  ->where('flow_date <=', $p['leave_end'])
 											  ->where('user_id', $p['user_id'])
 											  ->get('presence')->num_rows();
 
 					$checkOff = $this->db->where('user_id', $p['user_id'])
-										 ->where('additional_date BETWEEN "'.$p['leave_start'].'" AND "'.$p['leave_end'].'"')
+										 ->where('additional_date >=', $p['leave_start'])
+										 ->where('additional_date <=', $p['leave_end'])
 										 ->where('additional_type', 'work')
 										 ->group_by('additional_date')
 										 ->get('users_shift_additional')->num_rows();
 
 					if($checkPresence == 0 && $checkOff == count($listDayLeave)){
 						$checkLeave =  $this->db->group_start()
-													->where('leave_start BETWEEN "'.$p['leave_start'].'" AND "'.$p['leave_end'].'"')
-													->or_where('leave_end BETWEEN "'.$p['leave_start'].'" AND "'.$p['leave_end'].'"')
+													->group_start()
+														->where('leave_start >=', $p['leave_start'])
+														->where('leave_start <=', $p['leave_end'])
+													->group_end()
+													->or_group_start()
+														->where('leave_end >=', $p['leave_start'])
+														->where('leave_end <=', $p['leave_end'])
+													->group_end()
 												->group_end()
 												->where('user_id', $p['user_id'])
 												->where('leave_status', 'pending')

