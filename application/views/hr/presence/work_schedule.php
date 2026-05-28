@@ -463,7 +463,40 @@ function escapeHtml(text){
     return $('<div>').text(text || '').html();
 }
 
+// ---- Cache untuk Papan Jadwal supaya tidak scan DOM (300+ tr) tiap render.
+// Sebelumnya getGameEmployees + getEmployeeShiftForDate dipanggil O(employees)
+// kali per render = O(n^2) jQuery selector lookups -> page sluggish.
+var gameEmployeesCache = null;
+var gameShiftSelectsByUser = null;   // userId -> { date -> jQuery select }
+var gameShiftValueByUser = null;     // userId -> { date -> string }
+
+function gameInvalidateAllCache(){
+    gameEmployeesCache = null;
+    gameShiftSelectsByUser = null;
+    gameShiftValueByUser = null;
+}
+
+function gameInvalidateShiftCache(){
+    gameShiftValueByUser = null; // selects pointer tetap valid, hanya nilai berubah
+}
+
+function gameBuildSelectIndex(){
+    gameShiftSelectsByUser = {};
+    $('.schedule-table tbody tr').each(function(){
+        var uid = String($(this).data('employee-id'));
+        gameShiftSelectsByUser[uid] = {};
+        $(this).find('select[name^="schedule["]').each(function(){
+            var name = $(this).attr('name') || '';
+            var match = name.match(/\[(\d{4}-\d{2}-\d{2})\]$/);
+            if(match){
+                gameShiftSelectsByUser[uid][match[1]] = $(this);
+            }
+        });
+    });
+}
+
 function getGameEmployees(){
+    if(gameEmployeesCache !== null){ return gameEmployeesCache; }
     var employees = [];
     $('.schedule-table tbody tr').each(function(){
         var row = $(this);
@@ -476,16 +509,27 @@ function getGameEmployees(){
             photo: String(row.data('photo') || '')
         });
     });
+    gameEmployeesCache = employees;
     return employees;
 }
 
 function getScheduleSelect(userId, date){
-    return $('[name="schedule[' + userId + '][' + date + ']"]');
+    if(gameShiftSelectsByUser === null){ gameBuildSelectIndex(); }
+    var byDate = gameShiftSelectsByUser[String(userId)];
+    return (byDate && byDate[date]) ? byDate[date] : $();
 }
 
 function getEmployeeShiftForDate(userId, date){
+    // Cached value path: lookup tanpa hit DOM
+    if(gameShiftValueByUser && gameShiftValueByUser[userId] && typeof gameShiftValueByUser[userId][date] !== 'undefined'){
+        return gameShiftValueByUser[userId][date];
+    }
     var select = getScheduleSelect(userId, date);
-    return select.length ? String(select.val() || '') : '';
+    var val = select.length ? String(select.val() || '') : '';
+    if(!gameShiftValueByUser){ gameShiftValueByUser = {}; }
+    if(!gameShiftValueByUser[userId]){ gameShiftValueByUser[userId] = {}; }
+    gameShiftValueByUser[userId][date] = val;
+    return val;
 }
 
 function setEmployeeShiftForDate(userId, date, shiftValue){
@@ -496,6 +540,11 @@ function setEmployeeShiftForDate(userId, date, shiftValue){
         toggleAdvancedShiftOptions();
     }
     select.val(shiftValue);
+    // Update cache supaya getEmployeeShiftForDate berikutnya konsisten tanpa
+    // re-scan DOM. Trigger change tetap fired supaya konsumen lain ikut.
+    if(!gameShiftValueByUser){ gameShiftValueByUser = {}; }
+    if(!gameShiftValueByUser[userId]){ gameShiftValueByUser[userId] = {}; }
+    gameShiftValueByUser[userId][date] = String(shiftValue);
     select.trigger('change');
 }
 
@@ -687,6 +736,8 @@ $(document).on('drop', '.game-shift-lane', function(event){
     var date = $('#gameScheduleDate').val();
     var shiftValue = String($(this).data('shift-id'));
     if(payload.type == 'employee'){
+        // setEmployeeShiftForDate sudah update cache nilai sendiri,
+        // jadi refresh board tinggal pakai cache (cepat).
         setEmployeeShiftForDate(payload.userId, date, shiftValue);
         refreshGameBoard();
     }
@@ -703,6 +754,7 @@ $(document).on('drop', '#gameOffZone', function(event){
 });
 
 $(document).on('drop', '.game-board', function(event){
+    event.preventDefault();
     var payload;
     try { payload = JSON.parse(event.originalEvent.dataTransfer.getData('text/plain')); } catch(e){ return; }
     if(payload.type == 'shift'){
@@ -713,13 +765,26 @@ $(document).on('drop', '.game-board', function(event){
     }
 });
 
-$(document).on('change', '#gameScheduleDate, #gameShiftFilter', refreshGameBoard);
-$(document).on('keyup', '#gameEmployeeSearch', function(){
-    if($('#gameScheduler').data('loaded')){
-        renderGameRoster();
-    }
+$(document).on('change', '#gameScheduleDate, #gameShiftFilter', function(){
+    // Tanggal berubah -> nilai shift per (user, date) potensi beda, invalidate.
+    gameInvalidateShiftCache();
+    refreshGameBoard();
 });
-$(document).on('click', '#btnRenderGameBoard', refreshGameBoard);
+
+// Debounce supaya tiap keystroke search tidak rebuild ratusan card roster.
+var gameSearchDebounce = null;
+$(document).on('input', '#gameEmployeeSearch', function(){
+    if(gameSearchDebounce){ clearTimeout(gameSearchDebounce); }
+    gameSearchDebounce = setTimeout(function(){
+        if($('#gameScheduler').data('loaded')){
+            renderGameRoster();
+        }
+    }, 180);
+});
+$(document).on('click', '#btnRenderGameBoard', function(){
+    gameInvalidateAllCache();
+    refreshGameBoard();
+});
 
 function getPositionIcon(position){
     var text = normalizeSortText(position);
