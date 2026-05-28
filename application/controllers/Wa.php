@@ -548,12 +548,7 @@ class Wa extends CI_Controller {
                             'users_shift_additional.additional_date' => $date,
                             'users_shift_additional.additional_type' => 'work',
                         ])
-                        ->where('users_shift_additional.id = (
-                            SELECT MAX(usa.id)
-                            FROM users_shift_additional usa
-                            WHERE usa.user_id = users_shift_additional.user_id
-                            AND usa.additional_date = users_shift_additional.additional_date
-                        )', null, false)
+                        ->where(latest_schedule_subquery(), null, false)
                         ->get('users_shift_additional')
                         ->row_array();
     }

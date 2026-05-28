@@ -415,12 +415,7 @@ Class Presence_model extends CI_Model{
                       ->where_in('users_shift_additional.user_id', $user_ids)
                       ->where('additional_date >=', $from)
                       ->where('additional_date <=', $to)
-                      ->where('users_shift_additional.id = (
-                        SELECT MAX(usa.id)
-                        FROM users_shift_additional usa
-                        WHERE usa.user_id = users_shift_additional.user_id
-                        AND usa.additional_date = users_shift_additional.additional_date
-                      )', null, false)
+                      ->where(latest_schedule_subquery(), null, false)
                       ->get('users_shift_additional')
                       ->result_array();
 
@@ -541,12 +536,7 @@ Class Presence_model extends CI_Model{
                       ->where('users_shift_additional.user_id', $user_id)
                       ->where('additional_date >=', $from)
                       ->where('additional_date <=', $to)
-                      ->where('users_shift_additional.id = (
-                        SELECT MAX(usa.id)
-                        FROM users_shift_additional usa
-                        WHERE usa.user_id = users_shift_additional.user_id
-                        AND usa.additional_date = users_shift_additional.additional_date
-                      )', null, false)
+                      ->where(latest_schedule_subquery(), null, false)
                       ->get('users_shift_additional')
                       ->result_array();
 

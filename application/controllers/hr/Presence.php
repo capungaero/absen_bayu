@@ -114,12 +114,7 @@ class Presence extends CI_Controller{
 										 ->where_in('users_shift_additional.user_id', $user_ids)
 										 ->where('additional_date >=', $from)
 										 ->where('additional_date <=', $to)
-										 ->where('users_shift_additional.id = (
-											SELECT MAX(usa.id)
-											FROM users_shift_additional usa
-											WHERE usa.user_id = users_shift_additional.user_id
-											AND usa.additional_date = users_shift_additional.additional_date
-										 )', null, false)
+										 ->where(latest_schedule_subquery(), null, false)
 										 ->get('users_shift_additional')->result_array();
 			}
 
@@ -1017,12 +1012,7 @@ class Presence extends CI_Controller{
 									  'additional_date' => $date,
 									  'additional_type' => 'work'
 								  ])
-								  ->where('users_shift_additional.id = (
-									SELECT MAX(usa.id)
-									FROM users_shift_additional usa
-									WHERE usa.user_id = users_shift_additional.user_id
-									AND usa.additional_date = users_shift_additional.additional_date
-								  )', null, false)
+								  ->where(latest_schedule_subquery(), null, false)
 								  ->join('shift', 'shift.id = users_shift_additional.shift_id')
 								  ->get('users_shift_additional')->row_array();
 
@@ -2639,12 +2629,7 @@ class Presence extends CI_Controller{
 								 ->where_in('user_id', $user_ids)
 								 ->where('additional_date >=', reset($previous))
 								 ->where('additional_date <=', end($previous))
-								 ->where('users_shift_additional.id = (
-									SELECT MAX(usa.id)
-									FROM users_shift_additional usa
-									WHERE usa.user_id = users_shift_additional.user_id
-									AND usa.additional_date = users_shift_additional.additional_date
-								 )', null, false)
+								 ->where(latest_schedule_subquery(), null, false)
 								 ->get('users_shift_additional')->result_array();
 
 				$previous_index = [];
@@ -2757,12 +2742,7 @@ class Presence extends CI_Controller{
 									 ->where_in('users_shift_additional.user_id', $user_ids)
 									 ->where('users_shift_additional.additional_date >=', $from)
 									 ->where('users_shift_additional.additional_date <=', $to)
-									 ->where('users_shift_additional.id = (
-										SELECT MAX(usa.id)
-										FROM users_shift_additional usa
-										WHERE usa.user_id = users_shift_additional.user_id
-										AND usa.additional_date = users_shift_additional.additional_date
-									 )', null, false)
+									 ->where(latest_schedule_subquery(), null, false)
 									 ->get('users_shift_additional')->result_array();
 				foreach($schedule_rows as $schedule_row){
 					$schedule_map[$schedule_row['user_id']][$schedule_row['additional_date']] = $schedule_row['additional_type'] == 'free' ? 'OFF' : $schedule_row['shift_code'];
