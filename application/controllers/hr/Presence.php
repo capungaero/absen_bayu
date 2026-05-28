@@ -1621,18 +1621,7 @@ class Presence extends CI_Controller{
 					continue;
 				}
 
-				$update = [];
-				foreach(['entry_time', 'out_time', 'rest_time_in', 'rest_time_out'] as $field){
-					if(empty($existing[$field]) && !empty($row[$field])){
-						$update[$field] = $row[$field];
-					}
-				}
-
-				foreach(['entry_time_late', 'rest_time_late'] as $field){
-					if((empty($existing[$field]) || $existing[$field] == 0) && !empty($row[$field])){
-						$update[$field] = $row[$field];
-					}
-				}
+				$update = presence_merge_preserve_existing($row, $existing);
 
 				if(!empty($update)){
 					$this->db->where('id', $existing['id'])->update('presence', $update);
