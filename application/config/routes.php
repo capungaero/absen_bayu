@@ -58,6 +58,19 @@ $route['authentication/login']  = 'Auth';
 $route['do_login']				= 'Auth/do_login';
 $route['logout']				= 'Auth/logout';
 
+// Mobile (Karyawan & Atasan)
+$route['m']                     = 'M/index';
+$route['m/presence']            = 'M/presence';
+$route['m/schedule']            = 'M/schedule';
+$route['m/leave']               = 'M/leave';
+$route['m/overtime']            = 'M/overtime';
+$route['m/payroll']             = 'M/payroll';
+$route['m/approvals']           = 'M/approvals';
+$route['m/submit_leave']        = 'M/submit_leave';
+$route['m/submit_overtime']     = 'M/submit_overtime';
+$route['m/approve_overtime']    = 'M/approve_overtime';
+$route['m/approve_leave']       = 'M/approve_leave';
+
 // WA Agent
 $route['wa']					= 'Wa/index';
 $route['wa/config']				= 'Wa/config';

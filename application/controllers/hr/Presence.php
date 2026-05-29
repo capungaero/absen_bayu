@@ -53,9 +53,10 @@ class Presence extends CI_Controller{
 			$find = [
 				'branch_id' => $this->userdata->branch_id
 			];
-			
+
 			$year = $this->input->get('year') ? $this->input->get('year') : date('Y');
-			for ($i=1; $i <= 12; $i++) { 
+			$presence = [];
+			for ($i=1; $i <= 12; $i++) {
 				$find = [
 					'month' => $i,
 					'year'  => $year

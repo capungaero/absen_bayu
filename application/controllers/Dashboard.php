@@ -15,6 +15,12 @@ class Dashboard extends CI_Controller{
 	}
 
 	public function index(){
+		// Employee redirect ke mobile view
+		if ($this->role === 'employee') {
+			redirect('m');
+			return;
+		}
+
 		if(in_array($this->role, ['admin', 'admin-branch', 'finance', 'hr', 'inventory', 'employee', 'supervisor'])){
 
 			$branch_id = $this->userdata->branch_id;
@@ -24,7 +30,7 @@ class Dashboard extends CI_Controller{
 				$page = 'index';
 
 				if($this->role == 'admin'){
-					$branch_id = $this->input->get('branch_id') ? $this->input->get('branch_id') : $this->userdata->branch_id;
+					$branch_id = (int)($this->input->get('branch_id') ?: $this->userdata->branch_id);
 					$data['branch_list'] = $this->branch->get_data()->result_array();
 					$data['branch_id'] = $branch_id;
 

@@ -116,11 +116,9 @@ class Auth extends CI_Controller{
 					$msg = $this->load->view('layout/mail/forget', $component, TRUE);
 
 					if($this->emails->send('register@waderjhonson.com', $email, 'Reset Password Akun SAG', $msg)){
-						$this->db->trans_commit();
 						$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check"></i> Email reset password berhasil dikirim.<br>silahkan periksa kotak masuk / spam pada email anda','success'));
 
 					}else{
-						$this->db->trans_rollback();
 						$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-close"></i> reset password gagal, email reset tidak terkirim','danger'));
 					}
 
@@ -209,34 +207,6 @@ class Auth extends CI_Controller{
 		}
 
 		redirect('authentication/login');
-	}
-
-	public function login(){
-		$p = $this->input->post();
-
-		$this->form_validation->set_rules('username', 'Username', 'required');
-		$this->form_validation->set_rules('password', 'Password', 'required');
-
-		if($this->form_validation->run() == TRUE){
-
-			$check = $this->user_model->get_detail($p);
-
-			if($check->num_rows() > 0){
-
-				$user_data = $check->row_array();
-				$this->session->set_userdata('login', true);
-				$this->session->set_userdata('user_data', $user_data);
-				redirect('dashboard');
-
-			}else{
-				$this->session->set_flashdata('alert_message', show_alert('<b><i class="fa fa-danger"></i> Username / Password Salah</b><br> Silahkan masukkan username / password dengan benar','danger'));
-				redirect('');
-			}
-
-		}else{
-			$this->session->set_flashdata('alert_message', show_alert(validation_errors(),'danger'));
-			redirect('');
-		}
 	}
 
 	function logout(){

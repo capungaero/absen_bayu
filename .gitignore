@@ -10,6 +10,12 @@ __MACOSX/
 .env.*.local
 share.env
 
+# Kredensial & artefak kerja (jangan pernah di-commit)
+ftp.txt
+/resume.md
+/code_review.md
+/ascii_diagram.md
+
 # Dependency directories
 node_modules/
 /vendor/

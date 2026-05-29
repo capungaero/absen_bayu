@@ -69,6 +69,7 @@ class Employee extends CI_Controller{
 
 	public function insert(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
+			$res = ['status' => false, 'message' => 'Terjadi kesalahan'];
 			$p = $this->input->post();
 			$p['location'] = isset($p['location']) ? trim($p['location']) : null;
 
@@ -219,6 +220,7 @@ class Employee extends CI_Controller{
 
 	public function update(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
+			$res = ['status' => false, 'message' => 'Terjadi kesalahan'];
 			$p  = $this->input->post();
 			$p['location'] = isset($p['location']) ? trim($p['location']) : null;
 			$p['salary'] = format_angka($p['salary']);
