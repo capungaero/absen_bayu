@@ -26,8 +26,13 @@ date_default_timezone_set("Asia/Jakarta");
 | a PHP script and you can easily do that on your own.
 |
 */
+// Auto-detect base_url termasuk subfolder (mis. /absen/) dari lokasi index.php,
+// supaya app jalan benar baik di root domain maupun di subdirektori hosting.
 $config['base_url'] = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http')
-	. '://' . (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'localhost') . '/';
+	. '://' . (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'localhost')
+	. (isset($_SERVER['SCRIPT_NAME'])
+		? str_replace(basename($_SERVER['SCRIPT_NAME']), '', $_SERVER['SCRIPT_NAME'])
+		: '/');
 
 /*
 |--------------------------------------------------------------------------

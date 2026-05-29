@@ -105,3 +105,13 @@ user_guide_src/build/*
 user_guide_src/cilexer/build/*
 user_guide_src/cilexer/dist/*
 user_guide_src/cilexer/pycilexer.egg-info/*
+
+# SSH keys jangan masuk repo
+id_rsa
+id_rsa.pub
+id_rsa_private
+id_rsa_private.pub
+*_private
+*.ppk
+*.pem
+*.key
