@@ -109,7 +109,10 @@ $db['default'] = array(
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
 	'pconnect' => FALSE,
-	'db_debug' => (ENVIRONMENT !== 'production'),
+	// Guard ENVIRONMENT: di konteks tertentu (mis. config di-parse tanpa
+	// bootstrap penuh) konstanta ini belum terdefinisi. Default aman ke FALSE
+	// supaya error SQL tidak pernah bocor ke user.
+	'db_debug' => (defined('ENVIRONMENT') ? ENVIRONMENT !== 'production' : FALSE),
 	'cache_on' => FALSE,
 	'cachedir' => '',
 	'char_set' => _absen_env('ABSEN_DB_CHARSET', 'utf8'),
