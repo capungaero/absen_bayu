@@ -459,8 +459,11 @@ $config['global_xss_filtering'] = FALSE;
 | 'csrf_exclude_uris' = Array of URIs which ignore CSRF checks
 */
 $config['csrf_protection'] = TRUE;
-$config['csrf_token_name'] = 'csrf_token';
-$config['csrf_cookie_name'] = 'csrf_cookie';
+// PENTING: seluruh view admin + DatatablesBuilder mengirim field 'myToken',
+// jadi token_name HARUS 'myToken' agar admin panel tidak kena 403. Versi mobile
+// membaca nama token secara dinamis (get_csrf_token_name()), jadi tetap kompatibel.
+$config['csrf_token_name'] = 'myToken';
+$config['csrf_cookie_name'] = 'csrf_cookie_name';
 $config['csrf_expire'] = 7200;
 $config['csrf_regenerate'] = TRUE;
 $config['csrf_exclude_uris'] = array(
