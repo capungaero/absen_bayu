@@ -79,20 +79,24 @@ $query_builder = TRUE;
 //   * Server SetEnv di Apache vhost.
 // Kalau env tidak diset, fallback ke nilai dev di sini (root@127.0.0.1
 // tanpa password) supaya laptop lokal & smoke test tetap jalan apa adanya.
-function _absen_env($key, $default) {
-	$v = getenv($key);
-	return ($v === false || $v === '') ? $default : $v;
+if ( ! function_exists('_absen_env')) {
+	function _absen_env($key, $default) {
+		$v = getenv($key);
+		return ($v === false || $v === '') ? $default : $v;
+	}
 }
 
-function _absen_env_first($keys, $default) {
-	foreach ($keys as $key) {
-		$v = getenv($key);
-		if ($v !== false && $v !== '') {
-			return $v;
+if ( ! function_exists('_absen_env_first')) {
+	function _absen_env_first($keys, $default) {
+		foreach ($keys as $key) {
+			$v = getenv($key);
+			if ($v !== false && $v !== '') {
+				return $v;
+			}
 		}
-	}
 
-	return $default;
+		return $default;
+	}
 }
 
 $db['default'] = array(
