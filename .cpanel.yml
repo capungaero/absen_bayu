@@ -1,38 +1,41 @@
 ---
 # cPanel Git Version Control deployment task.
 #
-# Dipakai untuk auto-deploy dari bare repo /home/kobf5633/repositories/absen_bayu
+# Dipakai untuk auto-deploy dari bare repo /home/tifx3722/repositories/absen_bayu
 # ke direktori web yang dilayani Apache. Trigger:
 #   * cPanel UI: "Manage" -> "Pull or Deploy" -> "Update from Remote" lalu
 #     "Deploy HEAD Commit". Tab ini jalan kalau .cpanel.yml ada di root commit.
 #   * SSH: cd ~/repositories/absen_bayu && git checkout-index ... lalu /usr/local/cpanel/bin/yml-deploy
 #
 # Sebelum deploy pertama, pastikan:
-#   1. $DEPLOYPATH sudah dibuat: mkdir -p ~/public_html/absen_bayu
+#   1. $DEPLOYPATH sudah dibuat: mkdir -p ~/public_html/absen
 #   2. application/config/database.php tidak ditimpa creds dev kalau pakai
 #      file lokal. Kalau pakai env vars (default config.php), set di
 #      .htaccess / cPanel "Setup PHP" -> "Environment Variables":
 #          ABSEN_DB_HOST=localhost
 #          ABSEN_DB_USER=...
-#          ABSEN_DB_PASS=...
+#          ABSEN_DB_PASS=...      (atau ABSEN_DB_PASSWORD=...)
 #          ABSEN_DB_NAME=...
-#   3. composer install (untuk vendor/ yang gitignored) sudah dijalankan.
-#      Atau commit vendor/ via .gitignore exception sementara.
+#   3. lib/vendor/autoload.php harus ada. Kalau Composer tersedia di hosting,
+#      deploy akan coba composer install dari lib/. Kalau tidak tersedia,
+#      upload lib/vendor dari mesin lokal setelah clone/deploy pertama.
 #   4. Jalankan migrasi: mysql ... < database/add_early_leave_columns.sql
 #
-# Ubah DEPLOYPATH sesuai lokasi hosting. Default-nya ~/public_html/absen_bayu.
-# Kalau mau deploy ke root public_html (domain langsung), set DEPLOYPATH=
-# /home/kobf5633/public_html/.
+# Ubah DEPLOYPATH sesuai lokasi hosting. Default-nya subfolder domain
+# tiffany.my.id/absen: ~/public_html/absen/.
 
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/kobf5633/public_html/absen_bayu/
+    - export DEPLOYPATH=/home/tifx3722/public_html/absen/
     - /bin/mkdir -p $DEPLOYPATH
+    - /bin/chmod 755 $DEPLOYPATH
     - /bin/cp -Rp application $DEPLOYPATH
     - /bin/cp -Rp assets $DEPLOYPATH
     - /bin/cp -Rp database $DEPLOYPATH
     - /bin/cp -Rp lib $DEPLOYPATH
     - /bin/cp -Rp system $DEPLOYPATH
+    - if [ ! -f "${DEPLOYPATH}lib/vendor/autoload.php" ] && command -v composer >/dev/null 2>&1; then cd "${DEPLOYPATH}lib" && composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader; fi
+    - if [ ! -f "${DEPLOYPATH}lib/vendor/autoload.php" ]; then echo "ERROR missing lib/vendor/autoload.php. Upload lib/vendor or run composer install in lib."; exit 1; fi
     - /bin/cp -p .htaccess $DEPLOYPATH
     - /bin/cp -p composer.json $DEPLOYPATH
     - /bin/cp -p index.php $DEPLOYPATH

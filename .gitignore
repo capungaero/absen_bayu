@@ -16,6 +16,7 @@ node_modules/
 /lib/vendor/
 /application/libraries/vendor/
 composer.lock
+!lib/composer.lock
 
 # Application - CodeIgniter specific
 application/cache/*
@@ -64,6 +65,9 @@ __pycache__/
 
 # Config files with secrets
 config.json
+application/config/database.local.php
+/cpanel_id_rsa_downloaded
+/sql.txt
 
 # Local data, HR exports, and generated runtime artifacts
 /data/

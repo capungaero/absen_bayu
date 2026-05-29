@@ -84,12 +84,23 @@ function _absen_env($key, $default) {
 	return ($v === false || $v === '') ? $default : $v;
 }
 
+function _absen_env_first($keys, $default) {
+	foreach ($keys as $key) {
+		$v = getenv($key);
+		if ($v !== false && $v !== '') {
+			return $v;
+		}
+	}
+
+	return $default;
+}
+
 $db['default'] = array(
 	'dsn'	=> '',
 	'hostname' => _absen_env('ABSEN_DB_HOST', '127.0.0.1'),
 	'port'     => (int) _absen_env('ABSEN_DB_PORT', 3306),
 	'username' => _absen_env('ABSEN_DB_USER', 'root'),
-	'password' => _absen_env('ABSEN_DB_PASS', ''),
+	'password' => _absen_env_first(array('ABSEN_DB_PASS', 'ABSEN_DB_PASSWORD'), ''),
 	'database' => _absen_env('ABSEN_DB_NAME', 'newtiffa_timesheet'),
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
@@ -106,3 +117,8 @@ $db['default'] = array(
 	'failover' => array(),
 	'save_queries' => TRUE
 );
+
+$absen_local_db_config = __DIR__ . '/database.local.php';
+if (is_file($absen_local_db_config)) {
+	require $absen_local_db_config;
+}
