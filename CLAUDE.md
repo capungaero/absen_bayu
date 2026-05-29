@@ -1,5 +1,13 @@
 # Ruflo — Claude Code Configuration
 
+## 📌 Konteks Proyek (BACA DI AWAL SESI)
+
+Proyek **E-ABSENSI (absen_bayu)** — sistem absensi & penggajian Tiffany Houseware (CodeIgniter 3 + MySQL).
+Sebelum mulai, rujuk referensi lengkap (kredensial, struktur DB, cara deploy, modul mobile):
+- **File**: `docs/PROJECT_CONTEXT.local.md` (gitignored, berisi kredensial — baca dengan Read tool)
+- **Memory permanen**: ToolSearch → `mcp__ruflo__memory_search` query `"absen_bayu project context"` namespace `absen_bayu` threshold `0.1`
+- Catatan kritis: `csrf_token_name='myToken'` (JANGAN diubah); password = bcrypt (tak bisa ditampilkan); deploy hosting via FTP (lihat file konteks).
+
 ## Rules
 
 - Do what has been asked; nothing more, nothing less
