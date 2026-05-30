@@ -1525,9 +1525,11 @@ class Payroll extends CI_Controller{
 				$this->output->set_header('Content-Type: application/vnd.ms-excel');
 			    $this->output->set_header("Content-type: application/csv");
 			    $this->output->set_header('Cache-Control: max-age=0');
-			    $writer->save('./assets/export/'.$fileName); 
-			    $filepath = file_get_contents('./assets/export/'.$fileName);
-			    $this->load->helper('download');  
+			    $export_dir = './assets/export/';
+			    if(!is_dir($export_dir)){ mkdir($export_dir, 0755, true); }
+			    $writer->save($export_dir.$fileName);
+			    $filepath = file_get_contents($export_dir.$fileName);
+			    $this->load->helper('download');
 			    force_download($fileName, $filepath);
 
 			}else{
