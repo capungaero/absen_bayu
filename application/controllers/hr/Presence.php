@@ -2430,8 +2430,13 @@ class Presence extends CI_Controller{
 			$this->output->set_header('Content-Type: application/vnd.ms-excel');
 		    $this->output->set_header("Content-type: application/csv");
 		    $this->output->set_header('Cache-Control: max-age=0');
-		    $writer->save('./assets/export/'.$fileName); 
-		    $filepath = file_get_contents('./assets/export/'.$fileName);
+		    // Pastikan folder export ada (di hosting folder ini tidak ikut ter-deploy
+		    // karena isinya artefak yang di-gitignore, sehingga save() bisa gagal).
+		    $export_dir = './assets/export/';
+		    if(!is_dir($export_dir)){ mkdir($export_dir, 0755, true); }
+
+		    $writer->save($export_dir.$fileName);
+		    $filepath = file_get_contents($export_dir.$fileName);
 		    force_download($fileName, $filepath);
 
 		}else{
