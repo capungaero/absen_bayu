@@ -290,15 +290,23 @@ class Wa extends CI_Controller {
             return;
         }
 
-        $summary  = $this->wa->get_today_shift_report();
-        $tipe     = ($type === 'rekap_pagi') ? 'pagi' : 'siang';
-        $message  = $wa->build_shift_rekap_message($summary, $tipe);
-
         $phones = $this->_parse_phones($config['target_phones']);
         if (empty($phones)) {
             $this->session->set_flashdata('rekap_error', 'Belum ada nomor tujuan rekap di konfigurasi.');
             return;
         }
+
+        $info_messages = [];
+        if ($type === 'rekap_pagi') {
+            $sync_result = $this->_sync_today_attendance();
+            if (empty($sync_result['success'])) {
+                $info_messages[] = 'Cek absen sebelum Rekap Pagi belum sukses: '.$sync_result['message'];
+            }
+        }
+
+        $summary  = $this->wa->get_today_shift_report();
+        $tipe     = ($type === 'rekap_pagi') ? 'pagi' : 'siang';
+        $message  = $wa->build_shift_rekap_message($summary, $tipe);
 
         $success_count = 0;
         foreach ($phones as $phone) {
@@ -316,7 +324,21 @@ class Wa extends CI_Controller {
         }
 
         $label = $type === 'rekap_pagi' ? 'Rekap Pagi' : 'Rekap Siang';
-        $this->session->set_flashdata('rekap_success', "{$label} berhasil dikirim ke {$success_count} nomor.");
+        $total_count = count($phones);
+
+        if ($success_count === 0) {
+            $this->session->set_flashdata('rekap_error', "{$label} gagal dikirim ke semua nomor. Cek log WA untuk detail.");
+        } else {
+            $this->session->set_flashdata('rekap_success', "{$label} berhasil dikirim ke {$success_count} dari {$total_count} nomor.");
+
+            if ($success_count < $total_count) {
+                $info_messages[] = "{$label} gagal dikirim ke ".($total_count - $success_count)." nomor. Cek log WA untuk detail.";
+            }
+        }
+
+        if (!empty($info_messages)) {
+            $this->session->set_flashdata('rekap_info', implode(' ', $info_messages));
+        }
     }
 
     private function _send_absent_notif() {

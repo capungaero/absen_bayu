@@ -28,6 +28,63 @@
         <link href="<?= base_url() ?>assets/libs/sweetalert2/sweetalert2.min.css" rel="stylesheet" type="text/css" />
 
         <script src="<?= base_url() ?>assets/libs/jquery/jquery.min.js"></script>
+        <script>
+            window.CI_CSRF = {
+                name: "<?= $this->security->get_csrf_token_name() ?>",
+                hash: "<?= $this->security->get_csrf_hash() ?>"
+            };
+
+            function refreshCsrfToken(res) {
+                var hash = res && (res.csrfHash || res.csrf);
+                if (!hash) { return; }
+                window.CI_CSRF.hash = hash;
+                $("input[name='" + window.CI_CSRF.name + "']").val(hash);
+            }
+
+            $.ajaxPrefilter(function(options) {
+                var method = (options.type || options.method || 'GET').toUpperCase();
+                if (method !== 'POST' || !window.CI_CSRF || !window.CI_CSRF.name) { return; }
+                if (typeof options.data === 'function') { return; }
+
+                if (typeof FormData !== 'undefined' && options.data instanceof FormData) {
+                    if (typeof options.data.set === 'function') {
+                        options.data.set(window.CI_CSRF.name, window.CI_CSRF.hash);
+                    } else if (typeof options.data.has !== 'function' || !options.data.has(window.CI_CSRF.name)) {
+                        options.data.append(window.CI_CSRF.name, window.CI_CSRF.hash);
+                    }
+                    return;
+                }
+
+                var tokenName = encodeURIComponent(window.CI_CSRF.name);
+                var tokenValue = encodeURIComponent(window.CI_CSRF.hash);
+                var tokenPair = tokenName + '=' + tokenValue;
+
+                if (typeof options.data === 'string') {
+                    if (options.data.indexOf(tokenName + '=') === -1 && options.data.indexOf(window.CI_CSRF.name + '=') === -1) {
+                        options.data += (options.data ? '&' : '') + tokenPair;
+                    }
+                    return;
+                }
+
+                if ($.isPlainObject(options.data)) {
+                    if (!Object.prototype.hasOwnProperty.call(options.data, window.CI_CSRF.name)) {
+                        options.data[window.CI_CSRF.name] = window.CI_CSRF.hash;
+                    }
+                    if (options.processData !== false) {
+                        options.data = $.param(options.data, options.traditional);
+                    }
+                    return;
+                }
+
+                if (!options.data) {
+                    options.data = tokenPair;
+                }
+            });
+
+            $(document).ajaxSuccess(function(event, xhr) {
+                try { refreshCsrfToken(JSON.parse(xhr.responseText)); } catch (e) {}
+            });
+        </script>
         <script src="<?= base_url() ?>assets/js/format_rp.js"></script>
 
         <script src="<?= base_url() ?>assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
@@ -172,6 +229,7 @@
                                             <a href="<?= site_url('master_data/branch') ?>" class="dropdown-item"><i class="dripicons-store"></i> Cabang</a>
                                             <a href="<?= site_url('master_data/insentif') ?>" class="dropdown-item"><i class="dripicons-card"></i> Insentif</a>
                                             <a href="<?= site_url('master_data/deduction') ?>" class="dropdown-item"><i class="dripicons-card"></i> Pemotongan</a>
+                                            <a href="<?= site_url('master_data/double_deduction_date') ?>" class="dropdown-item"><i class="dripicons-calendar"></i> Tanggal Potongan Double</a>
                                         <?php } ?>
 
                                             <div class="dropdown">
@@ -245,20 +303,7 @@
                                                  <a href="<?= site_url('hr/leave/list') ?>" class="dropdown-item"><i class="dripicons-calendar"></i> Pengajuan Izin</a>
                                             <?php } ?>
 
-                                            <a href="<?= site_url('hr/presence') ?>" class="dropdown-item"><i class="dripicons-calendar"></i> Presensi</a>
-                                            <?php if(in_array($role, ['admin', 'admin-branch', 'hr', 'supervisor'])){ ?>
-                                                <?php
-                                                    $absen_report_url = '#';
-                                                    $absen_report_files = glob(FCPATH.'exports/report_absen_*_all.xlsx');
-                                                    if(!empty($absen_report_files)){
-                                                        usort($absen_report_files, function($a, $b){
-                                                            return filemtime($b) - filemtime($a);
-                                                        });
-                                                        $absen_report_url = base_url('exports/'.basename($absen_report_files[0]));
-                                                    }
-                                                ?>
-                                                <a href="<?= $absen_report_url ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Report Performance Absen</a>
-                                            <?php } ?>
+	                                            <a href="<?= site_url('hr/presence') ?>" class="dropdown-item"><i class="dripicons-calendar"></i> Presensi</a>
 
                                             <a href="<?= site_url('hr/payroll') ?>" class="dropdown-item"><i class="dripicons-wallet"></i> Penggajian</a>
                                         </div>
@@ -293,24 +338,22 @@
                                     </li>
                                 <?php } ?>
 
-                                    <!--<li class="nav-item dropdown">
-                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-pages" role="button">
+                                <?php if(in_array($role, ['admin', 'admin-branch', 'hr', 'supervisor'])){ ?>
+                                    <?php
+                                        $absen_report_month = isset($month) ? (int)$month : (int)date('m');
+                                        $absen_report_year = isset($year) ? (int)$year : (int)date('Y');
+                                        $absen_report_branch_id = in_array($role, ['admin', 'hr']) ? 0 : (int)$this->userdata->branch_id;
+                                        $absen_report_url = site_url('export_absen_report/'.$absen_report_month.'/'.$absen_report_year.'/'.$absen_report_branch_id);
+                                    ?>
+                                    <li class="nav-item dropdown">
+                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-report" role="button">
                                             <i class="dripicons-document me-2"></i>Laporan<div class="arrow-down"></div>
                                         </a>
-                                        <div class="dropdown-menu" aria-labelledby="topnav-pages">
-
-                                        <?php if(in_array($role, ['admin', 'admin-branch', 'finance'])){ ?>
-                                            <a href="<?= site_url('report/cashflow') ?>" class="dropdown-item"><i class="dripicons-experiment"></i> Cashflow</a>
-
-                                            <a href="<?= site_url('report/profit_loss') ?>" class="dropdown-item"><i class="dripicons-experiment"></i> Laba Rugi</a>
-                                        <?php } ?>
-
-                                        <?php if(in_array($role, ['admin', 'admin-branch', 'inventory'])){ ?>
-                                            <a href="<?= site_url('report/asset') ?>" class="dropdown-item"><i class="dripicons-experiment"></i> Asset</a>
-                                        <?php } ?>
-
+                                        <div class="dropdown-menu" aria-labelledby="topnav-report">
+                                            <a href="<?= $absen_report_url ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Report Performance Absen</a>
                                         </div>
-                                    </li>-->
+                                    </li>
+                                <?php } ?>
 
                                 </ul>
                             </div>

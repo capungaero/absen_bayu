@@ -12,6 +12,8 @@ Class Presence_model extends CI_Model{
    protected $payroll_insentif_cache = [];
    protected $deduction_master_cache = [];
    protected $payroll_deduction_cache = [];
+   protected $double_deduction_date_cache = [];
+   protected $double_deduction_date_table_checked = null;
    protected $period_context = null;
     
    public function get_data(){
@@ -33,6 +35,34 @@ Class Presence_model extends CI_Model{
       }
 
       return $this->db->get($this->table);
+   }
+
+   private function _get_double_deduction_dates($branch_id, $from_date, $to_date){
+      if($this->double_deduction_date_table_checked === null){
+         $this->double_deduction_date_table_checked = $this->db->table_exists('double_deduction_date');
+      }
+
+      if(!$this->double_deduction_date_table_checked){
+         return [];
+      }
+
+      $cache_key = $branch_id.'-'.$from_date.'-'.$to_date;
+      if(!isset($this->double_deduction_date_cache[$cache_key])){
+         $rows = $this->db->select('special_date, description')
+                          ->where('branch_id', $branch_id)
+                          ->where('is_active', '1')
+                          ->where('special_date >=', $from_date)
+                          ->where('special_date <=', $to_date)
+                          ->get('double_deduction_date')
+                          ->result_array();
+
+         $this->double_deduction_date_cache[$cache_key] = [];
+         foreach($rows as $row){
+            $this->double_deduction_date_cache[$cache_key][$row['special_date']] = $row;
+         }
+      }
+
+      return $this->double_deduction_date_cache[$cache_key];
    }
 
    public function _get_attendance($user_id, $month, $year){
@@ -204,7 +234,9 @@ Class Presence_model extends CI_Model{
             'by_user_id'  => $att['input_by_user_id'],
             'is_overtime' => $att['is_overtime'],
             'is_overtime_presence' => $att['overtime_id'] ? true : false,
-            'is_overtime_approve'  => $att['overtime_status'] == 'approve' ? true : false
+            'is_overtime_approve'  => $att['overtime_status'] == 'approve' ? true : false,
+            'is_early_leave' => isset($att['is_early_leave']) ? (int)$att['is_early_leave'] : 0,
+            'early_leave_short_minutes' => isset($att['early_leave_short_minutes']) ? (int)$att['early_leave_short_minutes'] : 0
           ];
 
           /**if($att['presence_type'] != 'normal'){
@@ -622,6 +654,9 @@ Class Presence_model extends CI_Model{
     $total_day = 0;
     $strip = 0;
     $totalDayInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+    $period_from = sprintf('%04d-%02d-01', $year, $month);
+    $period_to = sprintf('%04d-%02d-%02d', $year, $month, $totalDayInMonth);
+    $double_deduction_dates = $this->_get_double_deduction_dates($employee['branch_id'], $period_from, $period_to);
 
     $daterange = getRangeWorkDate($month, $year);
     foreach ($daterange['list'] as $row){
@@ -691,7 +726,9 @@ Class Presence_model extends CI_Model{
         ],
         'off'     => 0,
         'half'    => 0,
+        'early_leave' => 0,
         'weekend' => 0,
+        'special_double' => 0,
         'weekdays' => 0,
         'leave'   => [
           'count' => 0,
@@ -703,12 +740,17 @@ Class Presence_model extends CI_Model{
       'total_in_minute'  => 0,
       'amount_in_late'   => 0,
       'amount_in_half'   => 0,
+      'amount_early_leave' => 0,
+      'total_early_leave_minutes' => 0,
       'amount_in_weekend'=> 0,
+      'amount_in_special_double'=> 0,
       'amount_in_weekdays' => 0,
       'day' => [
         'late' => [],
         'half' => [],
-        'weekend' => []
+        'early_leave' => [],
+        'weekend' => [],
+        'special_double' => []
       ]
     ];
 
@@ -775,7 +817,9 @@ Class Presence_model extends CI_Model{
         'input_by'    => $att['input_by'],
         'created_at'  => $att['created_at'],
         'by_user_id'  => $att['input_by_user_id'],
-        'is_overtime' => $att['is_overtime']
+        'is_overtime' => $att['is_overtime'],
+        'is_early_leave' => isset($att['is_early_leave']) ? (int)$att['is_early_leave'] : 0,
+        'early_leave_short_minutes' => isset($att['early_leave_short_minutes']) ? (int)$att['early_leave_short_minutes'] : 0
       ];
 
       $in  = $attendance[$att_date];
@@ -978,15 +1022,21 @@ Class Presence_model extends CI_Model{
         $rest['total']['in_fine'] += $rest_fine;
       }
 
+      if($in['presence_type'] == 'normal' && !empty($in['is_early_leave']) && (int)$in['early_leave_short_minutes'] > 0){
+        $short_minutes = (int)$in['early_leave_short_minutes'];
+        $entry['presence']['early_leave']++;
+        $entry['total_early_leave_minutes'] += $short_minutes;
+        $entry['day']['early_leave'][] = [
+          'date'      => $att_date,
+          'in_minute' => $short_minutes,
+          'amount'    => 0
+        ];
+      }
+
       ## LEAVE FINE
-      ## Aturan: presence_type='sakit' selalu potongan 0% (di-skip dari
-      ## perhitungan fine). Keterangan sakit di-enforce saat insert leave
-      ## (leave_reason required) + di approval (Leave::change_status set
-      ## presence_get_paid=100 untuk sakit).
       $leave_fine = 0;
       if($employee['is_fine_system'] == '1'
-          && $in['presence_type'] != 'normal'
-          && $in['presence_type'] != 'sakit'){
+          && $in['presence_type'] != 'normal'){
         $fine_percent_leave = 100 - $in['presence_get_paid'];
         if($fine_percent_leave > 0){
           $amount_day_fine = round(($fine_percent_leave / 100) * $salary_per_day);
@@ -1013,32 +1063,61 @@ Class Presence_model extends CI_Model{
 
     }
 
+    if($entry['total_early_leave_minutes'] > 0){
+      $early_leave_amount = presence_early_leave_deduction_amount(
+        $employee['salary'], $totalDayInMonth, $entry['total_early_leave_minutes']
+      );
+      $entry['amount_early_leave'] = $early_leave_amount;
+      $fine += $early_leave_amount;
+
+      $allocated = 0;
+      $last_index = count($entry['day']['early_leave']) - 1;
+      foreach($entry['day']['early_leave'] as $idx => &$row){
+        if($idx == $last_index){
+          $row['amount'] = $early_leave_amount - $allocated;
+        }else{
+          $row['amount'] = (int)floor($early_leave_amount * ($row['in_minute'] / $entry['total_early_leave_minutes']));
+          $allocated += $row['amount'];
+        }
+      }
+      unset($row);
+    }
+
     // COUNT AND CALCULATE WEEKEND FINE
     if(isset($additional_att)){
       foreach($additional_att as $row){
-        if(
-          $row['type'] == 'work' && 
-          !isset($attendance[$row['additional_date']]) && 
-          in_array(get_dayname($row['additional_date']), ['Sabtu', 'Minggu']) &&
+        $is_absent_work = $row['type'] == 'work' &&
+          !isset($attendance[$row['additional_date']]) &&
           strtotime($current_now) >= strtotime($row['additional_date']) &&
-          $row['code'] != '-'
+          $row['code'] != '-';
+        $is_weekend = in_array(get_dayname($row['additional_date']), ['Sabtu', 'Minggu']);
+        $is_special_double = isset($double_deduction_dates[$row['additional_date']]);
+
+        if(
+          $is_absent_work &&
+          ($is_weekend || $is_special_double)
         ){
-          $weekend_fine = $salaryPerDayForAlpha * 2;
-          $entry['day']['weekend'][] = [
+          $double_fine = $salaryPerDayForAlpha * 2;
+          $day_row = [
             'date'      => $row['additional_date'],
             'in_count'  => 2,
-            'amount'    => $weekend_fine
+            'amount'    => $double_fine,
+            'description' => $is_special_double ? $double_deduction_dates[$row['additional_date']]['description'] : ''
           ];
 
-          $entry['amount_in_weekend'] += $weekend_fine;
-          $entry['presence']['weekend']++;
-          $fine += $weekend_fine;
+          if($is_special_double){
+            $entry['day']['special_double'][] = $day_row;
+            $entry['amount_in_special_double'] += $double_fine;
+            $entry['presence']['special_double']++;
+          }else{
+            $entry['day']['weekend'][] = $day_row;
+            $entry['presence']['weekend']++;
+          }
 
-        }else if($row['type'] == 'work' && 
-          !isset($attendance[$row['additional_date']]) && 
-          !in_array(get_dayname($row['additional_date']), ['Sabtu', 'Minggu']) &&
-          strtotime($current_now) >= strtotime($row['additional_date']) &&
-          $row['code'] != '-'){
+          $entry['amount_in_weekend'] += $double_fine;
+          $fine += $double_fine;
+
+        }else if($is_absent_work && !$is_weekend && !$is_special_double){
           $entry['presence']['weekdays']++;
           $entry['amount_in_weekdays'] += $salaryPerDayForAlpha;
           $fine += $salaryPerDayForAlpha;
@@ -1152,6 +1231,9 @@ Class Presence_model extends CI_Model{
 
       $this->payroll_deduction_cache[$period_key] = [];
       foreach($rows as $row){
+        if(isset($row['deduction_note']) && $row['deduction_note'] === 'Potongan Izin Pulang Lebih Awal (auto)'){
+          continue;
+        }
         $this->payroll_deduction_cache[$period_key][$row['user_id']][$row['deduction_id']] = $row;
       }
     }

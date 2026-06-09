@@ -9,6 +9,7 @@ __MACOSX/
 .env.local
 .env.*.local
 share.env
+rahasia.env
 
 # Kredensial & artefak kerja (jangan pernah di-commit)
 ftp.txt

@@ -88,7 +88,17 @@ Class Deduction_model extends CI_Model{
          ->column('<b>NO</b>', 'num_dt deduction_id')
          ->column('<b>NAMA POTONGAN KARYAWAN</b>', 'deduction_name')
          ->column('<b>STATUS</b>', 'is_active', function($data, $row){
-            return $row['is_active'] == '1' ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Non Aktif</span>';
+            if($row['is_active'] == '1'){
+               $title = 'Aktif';
+               $icon = 'fa-check-circle';
+               $class = 'text-success';
+            }else{
+               $title = 'Non Aktif';
+               $icon = 'fa-times-circle';
+               $class = 'text-danger';
+            }
+
+            return '<center><button type="button" class="btn btn-sm btn-light '.$class.' toggle-deduction-status" data-id="'.$row['deduction_id'].'" data-active="'.$row['is_active'].'" title="'.$title.'"><i class="fa '.$icon.'"></i></button></center>';
          })
          ->column('<center><i class="fa fa-cog"></i></center>', 'deduction_id', function($data, $row){
             

@@ -63,7 +63,58 @@ Class User_model extends CI_Model{
       return $this->db->get($this->table);
    }
 
+   public function get_export_data($filters = array()){
+      $this->db->select('users.*, groups.id AS group_id, groups.name AS group_name,
+                         branch.id AS branch_id, branch_code, branch_name, branch.city,
+                         position.id AS position_id, position_code, position_name,
+                         subdivision_id, subdivision_code, subdivision_name,
+                         groups.description AS group_description')
+               ->from($this->table)
+               ->join('users_groups', 'users_groups.user_id = users.id')
+               ->join('groups', 'groups.id = users_groups.group_id')
+               ->join('position', 'position.id = users.position_id')
+               ->join('subdivision', 'subdivision.id = users.subdivision_id', 'LEFT')
+               ->join('branch', 'branch.id = position.branch_id');
 
+      if(!empty($filters['branch_id'])){
+         $this->db->where('branch.id', $filters['branch_id']);
+      }
+
+      if(isset($filters['active']) && $filters['active'] !== ''){
+         $this->db->where('users.active', $filters['active']);
+      }
+
+      if(!empty($filters['position_id'])){
+         $this->db->where('position.id', $filters['position_id']);
+      }
+
+      if(!empty($filters['location'])){
+         $this->db->where('users.location', $filters['location']);
+      }
+
+      $this->db->order_by('branch.branch_name', 'ASC')
+               ->order_by('position.position_name', 'ASC')
+               ->order_by('users.first_name', 'ASC');
+
+      return $this->db->get();
+   }
+
+   public function get_export_locations($branch_id = ''){
+      $this->db->select('users.location')
+               ->from($this->table)
+               ->join('position', 'position.id = users.position_id')
+               ->where('users.location IS NOT NULL', null, false)
+               ->where('users.location !=', '');
+
+      if($branch_id != ''){
+         $this->db->where('position.branch_id', $branch_id);
+      }
+
+      return $this->db->group_by('users.location')
+                      ->order_by('users.location', 'ASC')
+                      ->get()
+                      ->result_array();
+   }
 
    public function get_tableUser($find = array()){
       $dt = $this->datatables->init();
@@ -128,10 +179,21 @@ Class User_model extends CI_Model{
             return $row['email']."<br><small class='text-muted'>".$row['phone']."</small>";
          })
          ->column('<center><b>ACTIVE</b></center>', 'active', function($data, $row){
+            $role = $this->ion_auth->get_users_groups()->row()->name;
             if($row['active'] == '1'){
-               $txt = '<i class="fa fa-check-circle text-success" data-toggle="tooltip" title="Aktif"></i>';
+               $title = 'Aktif';
+               $icon = 'fa-check-circle';
+               $class = 'text-success';
             }else{
-               $txt = '<i class="fa fa-times-circle text-danger" data-toggle="tooltip" title="Nonaktif"></i>';
+               $title = 'Nonaktif';
+               $icon = 'fa-times-circle';
+               $class = 'text-danger';
+            }
+
+            if(in_array($role, ['admin', 'admin-branch'])){
+               $txt = '<button type="button" class="btn btn-sm btn-light '.$class.' toggle-employee-status" data-id="'.$row['id'].'" data-active="'.$row['active'].'" title="'.$title.'"><i class="fa '.$icon.'"></i></button>';
+            }else{
+               $txt = '<i class="fa '.$icon.' '.$class.'" data-toggle="tooltip" title="'.$title.'"></i>';
             }
 
             if($row['last_status'] != ''){
@@ -141,12 +203,6 @@ Class User_model extends CI_Model{
             return "<center>".$txt."</center>";
          })
          ->column('<center><i class="fa fa-cog"></i></center>', 'active', function($data, $row){
-            if($row['active'] == '1'){
-               $icon = '<i class="dripicons-cross"></i> Non-aktifkan';
-            }else{
-               $icon = '<i class="dripicons-checkmark"></i> Aktifkan';
-            }
-
             $location = !empty($row['location']) ? htmlspecialchars($row['location'], ENT_QUOTES, 'UTF-8') : '';
             $edit = 'data-id="'.$row['id'].'"
                      data-name="'.$row['first_name'].'"
@@ -189,7 +245,6 @@ Class User_model extends CI_Model{
                       </a>
 
                       <div class="dropdown-menu">
-                           <a class="dropdown-item approval" data-id="'.$row['id'].'" href="javascript:void(0)">'.$icon.'</a>
                            <a href="javascript:void(0)" '.$edit.' class="dropdown-item edit"><i class="dripicons-pencil"></i> Ubah Data Karyawan</a>
                            '.$schedule.'
                            '.$btnDelete.'

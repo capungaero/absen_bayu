@@ -211,6 +211,41 @@ class Insentif extends CI_Controller{
 	}
 
 
+	public function change_status(){
+		if($this->input->is_ajax_request() && ($this->role == 'admin' || $this->role == 'admin-branch')){
+			$id = $this->input->post('id');
+			$find = ['insentif.id' => $id];
+
+			if($this->role != 'admin'){
+				$find['insentif.branch_id'] = $this->userdata->branch_id;
+			}
+
+			$data = $this->insentif->get_detail($find);
+			if($data->num_rows() == 0){
+				echo json_encode([
+					'status'  => false,
+					'message' => 'Data insentif tidak diketahui'
+				]);
+				return;
+			}
+
+			$row = $data->row_array();
+			$is_active = $row['is_active'] == '1' ? '0' : '1';
+			$this->insentif->update([
+				'is_active'  => $is_active,
+				'updated_at' => date('Y-m-d H:i:s')
+			], $id);
+
+			echo json_encode([
+				'status'  => true,
+				'message' => $is_active == '1' ? 'Insentif berhasil diaktifkan' : 'Insentif berhasil dinonaktifkan'
+			]);
+
+		}else{
+			show_404();
+		}
+	}
+
 	public function call_insentif($page, $employee_id){
 		if($this->input->is_ajax_request()){
 			if($this->role == 'admin'){

@@ -18,6 +18,8 @@
             <select name="mode" id="filterMode" class="form-select form-select-sm" style="width:auto">
                 <option value="date" <?= $filter_mode == 'date' ? 'selected' : '' ?>>Tanggal</option>
                 <option value="week" <?= $filter_mode == 'week' ? 'selected' : '' ?>>Minggu</option>
+                <option value="range" <?= $filter_mode == 'range' ? 'selected' : '' ?>>Rentang</option>
+                <option value="month" <?= $filter_mode == 'month' ? 'selected' : '' ?>>1 Bulan</option>
             </select>
 
             <?php if (!empty($is_admin)): ?>
@@ -33,6 +35,12 @@
 
             <input type="date" name="date" id="dateFilter" class="form-control form-control-sm" value="<?= htmlspecialchars($date_value) ?>" style="width:160px">
             <input type="week" name="week" id="weekFilter" class="form-control form-control-sm" value="<?= htmlspecialchars($week_value) ?>" style="width:160px">
+            <div id="rangeFilter" class="d-flex flex-wrap align-items-center gap-2">
+                <input type="date" name="date_from" class="form-control form-control-sm" value="<?= htmlspecialchars($date_from_value) ?>" style="width:160px" aria-label="Tanggal Awal">
+                <span class="text-muted small">s/d</span>
+                <input type="date" name="date_to" class="form-control form-control-sm" value="<?= htmlspecialchars($date_to_value) ?>" style="width:160px" aria-label="Tanggal Akhir">
+            </div>
+            <input type="month" name="month" id="monthFilter" class="form-control form-control-sm" value="<?= htmlspecialchars($month_value) ?>" style="width:160px">
             <button type="submit" class="btn btn-primary btn-sm"><i class="mdi mdi-magnify me-1"></i>Cari</button>
             <small class="text-muted ms-sm-2">Periode: <?= date('d/m/Y', strtotime($from_date)) ?> - <?= date('d/m/Y', strtotime($to_date)) ?></small>
         </form>
@@ -138,11 +146,14 @@ foreach ($shifts as $row) {
     var mode = document.getElementById('filterMode');
     var dateFilter = document.getElementById('dateFilter');
     var weekFilter = document.getElementById('weekFilter');
+    var rangeFilter = document.getElementById('rangeFilter');
+    var monthFilter = document.getElementById('monthFilter');
 
     function toggleFilter(){
-        var isWeek = mode.value === 'week';
-        dateFilter.style.display = isWeek ? 'none' : '';
-        weekFilter.style.display = isWeek ? '' : 'none';
+        dateFilter.style.display = mode.value === 'date' ? '' : 'none';
+        weekFilter.style.display = mode.value === 'week' ? '' : 'none';
+        rangeFilter.style.display = mode.value === 'range' ? '' : 'none';
+        monthFilter.style.display = mode.value === 'month' ? '' : 'none';
     }
 
     mode.addEventListener('change', toggleFilter);

@@ -198,6 +198,41 @@ class Deduction extends CI_Controller{
 	}
 
 
+	public function change_status(){
+		if($this->input->is_ajax_request() && ($this->role == 'admin' || $this->role == 'admin-branch')){
+			$id = $this->input->post('id');
+			$find = ['deduction.id' => $id];
+
+			if($this->role != 'admin'){
+				$find['deduction.branch_id'] = $this->userdata->branch_id;
+			}
+
+			$data = $this->deduction->get_detail($find);
+			if($data->num_rows() == 0){
+				echo json_encode([
+					'status'  => false,
+					'message' => 'Data potongan tidak diketahui'
+				]);
+				return;
+			}
+
+			$row = $data->row_array();
+			$is_active = $row['is_active'] == '1' ? '0' : '1';
+			$this->deduction->update([
+				'is_active'  => $is_active,
+				'updated_at' => date('Y-m-d H:i:s')
+			], $id);
+
+			echo json_encode([
+				'status'  => true,
+				'message' => $is_active == '1' ? 'Potongan berhasil diaktifkan' : 'Potongan berhasil dinonaktifkan'
+			]);
+
+		}else{
+			show_404();
+		}
+	}
+
 	public function call_deduction($page, $employee_id){
 		if($this->input->is_ajax_request()){
 			if($this->role == 'admin'){

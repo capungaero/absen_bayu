@@ -195,10 +195,11 @@ table tbody th {
                     <div class="row">
                         <div class="col-md-4">
                             <div class="presence-toolbar mb-2">
-                                <a href="<?= site_url('hr/presence') ?>" class="btn btn-light"><i class="fa fa-arrow-left"></i> Kembali</a>
-                                <?php if(in_array($role, ['admin', 'admin-branch', 'hr', 'supervisor'])){ ?>
-                                    <a href="<?= base_url('exports/report_absen_'.$year.'_'.str_pad($month, 2, '0', STR_PAD_LEFT).'_all.xlsx') ?>" target="_blank" class="btn btn-outline-success"><i class="mdi mdi-file-excel"></i> Report Performance Absen</a>
-                                <?php } ?>
+	                                <a href="<?= site_url('hr/presence') ?>" class="btn btn-light"><i class="fa fa-arrow-left"></i> Kembali</a>
+	                                <?php if(in_array($role, ['admin', 'admin-branch', 'hr', 'supervisor'])){ ?>
+	                                    <?php $report_branch_id = in_array($role, ['admin', 'hr']) ? 0 : (int)$branch_id; ?>
+	                                    <a href="<?= site_url('export_absen_report/'.$month.'/'.$year.'/'.$report_branch_id) ?>" target="_blank" class="btn btn-outline-success"><i class="mdi mdi-file-excel"></i> Report Performance Absen</a>
+	                                <?php } ?>
                                 <?php if(in_array($this->role, ['admin', 'admin-branch', 'supervisor'])){ ?>
                                     <a href="javascript:void(0)" id="btnModalUpload" class="btn btn-success"><i class="fa fa-clock"></i> Upload</a>
                                     <a href="<?= site_url('export_work_schedule/'.$month.'/'.$year.'/'.$branch_id.'?with_schedule=1') ?>" class="btn btn-outline-secondary"><i class="fa fa-download"></i> Download Jadwal</a>

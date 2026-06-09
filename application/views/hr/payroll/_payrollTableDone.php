@@ -436,7 +436,7 @@ table tbody th {
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td>&emsp;&emsp; Weekend</td>
+                                                <td>&emsp;&emsp; Weekend / Tanggal Khusus</td>
                                                 <td class="text-end">
                                                     <span id="total_alfa_weekend"></span> 
                                                     &emsp;&emsp;
@@ -567,12 +567,22 @@ table tbody th {
 
                                     <thead class="bg-light">
                                         <tr>
+                                            <th>Pulang Lebih Awal</th>
+                                            <th id="presence_day_early_leave" class="text-end"></th>
+                                            <th id="presence_amount_early_leave" class="text-end"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table_early_leave">
+                                    </tbody>
+
+                                    <thead class="bg-light">
+                                        <tr>
                                             <th>Off Weekdays</th>
                                             <th class="text-end" id="presence_weekdays"></th>
                                             <th class="text-end" id="presence_weekdays_amount"></th>
                                         </tr>
                                         <tr>
-                                            <th>Off Weekend</th>
+                                            <th>Off Weekend / Tanggal Khusus</th>
                                             <th class="text-end" id="presence_weekend"></th>
                                             <th class="text-end" id="presence_weekend_amount"></th>
                                         </tr>
@@ -1001,18 +1011,27 @@ table tbody th {
         $('#fine_amount').text(format_rp(data.amount));
         
         var entry = data.detail.entry;
+        var lateAmount = parseInt(entry.amount_in_late || 0);
+        var halfAmount = parseInt(entry.amount_in_half || 0);
+        var weekendAmount = parseInt(entry.amount_in_weekend || 0);
+        var weekdaysAmount = parseInt(entry.amount_in_weekdays || 0);
         $('#presence_day_late').text(entry.day.late.length+"x");
-        $('#presence_amount_in_late').text(format_rp(entry.amount_in_late));
+        $('#presence_amount_in_late').text(format_rp(lateAmount));
         $('#presence_day_half').text(entry.day.half.length+"x");
-        $('#presence_amount_in_half').text(format_rp(entry.amount_in_half));
+        $('#presence_amount_in_half').text(format_rp(halfAmount));
 
-        var all_total = parseInt(entry.amount_in_late + entry.amount_in_half + entry.amount_in_weekend + entry.amount_in_weekdays);
+        var earlyLeaveDays = entry.day.early_leave || [];
+        var earlyLeaveAmount = parseInt(entry.amount_early_leave || 0);
+        $('#presence_day_early_leave').text(earlyLeaveDays.length+"x");
+        $('#presence_amount_early_leave').text(format_rp(earlyLeaveAmount));
+
+        var all_total = lateAmount + halfAmount + earlyLeaveAmount + weekendAmount + weekdaysAmount;
 
         $('#total_presence_amount').text(format_rp(all_total));
-        $('#presence_weekend_amount').text(format_rp(parseInt(entry.amount_in_weekend)))
-        $('#presence_weekend').text(entry.presence.weekend + "x")
+        $('#presence_weekend_amount').text(format_rp(weekendAmount))
+        $('#presence_weekend').text((parseInt(entry.presence.weekend || 0) + parseInt(entry.presence.special_double || 0)) + "x")
 
-        $('#presence_weekdays_amount').text(format_rp(parseInt(entry.amount_in_weekdays)))
+        $('#presence_weekdays_amount').text(format_rp(weekdaysAmount))
         $('#presence_weekdays').text(entry.presence.weekdays + "x")
 
         var presence = entry.presence;
@@ -1038,6 +1057,16 @@ table tbody th {
             tbl += "</tr>";
         });
         $('#table_half').html(tbl);
+
+        var tbl = '';
+        $.each(earlyLeaveDays, function(index, val){
+            tbl += "<tr>";
+            tbl +=    "<td>&emsp;&emsp; "+indonesian_date(val.date)+" </td>";
+            tbl +=    "<td class='text-end'>"+val.in_minute+" Menit</td>";
+            tbl +=    "<td class='text-end'>"+format_rp(val.amount)+"</td>";
+            tbl += "</tr>";
+        });
+        $('#table_early_leave').html(tbl);
 
         var tbl = '';
         $.each(entry.day.weekend, function(index, val){

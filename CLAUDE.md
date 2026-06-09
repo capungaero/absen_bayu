@@ -6,7 +6,7 @@ Proyek **E-ABSENSI (absen_bayu)** — sistem absensi & penggajian Tiffany Housew
 Sebelum mulai, rujuk referensi lengkap (kredensial, struktur DB, cara deploy, modul mobile):
 - **File**: `docs/PROJECT_CONTEXT.local.md` (gitignored, berisi kredensial — baca dengan Read tool)
 - **Memory permanen**: ToolSearch → `mcp__ruflo__memory_search` query `"absen_bayu project context"` namespace `absen_bayu` threshold `0.1`
-- Catatan kritis: `csrf_token_name='myToken'` (JANGAN diubah); password = bcrypt (tak bisa ditampilkan); deploy hosting via FTP (lihat file konteks).
+- Catatan kritis: `csrf_token_name='myToken'` (JANGAN diubah); password = bcrypt (tak bisa ditampilkan); akses/deploy hosting pakai SSH `tiffany.my.id` port 2223 (lihat file konteks).
 
 ## Rules
 

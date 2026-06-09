@@ -48,6 +48,12 @@ npm test
 - Use parameterized queries for databases
 - Sanitize output to prevent XSS
 
+## Tiffany Hosting
+
+- Use SSH for live hosting access: `ssh tiffany.my.id` or `ssh tiffany`.
+- SSH config: user `tifx3722`, port `2223`, key `~/.ssh/tiffany_np`.
+- Do not use SSH port `22`; avoid cPanel/FTP unless SSH is unavailable.
+
 ## Links
 
 - Documentation: https://github.com/ruvnet/claude-flow

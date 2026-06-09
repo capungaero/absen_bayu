@@ -112,8 +112,17 @@ Class Branch_model extends CI_Model{
          })
          ->column('<b>KONTAK</b>', 'branch_phone')
          ->column('<center><b>STATUS</b></center>', 'is_active', function($data, $row){
-            $label = $row['is_active'] == '1' ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Nonaktif</span>';
-            return '<center>'.$label.'</center>';
+            if($row['is_active'] == '1'){
+               $title = 'Aktif';
+               $icon = 'fa-check-circle';
+               $class = 'text-success';
+            }else{
+               $title = 'Nonaktif';
+               $icon = 'fa-times-circle';
+               $class = 'text-danger';
+            }
+
+            return '<center><button type="button" class="btn btn-sm btn-light '.$class.' toggle-branch-status" data-id="'.$row['id'].'" data-active="'.$row['is_active'].'" title="'.$title.'"><i class="fa '.$icon.'"></i></button></center>';
          })
          ->column('<center><i class="fa fa-cog"></i></center>', 'id', function($data, $row){
             

@@ -94,7 +94,17 @@ Class Insentif_model extends CI_Model{
             return $row['formula'] == 'none' ? '-' : format_rp($row['nominal']);
          })
          ->column('<b>STATUS</b>', 'is_active', function($data, $row){
-            return $row['is_active'] == '1' ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Non Aktif</span>';
+            if($row['is_active'] == '1'){
+               $title = 'Aktif';
+               $icon = 'fa-check-circle';
+               $class = 'text-success';
+            }else{
+               $title = 'Non Aktif';
+               $icon = 'fa-times-circle';
+               $class = 'text-danger';
+            }
+
+            return '<center><button type="button" class="btn btn-sm btn-light '.$class.' toggle-insentif-status" data-id="'.$row['insentif_id'].'" data-active="'.$row['is_active'].'" title="'.$title.'"><i class="fa '.$icon.'"></i></button></center>';
          })
          ->column('<center><i class="fa fa-cog"></i></center>', 'insentif_id', function($data, $row){
             

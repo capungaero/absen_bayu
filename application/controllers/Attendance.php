@@ -25,12 +25,31 @@ class Attendance extends CI_Controller {
         $branch_id = ($this->role === 'admin') ? $this->input->get('branch_id', true) : $this->_get_branch_id();
         $branch_id = $branch_id ? (int) $branch_id : null;
 
-        $filter_mode = $this->input->get('mode', true) === 'week' ? 'week' : 'date';
+        $mode_raw = $this->input->get('mode', true);
+        $allowed_modes = ['date', 'week', 'range', 'month'];
+        $filter_mode = in_array($mode_raw, $allowed_modes, true) ? $mode_raw : 'date';
         $date_value = $this->input->get('date', true);
+        $date_from_value = $this->input->get('date_from', true);
+        $date_to_value = $this->input->get('date_to', true);
         $week_value = $this->input->get('week', true);
+        $month_value = $this->input->get('month', true);
 
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date_value) || strtotime($date_value) === false) {
             $date_value = date('Y-m-d');
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date_from_value) || strtotime($date_from_value) === false) {
+            $date_from_value = $date_value;
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date_to_value) || strtotime($date_to_value) === false) {
+            $date_to_value = $date_from_value;
+        }
+        if ($date_from_value > $date_to_value) {
+            $swap = $date_from_value;
+            $date_from_value = $date_to_value;
+            $date_to_value = $swap;
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', (string) $month_value) || strtotime($month_value.'-01') === false) {
+            $month_value = date('Y-m');
         }
 
         if ($filter_mode === 'week') {
@@ -47,10 +66,25 @@ class Attendance extends CI_Controller {
             $week_start->setISODate($week_year, $week);
             $from_date = $week_start->format('Y-m-d');
             $to_date = $week_start->modify('+6 days')->format('Y-m-d');
+        } else if ($filter_mode === 'range') {
+            $from_date = $date_from_value;
+            $to_date = $date_to_value;
+            $week_value = date('o-\WW', strtotime($from_date));
+        } else if ($filter_mode === 'month') {
+            $month_start = DateTime::createFromFormat('Y-m-d', $month_value.'-01');
+            $from_date = $month_start->format('Y-m-01');
+            $to_date = $month_start->format('Y-m-t');
+            $date_value = $from_date;
+            $date_from_value = $from_date;
+            $date_to_value = $to_date;
+            $week_value = date('o-\WW', strtotime($from_date));
         } else {
             $from_date = $date_value;
             $to_date = $date_value;
+            $date_from_value = $date_value;
+            $date_to_value = $date_value;
             $week_value = date('o-\WW', strtotime($date_value));
+            $month_value = date('Y-m', strtotime($date_value));
         }
 
         // Query shift dengan karyawan
@@ -60,7 +94,10 @@ class Attendance extends CI_Controller {
         $data['branches'] = $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
         $data['filter_mode'] = $filter_mode;
         $data['date_value'] = $date_value;
+        $data['date_from_value'] = $date_from_value;
+        $data['date_to_value'] = $date_to_value;
         $data['week_value'] = $week_value;
+        $data['month_value'] = $month_value;
         $data['from_date'] = $from_date;
         $data['to_date']   = $to_date;
         $data['branch_id'] = $branch_id;

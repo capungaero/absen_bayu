@@ -215,7 +215,7 @@
             <div class="card-body">
                 <h5 class="card-title"><i class="mdi mdi-clock-outline me-1"></i>URL Cron Job (Jadwal Otomatis)</h5>
                 <p class="text-muted small">Daftarkan URL ini di cron job server Anda (setiap menit / setiap jam):</p>
-                <?php $cron_token = md5(($config['secret'] ?? '') . 'cron_secret'); ?>
+                <?php $cron_token = $config['cron_token'] ?? ''; ?>
                 <div class="input-group">
                     <input type="text" id="cron_url" class="form-control font-monospace"
                            value="<?= site_url('wa/cron/' . $cron_token) ?>" readonly>

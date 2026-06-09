@@ -210,6 +210,62 @@ class Presence extends CI_Controller{
 		}
 	}
 
+	public function export_absen_report($month, $year, $branch_id = 0){
+		if(!in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
+			show_404();
+			return;
+		}
+
+		$month = (int)$month;
+		$year = (int)$year;
+		if($month < 1 || $month > 12 || $year < 2000 || $year > 2100){
+			show_error('Periode report tidak valid.', 400);
+			return;
+		}
+
+		$branch_arg = null;
+		if(in_array($this->role, ['admin', 'hr'])){
+			$branch_id = (int)$branch_id;
+			$branch_arg = $branch_id > 0 ? (string)$branch_id : null;
+		}else{
+			$branch_arg = (string)(int)$this->userdata->branch_id;
+		}
+
+		try{
+			require_once FCPATH.'tools/absen_report_data.php';
+			require_once FCPATH.'tools/absen_report_xlsx.php';
+
+			if(!($this->db->conn_id instanceof mysqli)){
+				throw new Exception('Koneksi database report tidak tersedia.');
+			}
+
+			mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+			$result = generateAbsenReport($this->db->conn_id, $year, $month, $branch_arg, null, null, date('Y-m-d'));
+			$filename = sprintf('report_absen_%04d_%02d_%s.xlsx', $year, $month, $result['scope']);
+			$export_dir = FCPATH.'exports';
+			if(!is_dir($export_dir) && !mkdir($export_dir, 0777, true)){
+				throw new Exception('Folder exports tidak bisa dibuat.');
+			}
+
+			$out_path = $export_dir.DIRECTORY_SEPARATOR.$filename;
+			writeWorkbook($out_path, $result['report'], $result['meta']);
+			if(!is_file($out_path)){
+				throw new Exception('File report gagal dibuat.');
+			}
+
+			while(ob_get_level() > 0){ ob_end_clean(); }
+			header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+			header('Content-Disposition: attachment; filename="'.$filename.'"');
+			header('Content-Length: '.filesize($out_path));
+			header('Cache-Control: max-age=0');
+			readfile($out_path);
+			exit;
+		}catch(Throwable $e){
+			log_message('error', 'Gagal generate report absen: '.$e->getMessage());
+			show_error('Gagal generate report absen. Cek log aplikasi.', 500);
+		}
+	}
+
 	public function update(){
 		if(in_array($this->role, ['admin', 'admin-branch', 'hr']) && $this->input->is_ajax_request()){
 			$p   = $this->input->post();
@@ -2425,19 +2481,14 @@ class Presence extends CI_Controller{
 
 	        $title = ($with_schedule ? "Jadwal Kerja " : "Template Jadwal Kerja ").get_monthname($month)." ".$year;
 			$writer = new Xlsx($spreadsheet);
-			$fileName = $title.'.xlsx';
+			$fileName = str_replace(['"', "\r", "\n"], '', $title.'.xlsx');
 
-			$this->output->set_header('Content-Type: application/vnd.ms-excel');
-		    $this->output->set_header("Content-type: application/csv");
-		    $this->output->set_header('Cache-Control: max-age=0');
-		    // Pastikan folder export ada (di hosting folder ini tidak ikut ter-deploy
-		    // karena isinya artefak yang di-gitignore, sehingga save() bisa gagal).
-		    $export_dir = './assets/export/';
-		    if(!is_dir($export_dir)){ mkdir($export_dir, 0755, true); }
-
-		    $writer->save($export_dir.$fileName);
-		    $filepath = file_get_contents($export_dir.$fileName);
-		    force_download($fileName, $filepath);
+			while(ob_get_level() > 0){ ob_end_clean(); }
+			header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+			header('Content-Disposition: attachment; filename="'.$fileName.'"');
+			header('Cache-Control: max-age=0');
+		    $writer->save('php://output');
+		    exit;
 
 		}else{
 			show_404();

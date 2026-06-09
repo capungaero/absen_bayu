@@ -197,8 +197,25 @@ class DatatablesBuilder
 
     $param = !$_SERVER['QUERY_STRING'] == '' ? '?'.$_SERVER['QUERY_STRING'] : '';
 
+		$csrf_token_name = $CI->security->get_csrf_token_name();
+		$csrf_hash = $CI->security->get_csrf_hash();
+
 		$output = "
         <script type=\"text/javascript\" defer=\"defer\">
+            window.AbsenDataTablesCsrf = window.AbsenDataTablesCsrf || {};
+            window.AbsenDataTablesCsrf.name = \"{$csrf_token_name}\";
+            window.AbsenDataTablesCsrf.hash = window.AbsenDataTablesCsrf.hash || \"{$csrf_hash}\";
+
+            function updateDatatablesCsrf(json) {
+                if (json && json.csrfHash) {
+                    window.AbsenDataTablesCsrf.hash = json.csrfHash;
+                    if (window.CI_CSRF) {
+                        window.CI_CSRF.hash = json.csrfHash;
+                    }
+                    $(\"input[name='\" + window.AbsenDataTablesCsrf.name + \"']\").val(json.csrfHash);
+                }
+            }
+
             function createDatatable() {
 				erTable_{$id} = $(\"#{$id}\").DataTable({
                     processing: true,
@@ -210,11 +227,15 @@ class DatatablesBuilder
                         url: \"". site_url(uri_string().$param) ."\",
 						type: \"POST\",
                         data: function (d, dt) {
-							d.dt_name = \"{$id}\",
-                            d.myToken = \"".$CI->security->get_csrf_hash()."\"
+							d.dt_name = \"{$id}\";
+                            d[window.AbsenDataTablesCsrf.name] = window.AbsenDataTablesCsrf.hash;
 
 							{$ax_options}
-						}
+						},
+                        dataSrc: function (json) {
+                            updateDatatablesCsrf(json);
+                            return json && json.data ? json.data : [];
+                        }
 					}
                 });
             };
@@ -236,6 +257,8 @@ class DatatablesBuilder
         $length		= $_REQUEST['length'];
         $start		= $_REQUEST['start'];
 
+        $output['csrfTokenName'] = $this->CI->security->get_csrf_token_name();
+        $output['csrfHash'] = $this->CI->security->get_csrf_hash();
         if(isset($_REQUEST['order'])){
             $order_by   = $_REQUEST['order'][0]['column'];
             $order_dir  = $_REQUEST['order'][0]['dir'];

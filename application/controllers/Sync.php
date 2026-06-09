@@ -183,13 +183,16 @@ class Sync extends CI_Controller {
             'name'              => $this->input->post('name', true),
             'machine_sn'        => attlog_sanitize_machine_sn($this->input->post('machine_sn', true)),
             'machine_type'      => $this->input->post('machine_type', true) === 'pray' ? 'pray' : 'attendance',
-            'password'          => $this->input->post('password', true),
             'branch_id'         => $branch_id,
             'is_active'         => $this->input->post('is_active') ? 1 : 0,
             'auto_sync_enabled' => $this->input->post('auto_sync_enabled') ? 1 : 0,
             'sync_times'        => $this->input->post('sync_times', true),
             'updated_at'        => date('Y-m-d H:i:s'),
         ];
+        $password = trim((string) $this->input->post('password', true));
+        if ($password !== '') {
+            $data['password'] = $password;
+        }
 
         if (empty($data['name']) || empty($data['machine_sn'])) {
             echo json_encode(['success' => false, 'message' => 'Nama mesin dan ID Mesin (SN) wajib diisi. SN hanya boleh berisi huruf, angka, underscore, atau strip.']);
@@ -235,6 +238,7 @@ class Sync extends CI_Controller {
             echo json_encode(['success' => false]);
             return;
         }
+        unset($machine['password']);
 
         $this->output->set_content_type('application/json')
                      ->set_output(json_encode(['success' => true, 'data' => $machine]));
@@ -260,7 +264,22 @@ class Sync extends CI_Controller {
             return;
         }
 
-        $raw = $this->_cloud_download($machine_sn, $machine['password']);
+        $password = trim((string) $machine['password']);
+        if ($password === '') {
+            $this->sync->update($id, ['last_sync_at' => date('Y-m-d H:i:s'), 'last_sync_status' => 'failed']);
+            $this->sync->insert_log([
+                'machine_id'   => $id,
+                'machine_name' => $machine['name'],
+                'status'       => 'failed',
+                'records'      => 0,
+                'message'      => 'Password mesin belum diisi.',
+                'created_at'   => date('Y-m-d H:i:s'),
+            ]);
+            echo json_encode(['success' => false, 'message' => 'Password mesin belum diisi. Edit mesin lalu masukkan password Solution Cloud.']);
+            return;
+        }
+
+        $raw = $this->_cloud_download($machine_sn, $password);
         if ($raw === false) {
             $this->sync->update($id, ['last_sync_at' => date('Y-m-d H:i:s'), 'last_sync_status' => 'failed']);
             $this->sync->insert_log([

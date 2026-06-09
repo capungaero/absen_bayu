@@ -33,7 +33,7 @@
 
                                 <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalUpload" class="btn btn-success"><i class="fa fa-clock"></i> Upload</a> &emsp;
 
-                                <a href="<?= site_url('export_employee?branch_id='.$branch_id) ?>" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Karyawan</a>
+                                <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportEmployee" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Karyawan</a>
                             </div>
 
                             <div class="col-md-4">
@@ -52,6 +52,9 @@
                         </div>
                     </form>
 
+                    <br><br>
+                <?php }else if(in_array($role, ['admin-branch', 'hr'])){ ?>
+                    <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportEmployee" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Karyawan</a>
                     <br><br>
                 <?php } ?>
                 <div class="table-responsive">
@@ -595,6 +598,78 @@
 </form>
 
 
+<div class="modal fade" id="modalExportEmployee" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" role="dialog" aria-labelledby="modalExportEmployeeLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalExportEmployeeLabel"><i class="fa fa-file-excel"></i> Export Data Karyawan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                </button>
+            </div>
+            <form method="GET" action="<?= site_url('export_employee') ?>">
+                <div class="modal-body">
+                    <div class="row">
+                        <?php if($role == 'admin'){ ?>
+                            <div class="col-md-12">
+                                <div class="mb-3">
+                                    <label class="form-label">CV / Cabang</label>
+                                    <select class="form-control select-plugin" name="branch_id" style="width: 100%">
+                                        <option value="">Semua CV / Cabang</option>
+                                        <?php foreach ($branch as $row) { ?>
+                                            <option <?= $branch_id == $row['id'] ? 'selected="selected"' : '' ?> value="<?= $row['id'] ?>"><?= $row['branch_code']." / ".$row['branch_name'] ?></option>
+                                        <?php } ?>
+                                    </select>
+                                </div>
+                            </div>
+                        <?php }else{ ?>
+                            <input type="hidden" name="branch_id" value="<?= $branch_id ?>">
+                        <?php } ?>
+
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label class="form-label">Status Karyawan</label>
+                                <select class="form-control" name="status">
+                                    <option value="all">Semua Karyawan</option>
+                                    <option value="active">Karyawan Aktif</option>
+                                    <option value="inactive">Karyawan Tidak Aktif</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label class="form-label">Posisi / Jabatan</label>
+                                <select class="form-control select-plugin" name="position_id" style="width: 100%">
+                                    <option value="">Semua Posisi</option>
+                                    <?php foreach ($position as $row) { ?>
+                                        <option value="<?= $row['id'] ?>"><?= $row['position_code']." / ".$row['position_name'] ?></option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label class="form-label">Penempatan</label>
+                                <select class="form-control select-plugin" name="location" style="width: 100%">
+                                    <option value="">Semua Penempatan</option>
+                                    <?php foreach ($export_locations as $row) { ?>
+                                        <option value="<?= htmlspecialchars($row['location'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($row['location'], ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
+                    <button class="btn btn-danger"><i class="fa fa-download"></i> Export Excel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="modalUpload" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" role="dialog" aria-labelledby="staticBackdropLabel" aria-hidden="true">
 
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -832,6 +907,34 @@ $(document).on('change', '#e_status_work', function(){
 
         $('#user_id').val(id);
         $('#modalShift').modal('show');
+    });
+
+    $(document).on('click', '.toggle-employee-status', function(){
+        var btn = $(this);
+
+        $.ajax({
+            url         : "<?= site_url('change_status_employee') ?>",
+            dataType    : "json",
+            method      : "POST",
+            data : {
+                myToken : "<?php echo $this->security->get_csrf_hash() ?>",
+                id      : btn.attr('data-id')
+            },
+            beforeSend  : function(){
+                btn.attr('disabled', 'disabled');
+            },
+            success : function(res){
+                if(res.status){
+                    erTable_tableContent.ajax.reload(null, false);
+                    return;
+                }
+
+                show_modal('info', res.message);
+            },
+            complete : function(){
+                btn.removeAttr('disabled');
+            }
+        });
     });
 
     $(document).on('submit', '#formShift', function(e){

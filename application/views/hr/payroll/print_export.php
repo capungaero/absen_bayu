@@ -138,6 +138,7 @@
               $rest  = $fine['detail']['rest'];
               $pray  = $fine['detail']['pray'];
               $leave = $fine['detail']['leave'];
+              $amount_early_leave = isset($entry['amount_early_leave']) ? $entry['amount_early_leave'] : 0;
 
               $other_fine = $detail['salary_out_fine'] - ( $leave['total_amount'] + $detail['salary_basic_out_alfa_weekend'] + $detail['salary_basic_out_alfa_weekdays']);
             
@@ -162,7 +163,7 @@
         </tr>
 
         <tr>
-            <td><span style="margin-left:40px">Alfa (Weekend)</span></td>
+            <td><span style="margin-left:40px">Alfa (Weekend / Tanggal Khusus)</span></td>
             <td style="text-align: right"><?= format_rp($detail['salary_basic_out_alfa_weekend']) ?></td>
             <td></td>
         </tr>
@@ -215,6 +216,11 @@
         <tr>
             <td><span style="margin-left:40px">Kehadiran Setengah Hari</span></td>
             <td style="text-align: right"><?= format_rp($entry['amount_in_half']) ?></td>
+            <td></td>
+        </tr>
+        <tr>
+            <td><span style="margin-left:40px">Pulang Lebih Awal</span></td>
+            <td style="text-align: right"><?= format_rp($amount_early_leave) ?></td>
             <td></td>
         </tr>
         <tr>

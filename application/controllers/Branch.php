@@ -172,6 +172,49 @@ class Branch extends CI_Controller{
 		}
 	}
 
+	public function change_status(){
+		if($this->input->is_ajax_request() && $this->role == 'admin'){
+			$id = $this->input->post('id');
+			$branch = $this->branch->get_detail('branch.id', $id)->row_array();
+
+			if(empty($branch)){
+				echo json_encode([
+					'status'  => false,
+					'message' => 'Data cabang tidak diketahui'
+				]);
+				return;
+			}
+
+			$is_active = $branch['is_active'] == '1' ? '0' : '1';
+			if($is_active == '0'){
+				$employee_count = $this->db->from('users')
+										   ->join('position', 'position.id = users.position_id')
+										   ->where('position.branch_id', $id)
+										   ->count_all_results();
+				if($employee_count > 0){
+					echo json_encode([
+						'status'  => false,
+						'message' => 'Cabang masih berisi karyawan. Pindahkan karyawan sebelum cabang dinonaktifkan.'
+					]);
+					return;
+				}
+			}
+
+			$this->branch->update([
+				'is_active'  => $is_active,
+				'updated_at' => date('Y-m-d H:i:s')
+			], $id);
+
+			echo json_encode([
+				'status'  => true,
+				'message' => $is_active == '1' ? 'Cabang berhasil diaktifkan' : 'Cabang berhasil dinonaktifkan'
+			]);
+
+		}else{
+			show_404();
+		}
+	}
+
 	public function get_data(){
 		if($this->input->is_ajax_request() && $this->role == 'admin'){
 			$data = $this->branch->get_detail('id', $this->input->post('id'));

@@ -1,13 +1,9 @@
 ﻿<?php
     $branch_query = $this->role == 'admin' ? '?branch_id='.$branch_id : '';
-    $quick_shift = ['P' => '', 'S' => ''];
     $prev_period = date('m/Y', strtotime('-1 month', strtotime($year.'-'.$month.'-16')));
     $next_period = date('m/Y', strtotime('+1 month', strtotime($year.'-'.$month.'-16')));
     $shift_meta = [];
     foreach($shift as $row){
-        if(isset($quick_shift[$row['shift_code']])){
-            $quick_shift[$row['shift_code']] = $row['id'];
-        }
         $shift_meta[$row['id']] = [
             'code' => $row['shift_code'],
             'name' => $row['shift_name'],
@@ -16,6 +12,14 @@
         ];
     }
     $shift_meta['free'] = ['code' => 'OFF', 'name' => 'Libur', 'start' => '-', 'end' => '-'];
+    $bulk_shift_button_classes = [
+        'btn-outline-success',
+        'btn-outline-warning',
+        'btn-outline-info',
+        'btn-outline-dark',
+        'btn-outline-danger',
+        'btn-outline-primary',
+    ];
 ?>
 <style>
     .schedule-wrapper{ overflow:auto; max-height:70vh; border:1px solid #e9ecef; }
@@ -172,7 +176,7 @@
                 </div>
 
                 <div class="alert alert-info">
-                    Pilih jadwal per karyawan dan tanggal. Default pilihan hanya <b>P</b>, <b>S</b>, dan <b>OFF</b>. Centang <b>Advanced</b> untuk menampilkan semua shift dari master shift cabang.
+                    Pilihan shift mengikuti shift aktif di master shift cabang. Aktif/nonaktif shift dapat diatur di halaman <a href="<?= site_url('hr/shift') ?>">Shift</a>.
                 </div>
 
                 <div class="game-scheduler mb-4" id="gameScheduler">
@@ -256,16 +260,14 @@
                     <input type="hidden" name="year" value="<?= $year ?>">
 
                     <div class="mb-3 d-flex align-items-center flex-wrap" style="gap: 8px;">
-                        <button type="button" class="btn btn-outline-success btn-sm set-all-shift" data-value="<?= $quick_shift['P'] ?>" <?= $quick_shift['P'] == '' ? 'disabled' : '' ?>>Isi Semua P</button>
-                        <button type="button" class="btn btn-outline-warning btn-sm set-all-shift" data-value="<?= $quick_shift['S'] ?>" <?= $quick_shift['S'] == '' ? 'disabled' : '' ?>>Isi Semua S</button>
+                        <?php foreach($shift as $index => $row){
+                            $btn_class = $bulk_shift_button_classes[$index % count($bulk_shift_button_classes)];
+                        ?>
+                            <button type="button" class="btn <?= $btn_class ?> btn-sm set-all-shift" data-value="<?= htmlspecialchars($row['id'], ENT_QUOTES, 'UTF-8') ?>">Isi Semua <?= htmlspecialchars($row['shift_code'], ENT_QUOTES, 'UTF-8') ?></button>
+                        <?php } ?>
                         <button type="button" class="btn btn-outline-secondary btn-sm set-all-shift" data-value="free">Isi Semua OFF</button>
                         <button type="button" class="btn btn-outline-primary btn-sm set-all-shift" data-value="">Kosongkan Semua</button>
                         <button type="button" class="btn btn-outline-info btn-sm" id="btnCopyPreviousSchedule"><i class="fa fa-copy"></i> Copy Periode Sebelumnya</button>
-                        <div class="custom-control custom-checkbox ml-2">
-                            <input type="checkbox" class="custom-control-input" id="advancedShiftToggle">
-                            <label class="custom-control-label" for="advancedShiftToggle">Advanced</label>
-                        </div>
-                        <small class="text-muted">Tampilkan semua pilihan shift</small>
                     </div>
 
                     <div class="schedule-wrapper">
@@ -296,11 +298,9 @@
                                                     <option value="">-</option>
                                                     <option value="free" <?= $selected == 'free' ? 'selected' : '' ?>>OFF</option>
                                                     <?php foreach($shift as $row){
-                                                        $is_basic_shift = in_array($row['shift_code'], ['P', 'S']);
                                                         $is_selected_shift = (string)$selected == (string)$row['id'];
-                                                        $advanced_class = !$is_basic_shift ? 'advanced-shift-option' : '';
                                                     ?>
-                                                        <option class="<?= $advanced_class ?>" data-advanced="<?= !$is_basic_shift ? '1' : '0' ?>" value="<?= $row['id'] ?>" <?= $is_selected_shift ? 'selected' : '' ?>><?= $row['shift_code'] ?></option>
+                                                        <option value="<?= htmlspecialchars($row['id'], ENT_QUOTES, 'UTF-8') ?>" <?= $is_selected_shift ? 'selected' : '' ?>><?= htmlspecialchars($row['shift_code'], ENT_QUOTES, 'UTF-8') ?></option>
                                                     <?php } ?>
                                                 </select>
                                             </td>
@@ -535,10 +535,6 @@ function getEmployeeShiftForDate(userId, date){
 function setEmployeeShiftForDate(userId, date, shiftValue){
     var select = getScheduleSelect(userId, date);
     if(select.length == 0){ return; }
-    if(shiftValue && shiftValue !== 'free' && select.find('option[value="' + shiftValue + '"][data-advanced="1"]').length > 0){
-        $('#advancedShiftToggle').prop('checked', true);
-        toggleAdvancedShiftOptions();
-    }
     select.val(shiftValue);
     // Update cache supaya getEmployeeShiftForDate berikutnya konsisten tanpa
     // re-scan DOM. Trigger change tetap fired supaya konsumen lain ikut.
@@ -1204,14 +1200,10 @@ function applyScheduleToPage(schedule){
         $.each(dates, function(date, value){
             var select = $('[name="schedule[' + userId + '][' + date + ']"]');
             if(select.length > 0){
-                if(select.find('option[value="' + value + '"][data-advanced="1"]').length > 0){
-                    $('#advancedShiftToggle').prop('checked', true);
-                }
                 select.val(value);
             }
         });
     });
-    toggleAdvancedShiftOptions();
 }
 
 function showScheduleMessage(type, message){
@@ -1283,30 +1275,11 @@ $(document).on('click', '#btnCopyPreviousSchedule', function(){
     });
 });
 
-function toggleAdvancedShiftOptions(){
-    var isAdvanced = $('#advancedShiftToggle').is(':checked');
-    $('.schedule-select option[data-advanced="1"]').each(function(){
-        var option = $(this);
-        if(isAdvanced || option.is(':selected')){
-            option.prop('disabled', false).show();
-        }else{
-            option.prop('disabled', true).hide();
-        }
-    });
-}
-
 $(document).on('click', '.set-all-shift', function(){
     var value = $(this).data('value');
     $('.schedule-select').val(value);
-    toggleAdvancedShiftOptions();
     refreshGameBoard();
 });
-
-$(document).on('change', '#advancedShiftToggle', function(){
-    toggleAdvancedShiftOptions();
-});
-
-toggleAdvancedShiftOptions();
 </script>
 
 

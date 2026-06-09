@@ -30,6 +30,63 @@
         <link href="<?= base_url() ?>assets/plugins/summernote/summernote-bs4.min.css" rel="stylesheet" />
 
         <script src="<?= base_url() ?>assets/js/jquery.min.js"></script>
+        <script>
+            window.CI_CSRF = {
+                name: "<?= $this->security->get_csrf_token_name() ?>",
+                hash: "<?= $this->security->get_csrf_hash() ?>"
+            };
+
+            function refreshCsrfToken(res) {
+                var hash = res && (res.csrfHash || res.csrf);
+                if (!hash) { return; }
+                window.CI_CSRF.hash = hash;
+                $("input[name='" + window.CI_CSRF.name + "']").val(hash);
+            }
+
+            $.ajaxPrefilter(function(options) {
+                var method = (options.type || options.method || 'GET').toUpperCase();
+                if (method !== 'POST' || !window.CI_CSRF || !window.CI_CSRF.name) { return; }
+                if (typeof options.data === 'function') { return; }
+
+                if (typeof FormData !== 'undefined' && options.data instanceof FormData) {
+                    if (typeof options.data.set === 'function') {
+                        options.data.set(window.CI_CSRF.name, window.CI_CSRF.hash);
+                    } else if (typeof options.data.has !== 'function' || !options.data.has(window.CI_CSRF.name)) {
+                        options.data.append(window.CI_CSRF.name, window.CI_CSRF.hash);
+                    }
+                    return;
+                }
+
+                var tokenName = encodeURIComponent(window.CI_CSRF.name);
+                var tokenValue = encodeURIComponent(window.CI_CSRF.hash);
+                var tokenPair = tokenName + '=' + tokenValue;
+
+                if (typeof options.data === 'string') {
+                    if (options.data.indexOf(tokenName + '=') === -1 && options.data.indexOf(window.CI_CSRF.name + '=') === -1) {
+                        options.data += (options.data ? '&' : '') + tokenPair;
+                    }
+                    return;
+                }
+
+                if ($.isPlainObject(options.data)) {
+                    if (!Object.prototype.hasOwnProperty.call(options.data, window.CI_CSRF.name)) {
+                        options.data[window.CI_CSRF.name] = window.CI_CSRF.hash;
+                    }
+                    if (options.processData !== false) {
+                        options.data = $.param(options.data, options.traditional);
+                    }
+                    return;
+                }
+
+                if (!options.data) {
+                    options.data = tokenPair;
+                }
+            });
+
+            $(document).ajaxSuccess(function(event, xhr) {
+                try { refreshCsrfToken(JSON.parse(xhr.responseText)); } catch (e) {}
+            });
+        </script>
 
         <script src="<?= base_url() ?>assets/js/sweetalert.min.js"></script>
 

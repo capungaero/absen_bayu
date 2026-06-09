@@ -109,6 +109,7 @@ $route['master_data/branch']	= 'Branch';
 $route['insert_branch']	   		= 'Branch/insert';
 $route['update_branch']			= 'Branch/update';
 $route['delete_branch']			= 'Branch/delete';
+$route['change_status_branch']	= 'Branch/change_status';
 
 $route['master_data/employee']	= 'Employee';
 $route['insert_employee']	   	= 'Employee/insert';
@@ -133,11 +134,19 @@ $route['master_data/insentif']	= 'hr/Insentif';
 $route['insert_insentif']	   	= 'hr/Insentif/insert';
 $route['update_insentif']		= 'hr/Insentif/update';
 $route['delete_insentif']		= 'hr/Insentif/delete';
+$route['change_status_insentif']= 'hr/Insentif/change_status';
 
 $route['master_data/deduction']	= 'hr/Deduction';
 $route['insert_deduction']	   	= 'hr/Deduction/insert';
 $route['update_deduction']		= 'hr/Deduction/update';
 $route['delete_deduction']		= 'hr/Deduction/delete';
+$route['change_status_deduction']= 'hr/Deduction/change_status';
+
+$route['master_data/double_deduction_date'] = 'Double_deduction_date';
+$route['insert_double_deduction_date'] = 'Double_deduction_date/insert';
+$route['update_double_deduction_date'] = 'Double_deduction_date/update';
+$route['delete_double_deduction_date'] = 'Double_deduction_date/delete';
+$route['change_status_double_deduction_date'] = 'Double_deduction_date/change_status';
 
 //============= HR ======================
 $route['hr/shift']		= 'hr/Shift';
@@ -171,6 +180,7 @@ $route['load_work_schedule_excel']     = 'hr/Presence/load_work_schedule_excel';
 $route['copy_previous_work_schedule']  = 'hr/Presence/copy_previous_work_schedule';
 $route['upload_pray'] 			  	  = 'hr/Presence/upload_pray';
 
+$route['export_absen_report/(:num)/(:num)/(:num)'] = 'hr/Presence/export_absen_report/$1/$2/$3';
 $route['export_work_schedule/(:num)/(:num)/(:num)'] = 'hr/Presence/export_work_schedule/$1/$2/$3';
 $route['resetSchedule/(:num)/(:num)'] = 'hr/Presence/reset/$1/$2';
 

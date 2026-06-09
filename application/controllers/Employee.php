@@ -3,6 +3,7 @@ require_once FCPATH.'lib/vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Csv;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 class Employee extends CI_Controller{
 
@@ -43,6 +44,7 @@ class Employee extends CI_Controller{
 			$data['branch_id'] = $branch_id;
 			$data['branch'] = $this->branch->get_data(['branch_name', 'ASC'])->result_array();
 			$data['branch_detail'] = $this->branch->get_detail('id', $branch_id)->row_array();
+			$data['export_locations'] = $this->employee->get_export_locations($this->role == 'admin' ? '' : $branch_id);
 
 			$this->template->load('layout/admin','master_data/employee/index', $data);
 		}else{
@@ -788,147 +790,211 @@ class Employee extends CI_Controller{
 
 
 	public function export(){
-		$pass = ($this->role != 'admin' && $branch_id != $this->userdata->branch_id) ? false : true;
-
-		if(in_array($this->role, ['admin', 'admin-branch', 'hr']) && $pass){
- 			
- 			$branch_id = $this->userdata->branch_id;
- 			if($this->role == 'admin' && $this->input->get('branch_id')){
- 				$branch_id = $this->input->get('branch_id');
- 			}
- 			$branch_detail = $this->branch->get_detail('branch.id', $branch_id)->row_array();
- 			$this->load->helper('download');  
-
- 			$spreadsheet = new Spreadsheet();
-			$sheet = $spreadsheet->getActiveSheet();
-			$sheet->mergeCells('A1:E1');
-			$sheet->setCellValue('A1', 'DAFTAR KARYAWAN');
-			$sheet->getStyle('A1')->applyFromArray([
-				'font' => [
-					'bold' => true,
-					'size' => 16,
-					'name' => 'Calibri'
-				],
-				'alignment' => [
-					'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
-					'vertical'   => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
-				],
-				'fill' => [
-					'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-					'color' => ['argb' => 'ffc000']
-				]
-			]);
-			$sheet->getRowDimension('1')->setRowHeight(30);
-			$sheet->getColumnDimension('A')->setWidth(30);
-			$sheet->getColumnDimension('B')->setWidth(25);
-			$sheet->getColumnDimension('C')->setWidth(25);
-			$sheet->getColumnDimension('D')->setWidth(15);
-			$sheet->getColumnDimension('E')->setWidth(15);
-
-			$sheet->mergeCells('A2:E2');
-			$sheet->setCellValue('A2', 'Cabang : '.$branch_detail['branch_name'].' ['.$branch_detail['branch_code'].'] - Kota '.$branch_detail['city']);
-
-			$sheet->setCellValue('A3', 'ID FINGERPRINT');
-			$sheet->setCellValue('B3', 'NIK');
-			$sheet->setCellValue('C3', 'NAMA KARYAWAN');
-			$sheet->setCellValue('D3', 'TANGGAL MULAI KERJA');
-			$sheet->setCellValue('E3', 'KODE JABATAN');
-			$sheet->setCellValue('F3', 'KODE SUBDIVISI');
-			$sheet->setCellValue('G3', 'GAJI POKOK');
-			$sheet->setCellValue('H3', 'GAJI MINIMUM');
-			$sheet->setCellValue('I3', 'UPAH LEMBUR PER JAM');
-			$sheet->setCellValue('J3', 'NO. HP');
-			$sheet->setCellValue('K3', 'EMAIL');
-			$sheet->setCellValue('L3', 'ALAMAT');
-			$sheet->setCellValue('M3', 'STATUS KERJA');
-			$sheet->setCellValue('N3', 'TANGGAL SELESAI');
-			$sheet->setCellValue('O3', 'NO REKENING');
-			$sheet->setCellValue('P3', 'NAMA BANK');
-			$sheet->setCellValue('Q3', 'PEMILIK REKENING');
-			$sheet->setCellValue('R3', 'HAK AKSES');
-			$sheet->setCellValue('S3', 'LOKASI');
-
-	        $sheet->getRowDimension('3')->setRowHeight(20);
-	        $sheet->getStyle('A3:S3')->applyFromArray([
-	        	'font' => [
-	        		'bold' => true,
-	        		'name' => 'Calibri',
-	        		'color' => array('rgb' => 'ffffff'),
-	        	],
-	        	'fill' => [
-					'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-					'color' => ['argb' => '2f75b5']
-				],
-				'alignment' => [
-					'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
-					'vertical'   => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
-				]
-	        ]);
-
-	        $employee = $this->employee->get_detail([
-	        				'position.branch_id' => $branch_id
-	        			], '', '', ['users.first_name' => 'ASC'])->result_array();
-
-	        $start_from = 4;
-	        foreach ($employee as $row) {
-	        	$sheet->setCellValue('A'.$start_from, $row['employee_code']);
-	        	$sheet->setCellValue('B'.$start_from, $row['contract_number']);
-	        	$sheet->setCellValue('C'.$start_from, $row['first_name']);
-	        	$sheet->setCellValue('D'.$start_from, $row['join_date']);
-	        	$sheet->setCellValue('E'.$start_from, $row['position_code']);
-	        	$sheet->setCellValue('F'.$start_from, $row['subdivision_code']);
-	        	$sheet->setCellValue('G'.$start_from, $row['salary']);
-	        	$sheet->setCellValue('H'.$start_from, $row['salary_minimum']);
-	        	$sheet->setCellValue('I'.$start_from, $row['overtime_hour_rate']);
-	        	$sheet->setCellValue('J'.$start_from, $row['phone']);
-	        	$sheet->setCellValue('K'.$start_from, $row['email']);
-	        	$sheet->setCellValue('L'.$start_from, $row['employee_address']);
-
-	        	if($row['status_work'] == 'permanent'){
-	        		$status_work = 'tetap';
-	        	}else if($row['status_work'] == 'training'){
-	        		$status_work = 'training';
-	        	}else if($row['status_work'] == 'contract'){
-	        		$status_work = 'Kontrak';
-	        	}else{
-	        		$status_work = 'tetap';
-	        	}
-
-	        	if($row['group_id'] == '1'){
-	        		$access = 'superadmin';
-	        	}else if($row['group_id'] == '6'){
-	        		$access = 'admin cabang';
-	        	}else if($row['group_id'] == '7'){
-	        		$access = 'supervisor';
-	        	}else{
-	        		$access = 'karyawan';
-	        	}
-
-	        	$sheet->setCellValue('M'.$start_from, $status_work);
-	        	$sheet->setCellValue('N'.$start_from, $row['status_work_expiration']);
-	        	$sheet->setCellValue('O'.$start_from, $row['account_number']);
-	        	$sheet->setCellValue('P'.$start_from, $row['account_bank']);
-	        	$sheet->setCellValue('Q'.$start_from, $row['account_name']);
-	        	$sheet->setCellValue('R'.$start_from, $access);
-	        	$sheet->setCellValue('S'.$start_from, $row['location']);
-	        	$start_from++;
-	        }
-
-	        $title = "Daftar Karyawan ".$branch_detail['branch_name']." - Kota ".$branch_detail['city'];
-			$writer = new Xlsx($spreadsheet);
-			$fileName = $title.'.xlsx';
-
-			$this->output->set_header('Content-Type: application/vnd.ms-excel');
-		    $this->output->set_header("Content-type: application/csv");
-		    $this->output->set_header('Cache-Control: max-age=0');
-		    $export_dir = './assets/export/';
-		    if(!is_dir($export_dir)){ mkdir($export_dir, 0755, true); }
-		    $writer->save($export_dir.$fileName);
-		    $filepath = file_get_contents($export_dir.$fileName);
-		    force_download($fileName, $filepath);
-
-		}else{
+		if(!in_array($this->role, ['admin', 'admin-branch', 'hr'])){
 			show_404();
 		}
+
+		$branch_id_raw = $this->input->get('branch_id', true);
+		$branch_id = '';
+		if($this->role != 'admin'){
+			$branch_id = $this->userdata->branch_id;
+		}else if($branch_id_raw !== null && $branch_id_raw !== '' && ctype_digit((string)$branch_id_raw)){
+			$branch_id = (int)$branch_id_raw;
+		}
+
+		$status = $this->input->get('status', true);
+		$status = in_array($status, ['active', 'inactive'], true) ? $status : 'all';
+
+		$position_id_raw = $this->input->get('position_id', true);
+		$position_id = ($position_id_raw !== null && $position_id_raw !== '' && ctype_digit((string)$position_id_raw)) ? (int)$position_id_raw : '';
+
+		$location = trim((string)$this->input->get('location', true));
+		if(strlen($location) > 255){
+			$location = substr($location, 0, 255);
+		}
+
+		$branch_detail = [];
+		if($branch_id !== ''){
+			$branch_detail = $this->branch->get_detail('branch.id', $branch_id)->row_array();
+			if(empty($branch_detail)){
+				show_404();
+			}
+		}
+
+		if($position_id !== ''){
+			$position_find = ['id' => $position_id];
+			if($branch_id !== ''){
+				$position_find['branch_id'] = $branch_id;
+			}
+			if($this->position->get_detail($position_find)->num_rows() == 0){
+				show_404();
+			}
+		}
+
+		$filters = [
+			'branch_id' => $branch_id,
+			'active' => $status == 'active' ? '1' : ($status == 'inactive' ? '0' : ''),
+			'position_id' => $position_id,
+			'location' => $location
+		];
+
+		$filter_label = [];
+		$filter_label[] = $branch_id === '' ? 'CV/Cabang: Semua' : 'CV/Cabang: '.$branch_detail['branch_name'].' ['.$branch_detail['branch_code'].']';
+		$filter_label[] = $status == 'active' ? 'Status: Aktif' : ($status == 'inactive' ? 'Status: Tidak Aktif' : 'Status: Semua');
+		if($position_id !== ''){
+			$position_detail = $this->position->get_detail('id', $position_id)->row_array();
+			$filter_label[] = 'Posisi: '.$position_detail['position_name'].' ['.$position_detail['position_code'].']';
+		}
+		if($location !== ''){
+			$filter_label[] = 'Penempatan: '.$location;
+		}
+
+		$spreadsheet = new Spreadsheet();
+		$sheet = $spreadsheet->getActiveSheet();
+		$sheet->mergeCells('A1:S1');
+		$sheet->setCellValue('A1', 'DAFTAR KARYAWAN');
+		$sheet->getStyle('A1')->applyFromArray([
+			'font' => [
+				'bold' => true,
+				'size' => 16,
+				'name' => 'Calibri'
+			],
+			'alignment' => [
+				'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+				'vertical'   => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+			],
+			'fill' => [
+				'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+				'color' => ['argb' => 'ffc000']
+			]
+		]);
+		$sheet->getRowDimension('1')->setRowHeight(30);
+		$sheet->getColumnDimension('A')->setWidth(16);
+		$sheet->getColumnDimension('B')->setWidth(22);
+		$sheet->getColumnDimension('C')->setWidth(30);
+		$sheet->getColumnDimension('D')->setWidth(18);
+		$sheet->getColumnDimension('E')->setWidth(15);
+		$sheet->getColumnDimension('F')->setWidth(18);
+		$sheet->getColumnDimension('G')->setWidth(15);
+		$sheet->getColumnDimension('H')->setWidth(15);
+		$sheet->getColumnDimension('I')->setWidth(20);
+		$sheet->getColumnDimension('J')->setWidth(18);
+		$sheet->getColumnDimension('K')->setWidth(28);
+		$sheet->getColumnDimension('L')->setWidth(45);
+		$sheet->getColumnDimension('M')->setWidth(15);
+		$sheet->getColumnDimension('N')->setWidth(18);
+		$sheet->getColumnDimension('O')->setWidth(22);
+		$sheet->getColumnDimension('P')->setWidth(20);
+		$sheet->getColumnDimension('Q')->setWidth(25);
+		$sheet->getColumnDimension('R')->setWidth(16);
+		$sheet->getColumnDimension('S')->setWidth(24);
+		$sheet->getStyle('B:B')->getNumberFormat()->setFormatCode('@');
+
+		$sheet->mergeCells('A2:S2');
+		$sheet->setCellValue('A2', 'Filter : '.implode(' | ', $filter_label));
+
+		$sheet->setCellValue('A3', 'ID FINGERPRINT');
+		$sheet->setCellValue('B3', 'NIK');
+		$sheet->setCellValue('C3', 'NAMA KARYAWAN');
+		$sheet->setCellValue('D3', 'TANGGAL MULAI KERJA');
+		$sheet->setCellValue('E3', 'KODE JABATAN');
+		$sheet->setCellValue('F3', 'KODE SUBDIVISI');
+		$sheet->setCellValue('G3', 'GAJI POKOK');
+		$sheet->setCellValue('H3', 'GAJI MINIMUM');
+		$sheet->setCellValue('I3', 'UPAH LEMBUR PER JAM');
+		$sheet->setCellValue('J3', 'NO. HP');
+		$sheet->setCellValue('K3', 'EMAIL');
+		$sheet->setCellValue('L3', 'ALAMAT');
+		$sheet->setCellValue('M3', 'STATUS KERJA');
+		$sheet->setCellValue('N3', 'TANGGAL SELESAI');
+		$sheet->setCellValue('O3', 'NO REKENING');
+		$sheet->setCellValue('P3', 'NAMA BANK');
+		$sheet->setCellValue('Q3', 'PEMILIK REKENING');
+		$sheet->setCellValue('R3', 'HAK AKSES');
+		$sheet->setCellValue('S3', 'LOKASI');
+
+		$sheet->getRowDimension('3')->setRowHeight(20);
+		$sheet->getStyle('A3:S3')->applyFromArray([
+			'font' => [
+				'bold' => true,
+				'name' => 'Calibri',
+				'color' => array('rgb' => 'ffffff'),
+			],
+			'fill' => [
+				'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+				'color' => ['argb' => '2f75b5']
+			],
+			'alignment' => [
+				'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+				'vertical'   => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+			]
+		]);
+
+		$employee = $this->employee->get_export_data($filters)->result_array();
+
+		$start_from = 4;
+		foreach ($employee as $row) {
+			$nik = trim((string)$row['contract_number']);
+			$sheet->setCellValue('A'.$start_from, $row['employee_code']);
+			$sheet->setCellValueExplicit('B'.$start_from, $nik, DataType::TYPE_STRING);
+			$sheet->getStyle('B'.$start_from)->setQuotePrefix(true);
+			$sheet->setCellValue('C'.$start_from, $row['first_name']);
+			$sheet->setCellValue('D'.$start_from, $row['join_date']);
+			$sheet->setCellValue('E'.$start_from, $row['position_code']);
+			$sheet->setCellValue('F'.$start_from, $row['subdivision_code']);
+			$sheet->setCellValue('G'.$start_from, $row['salary']);
+			$sheet->setCellValue('H'.$start_from, $row['salary_minimum']);
+			$sheet->setCellValue('I'.$start_from, $row['overtime_hour_rate']);
+			$sheet->setCellValue('J'.$start_from, $row['phone']);
+			$sheet->setCellValue('K'.$start_from, $row['email']);
+			$sheet->setCellValue('L'.$start_from, $row['employee_address']);
+
+			if($row['status_work'] == 'permanent'){
+				$status_work = 'tetap';
+			}else if($row['status_work'] == 'training'){
+				$status_work = 'training';
+			}else if($row['status_work'] == 'contract'){
+				$status_work = 'Kontrak';
+			}else{
+				$status_work = 'tetap';
+			}
+
+			if($row['group_id'] == '1'){
+				$access = 'superadmin';
+			}else if($row['group_id'] == '6'){
+				$access = 'admin cabang';
+			}else if($row['group_id'] == '7'){
+				$access = 'supervisor';
+			}else{
+				$access = 'karyawan';
+			}
+
+			$sheet->setCellValue('M'.$start_from, $status_work);
+			$sheet->setCellValue('N'.$start_from, $row['status_work_expiration']);
+			$sheet->setCellValue('O'.$start_from, $row['account_number']);
+			$sheet->setCellValue('P'.$start_from, $row['account_bank']);
+			$sheet->setCellValue('Q'.$start_from, $row['account_name']);
+			$sheet->setCellValue('R'.$start_from, $access);
+			$sheet->setCellValue('S'.$start_from, $row['location']);
+			$start_from++;
+		}
+
+		$last_data_row = max(4, $start_from - 1);
+		$sheet->getStyle('B4:B'.$last_data_row)->getNumberFormat()->setFormatCode('@');
+		$sheet->getStyle('A3:S'.$last_data_row)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+
+		$title_scope = $branch_id === '' ? 'Semua CV' : $branch_detail['branch_name'].' - Kota '.$branch_detail['city'];
+		$title = "Daftar Karyawan ".$title_scope;
+		$writer = new Xlsx($spreadsheet);
+		$fileName = preg_replace('/[^A-Za-z0-9 _.-]/', '', $title.' '.str_replace(':', '', implode(' ', $filter_label))).'.xlsx';
+
+		while (ob_get_level() > 0) {
+			ob_end_clean();
+		}
+		header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+		header('Content-Disposition: attachment; filename="'.$fileName.'"');
+		header('Cache-Control: max-age=0');
+		$writer->save('php://output');
+		exit;
 	}
 }

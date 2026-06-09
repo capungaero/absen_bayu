@@ -35,6 +35,10 @@
 <!-- Tab panes -->
 <?php 
     $entry = $fine['detail']['entry']; 
+    $early_leave_days = isset($entry['day']['early_leave']) ? $entry['day']['early_leave'] : [];
+    $amount_early_leave = isset($entry['amount_early_leave']) ? $entry['amount_early_leave'] : 0;
+    $special_double_days = isset($entry['day']['special_double']) ? $entry['day']['special_double'] : [];
+    $amount_special_double = isset($entry['amount_in_special_double']) ? $entry['amount_in_special_double'] : 0;
 ?>
 <div class="tab-content text-muted">
     <div class="tab-pane active" id="presence_tab" role="tabpanel">
@@ -73,6 +77,23 @@
 
             <thead class="bg-light">
                 <tr>
+                    <th>Pulang Lebih Awal</th>
+                    <th class="text-end"><?= count($early_leave_days) ?>x</th>
+                    <th class="text-end"><?= format_rp($amount_early_leave) ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($early_leave_days as $row) { ?>
+                    <tr>
+                        <td>&emsp;&emsp; <?= indonesian_date($row['date']) ?></td>
+                        <td class="text-end"><?= $row['in_minute'] ?> Menit</td>
+                        <td class="text-end"><?= format_rp($row['amount']) ?></td>
+                    </tr>
+                <?php } ?>
+            </tbody>
+
+            <thead class="bg-light">
+                <tr>
                     <th>Off Weekdays</th>
                     <th class="text-end"><?= $entry['presence']['weekdays'] ?>x</th>
                     <th class="text-end"><?= format_rp($entry['amount_in_weekdays']) ?></th>
@@ -80,7 +101,12 @@
                 <tr>
                     <th>Off Weekend</th>
                     <th class="text-end"><?= count($entry['day']['weekend']) ?>x</th>
-                    <th class="text-end"><?= format_rp($entry['amount_in_weekend']) ?></th>
+                    <th class="text-end"><?= format_rp($entry['amount_in_weekend'] - $amount_special_double) ?></th>
+                </tr>
+                <tr>
+                    <th>Tanggal Khusus Double</th>
+                    <th class="text-end"><?= count($special_double_days) ?>x</th>
+                    <th class="text-end"><?= format_rp($amount_special_double) ?></th>
                 </tr>
             </thead>
 
@@ -90,13 +116,19 @@
                         <td>&emsp;&emsp; <?= indonesian_date($row['date']) ?><br>&emsp;&emsp;<small class="text-muted"><?= get_dayname($row['date']) ?></small></td>
                         <td class="text-end" colspan="2"><?= format_rp($row['amount']) ?></td>
                     </tr>
+                <?php } ?>
+                <?php foreach ($special_double_days as $row) { ?>
+                    <tr>
+                        <td>&emsp;&emsp; <?= indonesian_date($row['date']) ?><br>&emsp;&emsp;<small class="text-muted"><?= get_dayname($row['date']) ?><?= !empty($row['description']) ? ' - '.htmlspecialchars($row['description'], ENT_QUOTES, 'UTF-8') : '' ?></small></td>
+                        <td class="text-end" colspan="2"><?= format_rp($row['amount']) ?></td>
+                    </tr>
                 <?php } ?>  
             </tbody>
 
             <thead class="bg-danger text-white">
                 <tr>
                     <th>TOTAL DENDA</th>
-                    <th class="text-end" colspan="2"><?= format_rp($entry['amount_in_late'] + $entry['amount_in_half'] + $entry['amount_in_weekend'] + $entry['amount_in_weekdays']) ?></th>
+                    <th class="text-end" colspan="2"><?= format_rp($entry['amount_in_late'] + $entry['amount_in_half'] + $amount_early_leave + $entry['amount_in_weekend'] + $entry['amount_in_weekdays']) ?></th>
                 </tr>
             </thead>
         </table>

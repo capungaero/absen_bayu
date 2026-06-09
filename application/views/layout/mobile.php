@@ -85,8 +85,7 @@ if ($is_approver) {
     <script src="<?= base_url() ?>assets/libs/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="<?= base_url() ?>assets/libs/sweetalert2/sweetalert2.min.js"></script>
     <script>
-    // CSRF: token diregenerasi tiap request (csrf_regenerate=TRUE) & cookie httponly,
-    // jadi setiap response AJAX mengembalikan hash baru yang kita simpan untuk request berikutnya.
+    // CSRF tetap aktif. Kalau endpoint mengirim hash baru, request berikutnya ikut sinkron.
     var CSRF = {
         name: $('meta[name="csrf-name"]').attr('content'),
         hash: $('meta[name="csrf-hash"]').attr('content')

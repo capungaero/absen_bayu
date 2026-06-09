@@ -146,10 +146,6 @@ class Payroll extends CI_Controller{
 
 				$totalDayInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
 
-				// Seed potongan Izin Pulang Cepat sebelum get_attendance_by_branch
-				// supaya get_deduction() bisa cache rows yang baru kita insert.
-				$this->_seed_early_leave_deductions($p['branch_id'], $month, $year, $totalDayInMonth);
-
 				$attendance    = $this->presence->get_attendance_by_branch($p['branch_id'], $month, $year, true);
 
 	            $time = date('Y-m-d H:i:s');
@@ -205,7 +201,7 @@ class Payroll extends CI_Controller{
 	                }
 
 	                $out_alfa_amount_weekend  = $fine['detail']['entry']['amount_in_weekend'];
-	                $out_alfa_amount_weekdays = $presence['weekdays'] * $salaryPerDayForAlpha;
+	                $out_alfa_amount_weekdays = $fine['detail']['entry']['amount_in_weekdays'];
 	                $out_alfa_amount = $out_alfa_amount_weekend + $out_alfa_amount_weekdays;
 
 	                /**if($user_id == '1033'){
@@ -1682,79 +1678,6 @@ class Payroll extends CI_Controller{
 				return $this->input->get('branch_id') ? $this->input->get('branch_id') : $this->userdata->branch_id;
 			}
 			return $this->userdata->branch_id;
-		}
-
-		/**
-		 * Hitung & upsert potongan Izin Pulang Cepat untuk satu cabang+periode.
-		 *
-		 * Aturan:
-		 *   - Agregat presence.early_leave_short_minutes per user di periode
-		 *     payroll (START_PAYROLL_DATE bulan lalu -> END_PAYROLL_DATE bulan ini).
-		 *   - Hanya hitung row presence_status='approved' (deny artinya < 5 jam
-		 *     -> tidak hadir, tidak dapat potongan PLA terpisah).
-		 *   - Amount = hourly_rate(salary, cal_days_in_month) * (total_short/60).
-		 *   - Master deduction dipilih per branch via nama LIKE '%Pulang%Awal%'
-		 *     atau '%Kekurangan%Jam%' (sudah ada untuk branch 1 & 2 di seed lama).
-		 *   - Manual override menang: kalau row payroll_deduction utk
-		 *     (user, deduction_id, month, year) sudah ada -> skip insert.
-		 *
-		 * Idempotent: aman dipanggil ulang karena cek exists sebelum insert.
-		 */
-		private function _seed_early_leave_deductions($branch_id, $month, $year, $days_in_month){
-			$master = $this->db->where('branch_id', $branch_id)
-				->group_start()
-					->like('deduction_name', 'Pulang Lebih Awal')
-					->or_like('deduction_name', 'Kekurangan Jam')
-				->group_end()
-				->where('deleted_at IS NULL', null, false)
-				->get('deduction')->row_array();
-
-			if(empty($master)){ return; }
-
-			$period = attlog_presence_period_range($month, $year);
-
-			$rows = $this->db->select('presence.user_id, users.salary, SUM(presence.early_leave_short_minutes) AS total_short_minutes', false)
-				->join('users', 'users.id = presence.user_id')
-				->join('position', 'position.id = users.position_id')
-				->where('position.branch_id', $branch_id)
-				->where('presence.flow_date >=', $period['from'])
-				->where('presence.flow_date <=', $period['to'])
-				->where('presence.is_early_leave', 1)
-				->where('presence.presence_status', 'approved')
-				->group_by('presence.user_id, users.salary')
-				->get('presence')->result_array();
-
-			if(empty($rows)){ return; }
-
-			$time = date('Y-m-d H:i:s');
-			foreach($rows as $row){
-				$total_short = (int)$row['total_short_minutes'];
-				if($total_short <= 0){ continue; }
-
-				$amount = presence_early_leave_deduction_amount(
-					$row['salary'], $days_in_month, $total_short
-				);
-				if($amount <= 0){ continue; }
-
-				$exists = $this->db->where([
-					'user_id' => $row['user_id'],
-					'deduction_id' => $master['id'],
-					'deduction_month' => $month,
-					'deduction_year' => $year
-				])->count_all_results('payroll_deduction');
-
-				if($exists > 0){ continue; }
-
-				$this->db->insert('payroll_deduction', [
-					'user_id' => $row['user_id'],
-					'deduction_id' => $master['id'],
-					'deduction_month' => $month,
-					'deduction_year' => $year,
-					'deduction_amount' => $amount,
-					'deduction_note' => 'Potongan Izin Pulang Lebih Awal (auto)',
-					'created_at' => $time
-				]);
-			}
 		}
 
 		private function _payroll_can_import($branch_id, $month, $year){

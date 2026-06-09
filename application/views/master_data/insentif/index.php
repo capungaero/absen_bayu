@@ -356,6 +356,34 @@
         $('#delete-id').val(id);
     });
 
+    $(document).on('click', '.toggle-insentif-status', function(){
+        var btn = $(this);
+
+        $.ajax({
+            url         : "<?= site_url('change_status_insentif') ?>",
+            dataType    : "json",
+            method      : "POST",
+            data : {
+                myToken : "<?php echo $this->security->get_csrf_hash() ?>",
+                id      : btn.attr('data-id')
+            },
+            beforeSend  : function(){
+                btn.attr('disabled', 'disabled');
+            },
+            success : function(res){
+                if(res.status){
+                    erTable_tableContent.ajax.reload(null, false);
+                    return;
+                }
+
+                show_modal('info', res.message);
+            },
+            complete : function(){
+                btn.removeAttr('disabled');
+            }
+        });
+    });
+
     $(document).on('click', '.edit', function(){
         var a = $(this);
         var id   = a.attr('data-id');
