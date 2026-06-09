@@ -1,0 +1,101 @@
+name: Deploy Tiffany Hosting
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-tiffany
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.TIFFANY_SSH_KEY }}" > ~/.ssh/tiffany_np
+          chmod 600 ~/.ssh/tiffany_np
+          ssh-keyscan -p "${{ secrets.TIFFANY_SSH_PORT }}" "${{ secrets.TIFFANY_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Lint application PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find application/config application/controllers application/models application/views tools \
+            -name '*.php' -print0 | xargs -0 -n 1 php -l >/dev/null
+
+      - name: Upload files
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="${{ secrets.TIFFANY_SSH_USER }}@${{ secrets.TIFFANY_SSH_HOST }}"
+          ssh_opts="-p ${{ secrets.TIFFANY_SSH_PORT }} -i ~/.ssh/tiffany_np"
+          deploy_path="${{ secrets.TIFFANY_DEPLOY_PATH }}"
+
+          ssh $ssh_opts "$remote" "mkdir -p '$deploy_path'"
+          rsync -az \
+            -e "ssh $ssh_opts" \
+            application assets database lib system tools .htaccess composer.json index.php readme.rst \
+            "$remote:$deploy_path/"
+
+      - name: Prepare hosting runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="${{ secrets.TIFFANY_SSH_USER }}@${{ secrets.TIFFANY_SSH_HOST }}"
+          ssh_opts="-p ${{ secrets.TIFFANY_SSH_PORT }} -i ~/.ssh/tiffany_np"
+          deploy_path="${{ secrets.TIFFANY_DEPLOY_PATH }}"
+
+          ssh $ssh_opts "$remote" "cd '$deploy_path' && \
+            mkdir -p application/cache application/logs uploads/attendance assets/export && \
+            chmod -R 775 application/cache application/logs uploads assets/export assets/images/users assets/images/cv assets/file assets/images/hr/leave assets/images/hr/overtime 2>/dev/null || true && \
+            if [ ! -f lib/vendor/autoload.php ] && command -v composer >/dev/null 2>&1; then cd lib && composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader; fi && \
+            test -f lib/vendor/autoload.php"
+
+      - name: Apply database setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="${{ secrets.TIFFANY_SSH_USER }}@${{ secrets.TIFFANY_SSH_HOST }}"
+          ssh_opts="-p ${{ secrets.TIFFANY_SSH_PORT }} -i ~/.ssh/tiffany_np"
+          deploy_path="${{ secrets.TIFFANY_DEPLOY_PATH }}"
+
+          ssh $ssh_opts "$remote" "cd '$deploy_path' && php <<'PHP'
+          <?php
+          if (is_file('.htaccess')) {
+              foreach (file('.htaccess', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as \$line) {
+                  if (preg_match('/^\\s*SetEnv\\s+(ABSEN_DB_[A-Z_]+)\\s+(.+)\\s*$/', \$line, \$m)) {
+                      putenv(\$m[1].'='.trim(\$m[2], \" \\t\\n\\r\\0\\x0B\\\"'\"));
+                  }
+              }
+          }
+          define('BASEPATH', __DIR__.'/system/');
+          if (!defined('ENVIRONMENT')) { define('ENVIRONMENT', 'production'); }
+          require __DIR__.'/application/config/database.php';
+          \$cfg = \$db['default'];
+          \$mysqli = @new mysqli(\$cfg['hostname'], \$cfg['username'], \$cfg['password'], \$cfg['database'], isset(\$cfg['port']) ? (int)\$cfg['port'] : 3306);
+          if (\$mysqli->connect_errno) { fwrite(STDERR, \"DB_CONNECT_FAILED\\n\"); exit(1); }
+          \$migration = __DIR__.'/database/add_double_deduction_date.sql';
+          if (is_file(\$migration) && !\$mysqli->query(file_get_contents(\$migration))) {
+              fwrite(STDERR, \"DB_MIGRATION_FAILED\\n\");
+              exit(1);
+          }
+          echo \"DB_OK\\n\";
+          PHP"
+
+      - name: Smoke check
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLI "https://tiffany.my.id/absen/" >/dev/null
