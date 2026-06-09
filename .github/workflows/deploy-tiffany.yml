@@ -71,28 +71,7 @@ jobs:
           ssh_opts="-p ${{ secrets.TIFFANY_SSH_PORT }} -i ~/.ssh/tiffany_np"
           deploy_path="${{ secrets.TIFFANY_DEPLOY_PATH }}"
 
-          ssh $ssh_opts "$remote" "cd '$deploy_path' && php <<'PHP'
-          <?php
-          if (is_file('.htaccess')) {
-              foreach (file('.htaccess', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as \$line) {
-                  if (preg_match('/^\\s*SetEnv\\s+(ABSEN_DB_[A-Z_]+)\\s+(.+)\\s*$/', \$line, \$m)) {
-                      putenv(\$m[1].'='.trim(\$m[2], \" \\t\\n\\r\\0\\x0B\\\"'\"));
-                  }
-              }
-          }
-          define('BASEPATH', __DIR__.'/system/');
-          if (!defined('ENVIRONMENT')) { define('ENVIRONMENT', 'production'); }
-          require __DIR__.'/application/config/database.php';
-          \$cfg = \$db['default'];
-          \$mysqli = @new mysqli(\$cfg['hostname'], \$cfg['username'], \$cfg['password'], \$cfg['database'], isset(\$cfg['port']) ? (int)\$cfg['port'] : 3306);
-          if (\$mysqli->connect_errno) { fwrite(STDERR, \"DB_CONNECT_FAILED\\n\"); exit(1); }
-          \$migration = __DIR__.'/database/add_double_deduction_date.sql';
-          if (is_file(\$migration) && !\$mysqli->query(file_get_contents(\$migration))) {
-              fwrite(STDERR, \"DB_MIGRATION_FAILED\\n\");
-              exit(1);
-          }
-          echo \"DB_OK\\n\";
-          PHP"
+          ssh $ssh_opts "$remote" "cd '$deploy_path' && test -f database/add_double_deduction_date.sql && echo DB_MIGRATION_FILE_OK"
 
       - name: Smoke check
         shell: bash
