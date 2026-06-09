@@ -42,8 +42,8 @@ class Subdivision extends CI_Controller{
 			$p['branch_id'] = $this->role == 'admin' ? $p['branch_id'] : $this->userdata->branch_id;
 
 			$this->form_validation->set_data($p);
-			$this->form_validation->set_rules('subdivision_name', 'Nama Sub Departement', 'required');
-			$this->form_validation->set_rules('subdivision_code', 'Kode Sub Departement', 'required');
+			$this->form_validation->set_rules('subdivision_name', 'Nama CV', 'required');
+			$this->form_validation->set_rules('subdivision_code', 'Kode CV', 'required');
 
 			if($this->form_validation->run() == TRUE){
 				$find = [
@@ -97,12 +97,12 @@ class Subdivision extends CI_Controller{
 			$branch_id = $this->role == 'admin' ? $p['branch_id'] : $this->userdata->branch_id;
 
 			$this->form_validation->set_data($p);
-			$this->form_validation->set_rules('subdivision_name', 'Nama Sub Departement', 'required');
-			$this->form_validation->set_rules('subdivision_code', 'Kode Sub Departement', 'required');
+			$this->form_validation->set_rules('subdivision_name', 'Nama CV', 'required');
+			$this->form_validation->set_rules('subdivision_code', 'Kode CV', 'required');
 			$this->form_validation->set_rules('branch_id', 'Cabang', 'required');
 
 			$unique = [
-				'subdivision_code'  => 'Kode Sub Departement'
+				'subdivision_code'  => 'Kode CV'
 			];
 			$status = true; $title = '';
 

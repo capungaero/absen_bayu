@@ -87,7 +87,7 @@ Class Subdivision_model extends CI_Model{
           ))
          ->column('<b>NO</b>', 'num_dt subdivision_id')
          ->column('<b>KODE</b>', 'subdivision_code')
-         ->column('<b>NAMA SUB DEPARTEMENT</b>', 'subdivision_name')
+         ->column('<b>NAMA CV</b>', 'subdivision_name')
          ->column('<center><i class="fa fa-cog"></i></center>', 'subdivision_id', function($data, $row){
             
             $edit = 'data-id="'.$row['subdivision_id'].'"

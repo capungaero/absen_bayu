@@ -239,7 +239,7 @@
                                                 </a>
                                                 <div class="dropdown-menu" aria-labelledby="topnav-email">
                                                     <a href="<?= site_url('master_data/position') ?>" class="dropdown-item">Posisi</a>
-                                                    <a href="<?= site_url('master_data/subdepartement') ?>" class="dropdown-item">Sub Departement</a>
+                                                    <a href="<?= site_url('master_data/subdepartement') ?>" class="dropdown-item">CV Penempatan</a>
                                                 </div>
                                             </div>
 

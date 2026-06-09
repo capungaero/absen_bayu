@@ -2,7 +2,7 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="dripicons-biefcase"></i> Sub Departement</h4>
+            <h4 class="mb-0"><i class="dripicons-biefcase"></i> CV Penempatan</h4>
 
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
@@ -20,14 +20,14 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">Daftar Sub Departement</h6>
+                <h6 class="card-title">Daftar CV Penempatan</h6>
             </div>
             <div class="card-body">
 
                 <form>
                     <div class="row">
                         <div class="col-md-3">
-                            <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalAdd" class="btn btn-primary"><i class="dripicons-plus"></i> Tambah Sub Departement</a>
+                            <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalAdd" class="btn btn-primary"><i class="dripicons-plus"></i> Tambah CV Penempatan</a>
                         </div>
 
                         <?php if($role == 'admin'){ ?>
@@ -68,7 +68,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary">
-                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Tambah Sub Departement</h5>
+                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Tambah CV Penempatan</h5>
                 <button style="color: #fff" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -78,17 +78,17 @@
                     <div class="col-md-4">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-email-input">Kode</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Kode Sub Departement" class="form-control" name="subdivision_code">
+                            <input type="text" required="" autocomplete="off" placeholder="Kode CV" class="form-control" name="subdivision_code">
                         </div>
                     </div>
                     <div class="col-md-8">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">Nama</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Nama Sub Departement" class="form-control" name="subdivision_name">
+                            <label class="form-label" for="formrow-password-input">Nama CV</label>
+                            <input type="text" required="" autocomplete="off" placeholder="Nama CV" class="form-control" name="subdivision_name">
                         </div>
                     </div>
                 </div>
-                        
+
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light waves-effect" data-bs-dismiss="modal">Tutup</button>
@@ -108,7 +108,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-warning">
-                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Ubah Sub Departement</h5>
+                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Ubah CV Penempatan</h5>
                 <button style="color: #fff" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -118,13 +118,13 @@
                     <div class="col-md-4">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-email-input">Kode</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Kode Sub Departement" class="form-control" name="subdivision_code" id="e_code">
+                            <input type="text" required="" autocomplete="off" placeholder="Kode CV" class="form-control" name="subdivision_code" id="e_code">
                         </div>
                     </div>
                     <div class="col-md-8">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Nama</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Nama Sub Departement" class="form-control" name="subdivision_name" id="e_name">
+                            <input type="text" required="" autocomplete="off" placeholder="Nama CV" class="form-control" name="subdivision_name" id="e_name">
                         </div>
                     </div>
                 </div>
