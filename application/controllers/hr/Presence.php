@@ -1195,15 +1195,20 @@ class Presence extends CI_Controller{
 					continue;
 				}
 
+				// Latest scan wins — samakan dengan Python absen_sync.py (data mesin
+				// fingerprint selalu menimpa). Mencegah record kosong lama memblokir
+				// update & menjaga 2 jalur sync (PHP manual + Python cron) konsisten.
 				$update = [];
 				foreach(['entry_time', 'out_time', 'rest_time_in', 'rest_time_out'] as $field){
-					if(empty($existing[$field]) && !empty($row[$field])){
+					if(!empty($row[$field])){
 						$update[$field] = $row[$field];
 					}
 				}
 
 				foreach(['entry_time_late', 'rest_time_late'] as $field){
-					if((empty($existing[$field]) || $existing[$field] == 0) && !empty($row[$field])){
+					if(!empty($row[$field]) && $row[$field] > 0){
+						$update[$field] = $row[$field];
+					}else if(isset($row[$field]) && (empty($existing[$field]) || $existing[$field] == 0)){
 						$update[$field] = $row[$field];
 					}
 				}
