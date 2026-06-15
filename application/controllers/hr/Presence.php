@@ -278,9 +278,36 @@ class Presence extends CI_Controller{
 
 			if($cek->num_rows() > 0){
 
-				$this->db->trans_begin();
-
 				$date     = date('Y-m-d', strtotime($p['date']));
+
+				// Lock: hanya periode payroll berjalan yang boleh diubah jadwalnya.
+				// Data periode sebelumnya terkunci, tidak dapat diubah meski shift diganti.
+				$period_start = $this->_current_period_start();
+				if($date < $period_start){
+					echo json_encode([
+						'status' => false,
+						'message' => 'Tanggal '.indonesian_date($date).' berada di periode terkunci (sebelum '.indonesian_date($period_start).'). Jadwal periode sebelumnya tidak dapat diubah.'
+					]);
+					return;
+				}
+
+				// Deteksi presensi yang sudah masuk pada tanggal ini. Bila ada, ubah shift
+				// akan menghitung ulang rekap (keterlambatan/denda) -> minta konfirmasi dulu.
+				$existing_presence = $this->db->where(['user_id' => $p['user_id'], 'flow_date' => $date])
+											  ->where('presence_type', 'normal')
+											  ->get('presence')->row_array();
+				$has_attendance = !empty($existing_presence) && (!empty($existing_presence['entry_time']) || !empty($existing_presence['out_time']));
+
+				if($has_attendance && empty($p['confirm_recalc'])){
+					echo json_encode([
+						'status' => false,
+						'needs_confirm' => true,
+						'message' => 'Sistem mendeteksi sudah ada absen pada tanggal '.indonesian_date($date).'. Rekap kehadiran (keterlambatan/denda) tanggal tersebut akan ikut menyesuaikan shift baru. Anda yakin melanjutkan?'
+					]);
+					return;
+				}
+
+				$this->db->trans_begin();
 
 				$this->db->where([
 					'additional_date' => $date,
@@ -297,17 +324,7 @@ class Presence extends CI_Controller{
 				
 				if($this->db->trans_status()){
 
-					$cek = $this->presence->get_detail([
-							'DATE(entry_time)' => date('Y-m-d', strtotime($p['date'])),
-							'user_id'		   => $p['user_id']
-						])->row_array();
-
-					$presence = false;
-					if(!empty($cek)){
-						if($cek['out_time'] != ''){
-							$presence = true;
-						}
-					}
+					$presence = $has_attendance && $existing_presence['out_time'] != '';
 
 					$shift_code = 'free';
 					if($p['shift_id'] != 'free'){
@@ -328,6 +345,36 @@ class Presence extends CI_Controller{
 						$shift_code = $shift['shift_code'];
 					}
 
+					// Hitung ulang rekap presensi tanggal ini terhadap shift baru
+					// (keterlambatan masuk & istirahat). Punch mentah tidak disimpan,
+					// jadi jam masuk/keluar tetap; hanya turunan telat yang dihitung ulang.
+					$recalc_done = false;
+					if($has_attendance){
+						$upd = [
+							'updated_at'       => date('Y-m-d H:i:s'),
+							'input_by'         => 'manual',
+							'input_by_user_id' => $this->userdata->id
+						];
+						if($p['shift_id'] == 'free'){
+							$upd['entry_time_late'] = 0;
+							$upd['rest_time_late']  = 0;
+						}else{
+							$upd['entry_time_late'] = !empty($existing_presence['entry_time'])
+								? late_minutes($shift['start_time_late'], $existing_presence['entry_time']) : 0;
+							$rest_late = 0;
+							if(!empty($existing_presence['rest_time_in']) && !empty($existing_presence['rest_time_out'])){
+								$rest_limit = date('H:i:s', strtotime($existing_presence['rest_time_in'].' +'.$shift['rest_time_range'].' minutes'));
+								$rest_out_t = date('H:i:s', strtotime($existing_presence['rest_time_out']));
+								if($rest_out_t <= $shift['end_time_rest']){
+									$rest_late = late_minutes($rest_limit, $existing_presence['rest_time_out']);
+								}
+							}
+							$upd['rest_time_late'] = $rest_late;
+						}
+						$this->db->where('id', $existing_presence['id'])->update('presence', $upd);
+						$recalc_done = true;
+					}
+
 					$cb = [
 						'id' 		=> $p['row_id'],
 						'shift_id'  => $p['shift_id'],
@@ -339,7 +386,10 @@ class Presence extends CI_Controller{
 					$this->db->trans_commit();
 					$res = [
 						'status'   => true,
-						'message'  => 'Presensi berhasil diubah',
+						'recalc'   => $recalc_done,
+						'message'  => $recalc_done
+							? 'Jadwal diubah & rekap presensi tanggal '.indonesian_date($date).' dihitung ulang sesuai shift baru.'
+							: 'Presensi berhasil diubah',
 						'row' 	   => $cb
 					];
 
@@ -1445,6 +1495,15 @@ class Presence extends CI_Controller{
 						->order_by('created_at', 'DESC')
 						->get('presence_import_log')
 						->row_array();
+	}
+
+	private function _current_period_start(){
+		// Awal periode payroll yang sedang berjalan (relatif hari ini).
+		// Periode bulan M = tgl START_PAYROLL_DATE bln (M-1) s/d END_PAYROLL_DATE bln M.
+		if((int)date('d') >= START_PAYROLL_DATE){
+			return date('Y-m-'.START_PAYROLL_DATE);
+		}
+		return date('Y-m-'.START_PAYROLL_DATE, strtotime('first day of -1 month'));
 	}
 
 	private function _log_presence_import($branch_id, $month, $year, $method, $total_rows){

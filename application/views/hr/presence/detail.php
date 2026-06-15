@@ -1298,10 +1298,12 @@ table tbody th {
 
     $(document).on('click', '#btnUpdate', function(e){
         e.preventDefault();
+        submitShiftChange(false);
+        return false;
+    });
 
-        var status  = true;
-        var btn     = $('#btnUpdate');
-        var message = "";
+    function submitShiftChange(confirmRecalc){
+        var btn = $('#btnUpdate');
 
         $.ajax({
             url         : "<?= site_url('update_presence') ?>",
@@ -1312,48 +1314,66 @@ table tbody th {
                 date     : $('#date').val(),
                 shift_id : $('#shift').val(),
                 row_id   : $('#row_id').val(),
+                confirm_recalc : confirmRecalc ? 1 : 0,
                 myToken     : "<?php echo $this->security->get_csrf_hash() ?>"
             },
             beforeSend  : function(){
                 btn.html(show_loading()).attr('disabled', 'disabled');
             },
             success : function(res){
+                btn.html('Ubah').removeAttr('disabled');
+
+                // Warning: ada absen sebelum shift dibuat -> rekap akan dihitung ulang
+                if(res.needs_confirm){
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Perubahan Mempengaruhi Rekap',
+                        text: res.message,
+                        showCancelButton: true,
+                        reverseButtons: true,
+                        confirmButtonText: 'Ya, lanjutkan',
+                        cancelButtonText: 'Batal',
+                        confirmButtonColor: '#f6c23e'
+                    }).then(function(r){
+                        if(r.isConfirmed){ submitShiftChange(true); }
+                    });
+                    return;
+                }
+
                 $('#modalAttendance').modal('hide');
-                var txt   = '';
-                var color = '';
-                var r = res.row;
 
                 if(res.status){
+                    // Rekap dihitung ulang -> reload agar tampilan keterlambatan/denda ikut update
+                    if(res.recalc){
+                        Swal.fire({ icon:'success', title:'Berhasil', text:res.message, timer:2000, showConfirmButton:false })
+                             .then(function(){ window.location.reload(); });
+                        return;
+                    }
+
+                    var r = res.row;
+                    var txt = '';
                     if(r.type == 'free'){
                         if(!r.presence){
                             $('#'+r.id).attr('style', 'background-color:#cdcdcd;cursor:pointer');
                             $('#'+r.id+"_input_by").text('')
                         }
-
                     }else{
                         txt = r.shift_code != 'free' ? r.shift_code : '';
                         if(!r.presence){
                             $('#'+r.id).attr('style', 'background-color:#f46a6a;cursor:pointer');
                         }
-                        
                     }
-
                     $('#'+r.id+"_code").text(txt);
                     $('#'+r.id).attr('data-type', r.type).attr('data-workcode', r.shift_code);
-                    //$('#formUpdate')[0].reset();
-                    //window.location.reload();
                 }
 
-                var type = (res.status) ? 'success' : 'info';
-                show_modal(type, res.message);
+                show_modal(res.status ? 'success' : 'info', res.message);
             },
             complete : function(){
                 btn.html('Ubah').removeAttr('disabled');
             }
         });
-
-        return false;
-    });
+    }
 
     $(document).on('click', '#btnUpdate_workhour', function(e){
         e.preventDefault();
