@@ -1122,6 +1122,10 @@ Class Presence_model extends CI_Model{
             $entry['presence']['weekend']++;
           }
 
+          // PENTING: amount_in_weekend menampung GABUNGAN denda ganda (weekend
+          // + special_double). Konsumen memisahkan untuk tampilan dengan
+          // (amount_in_weekend - amount_in_special_double). JANGAN menambahkan
+          // amount_in_special_double lagi ke total — akan double-count.
           $entry['amount_in_weekend'] += $double_fine;
           $fine += $double_fine;
 

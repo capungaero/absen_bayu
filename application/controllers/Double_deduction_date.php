@@ -36,7 +36,7 @@ class Double_deduction_date extends CI_Controller{
    public function insert(){
       if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
          $p = $this->input->post();
-         $p['branch_id'] = $this->role == 'admin' ? $p['branch_id'] : $this->userdata->branch_id;
+         $p['branch_id'] = $this->role == 'admin' ? (isset($p['branch_id']) ? $p['branch_id'] : null) : $this->userdata->branch_id;
          $p['description'] = isset($p['description']) ? trim($p['description']) : '';
          $p['is_active'] = isset($p['is_active']) && $p['is_active'] == '0' ? '0' : '1';
 
@@ -80,8 +80,8 @@ class Double_deduction_date extends CI_Controller{
    public function update(){
       if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
          $p = $this->input->post();
-         $id = $p['id_double_date']; unset($p['id_double_date']);
-         $p['branch_id'] = $this->role == 'admin' ? $p['branch_id'] : $this->userdata->branch_id;
+         $id = isset($p['id_double_date']) ? $p['id_double_date'] : null; unset($p['id_double_date']);
+         $p['branch_id'] = $this->role == 'admin' ? (isset($p['branch_id']) ? $p['branch_id'] : null) : $this->userdata->branch_id;
          $p['description'] = isset($p['description']) ? trim($p['description']) : '';
          $p['is_active'] = isset($p['is_active']) && $p['is_active'] == '0' ? '0' : '1';
 
