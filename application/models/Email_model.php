@@ -20,14 +20,15 @@ class Email_model extends CI_Model {
         $response = false;
         $mail = new PHPMailer();
    
-        // SMTP configuration
+        // SMTP configuration — kredensial dari env / application/config/email.local.php (gitignored)
+        $smtp = $this->_smtp_config();
         $mail->isSMTP();
-        $mail->Host         = 'in-v3.mailjet.com'; //sesuaikan sesuai nama domain hosting/server yang digunakan
+        $mail->Host         = $smtp['host'];
         $mail->SMTPAuth     = true;
-        $mail->Username     = '4474201765c204e69583260ef2ef8b8b'; // user email
-        $mail->Password     = 'fa06dce923ed6c7d727071275fafe344'; // password email
-        $mail->SMTPSecure   = 'ssl';
-        $mail->Port         = 465;
+        $mail->Username     = $smtp['user'];
+        $mail->Password     = $smtp['pass'];
+        $mail->SMTPSecure   = $smtp['secure'];
+        $mail->Port         = $smtp['port'];
 
         $mail->setFrom($from, ''); // user email
         $mail->addAddress($to);
@@ -42,7 +43,26 @@ class Email_model extends CI_Model {
         }else{
             return true;
         }
-        
+
+	}
+
+	private function _smtp_config()
+	{
+		$cfg = [
+			'host'   => getenv('ABSEN_SMTP_HOST') ?: 'in-v3.mailjet.com',
+			'user'   => getenv('ABSEN_SMTP_USER') ?: '',
+			'pass'   => getenv('ABSEN_SMTP_PASS') ?: '',
+			'secure' => getenv('ABSEN_SMTP_SECURE') ?: 'ssl',
+			'port'   => (int)(getenv('ABSEN_SMTP_PORT') ?: 465),
+		];
+		$local = APPPATH.'config/email.local.php';
+		if (is_file($local)) {
+			$override = require $local;
+			if (is_array($override)) {
+				$cfg = array_merge($cfg, $override);
+			}
+		}
+		return $cfg;
 	}
 
 }

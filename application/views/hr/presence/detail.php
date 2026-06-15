@@ -230,7 +230,7 @@ table tbody th {
                         <?php 
                             $get = '';
                             if($role == 'admin'){
-                                $get = $this->input->get('branch_id') ? '?branch_id='.$this->input->get('branch_id') : '';
+                                $get = $this->input->get('branch_id') ? '?branch_id='.(int)$this->input->get('branch_id') : '';
                             }
                         ?>
 
@@ -1114,7 +1114,7 @@ table tbody th {
 </div>
 
 <script type="text/javascript">
-    var branch_id = "<?= $this->input->get('branch_id') ? '?branch_id='.$this->input->get('branch_id') : '' ?>";
+    var branch_id = "<?= $this->input->get('branch_id') ? '?branch_id='.(int)$this->input->get('branch_id') : '' ?>";
     $(document).on('click', '#btnModalUpload', function(){
         $('#modalUpload').modal('show');
     });

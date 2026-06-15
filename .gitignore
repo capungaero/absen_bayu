@@ -13,6 +13,8 @@ rahasia.env
 
 # Kredensial & artefak kerja (jangan pernah di-commit)
 ftp.txt
+application/config/email.local.php
+application/config/database.local.php
 /resume.md
 /code_review.md
 /ascii_diagram.md

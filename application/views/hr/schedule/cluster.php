@@ -409,7 +409,7 @@
         $('#e_date').val(a.attr('data-date'));
 
         <?php if($this->input->get('branch_id')){ ?>
-            var branch_id = '?branch_id=<?= $this->input->get("branch_id") ?>';
+            var branch_id = '?branch_id=<?= (int)$this->input->get("branch_id") ?>';
         <?php }else{ ?>
             var branch_id = '';
         <?php } ?>

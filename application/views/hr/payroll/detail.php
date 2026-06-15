@@ -75,7 +75,7 @@
                     <?php 
                         $get = '';
                         if($role == 'admin'){
-                            $get = $this->input->get('branch_id') ? '?branch_id='.$this->input->get('branch_id') : '';
+                            $get = $this->input->get('branch_id') ? '?branch_id='.(int)$this->input->get('branch_id') : '';
                         }
                     ?>
 

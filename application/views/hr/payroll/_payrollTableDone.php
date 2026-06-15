@@ -197,7 +197,7 @@ table tbody th {
                         <td>
                             <?php 
                                 if($payroll['is_final'] == '1'){
-                                    $branch_url = $this->input->get('branch_id') ? '?branch_id='.$this->input->get('branch_id') : '';
+                                    $branch_url = $this->input->get('branch_id') ? '?branch_id='.(int)$this->input->get('branch_id') : '';
                             ?>
                                     <a href="<?= site_url('hr/payroll/'.$payroll['month'].'/'.$payroll['year'].'/print/'.$row['user_id']).$branch_url ?>" target="_blank" class="btn btn-outline-primary btn-sm"><i class="fa fa-print"></i></a>
                             <?php

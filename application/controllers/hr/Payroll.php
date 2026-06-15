@@ -172,8 +172,8 @@ class Payroll extends CI_Controller{
 	                $presence = $fine['detail']['entry']['presence'];
 
 	                $max_day_work = $presence['max_for_generate'];
-	                $salary_per_day = $presence['max'] > 0 ? $row['employee']['salary'] / $max_day_work : 0;
-	                $salaryPerDayForAlpha = $presence['max'] > 0 ? $row['employee']['salary'] / $totalDayInMonth : 0;
+	                $salary_per_day = ($presence['max'] > 0 && $max_day_work > 0) ? $row['employee']['salary'] / $max_day_work : 0;
+	                $salaryPerDayForAlpha = ($presence['max'] > 0 && $totalDayInMonth > 0) ? $row['employee']['salary'] / $totalDayInMonth : 0;
 	                $salary_basic_out_off_work = $salary_per_day * $presence['strip'];
 
 	                $presence_in = $presence['count'] + $presence['off'];

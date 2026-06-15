@@ -1084,7 +1084,9 @@ Class Presence_model extends CI_Model{
         if($idx == $last_index){
           $row['amount'] = $early_leave_amount - $allocated;
         }else{
-          $row['amount'] = (int)floor($early_leave_amount * ($row['in_minute'] / $entry['total_early_leave_minutes']));
+          $row['amount'] = $entry['total_early_leave_minutes'] > 0
+            ? (int)floor($early_leave_amount * ($row['in_minute'] / $entry['total_early_leave_minutes']))
+            : 0;
           $allocated += $row['amount'];
         }
       }

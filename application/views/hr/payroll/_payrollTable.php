@@ -97,7 +97,7 @@ table tbody th {
                 
                 //$total_day = cal_days_in_month(CAL_GREGORIAN, $month, $year);
                 $total_present = $num_present + $work_free;
-                $salary_per_day = $presence['max'] > 0 ? $row['employee']['salary'] / $presence['max_for_generate'] : 0;
+                $salary_per_day = ($presence['max'] > 0 && $presence['max_for_generate'] > 0) ? $row['employee']['salary'] / $presence['max_for_generate'] : 0;
                 $salary_basic_out_off_work = $salary_per_day * $presence['strip'];
                 $all_off_work += $salary_basic_out_off_work;
                 
