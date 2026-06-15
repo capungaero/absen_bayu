@@ -1286,10 +1286,16 @@ class Presence extends CI_Controller{
 			if($month !== null && $year !== null){
 				$this->_log_presence_import($branch_id, $month, $year, $method, $saved_rows + $updated_rows);
 			}
+			// Setelah upsert selesai, hitung ulang keterlambatan seluruh periode agar perubahan
+			// shift yang terjadi setelah rekap tersimpan tetap ikut menyesuaikan.
+			$recalc_count = 0;
+			if($method == 'sync'){
+				$recalc_count = $this->_recalc_period_lateness($branch_id);
+			}
 			return [
 				'status' => true,
 				'total_rows' => $saved_rows + $updated_rows,
-				'message' => 'File excel berhasil diimport. Presensi baru tersimpan: '.$saved_rows.', data lama dilengkapi: '.$updated_rows.', data yang sudah lengkap dilewati: '.$skipped_rows.'. Baris invalid: '.$invalid_count.', finger-tanggal cocok: '.$matched_employee.', finger-tanggal tidak cocok: '.$missing_employee.', tanpa jadwal: '.$no_schedule.', di luar window shift: '.$no_window_match.', fallback: '.$fallback_rows.'.'.$match_message
+				'message' => 'File excel berhasil diimport. Presensi baru tersimpan: '.$saved_rows.', data lama dilengkapi: '.$updated_rows.', data yang sudah lengkap dilewati: '.$skipped_rows.'. Baris invalid: '.$invalid_count.', finger-tanggal cocok: '.$matched_employee.', finger-tanggal tidak cocok: '.$missing_employee.', tanpa jadwal: '.$no_schedule.', di luar window shift: '.$no_window_match.', fallback: '.$fallback_rows.($recalc_count > 0 ? ', rekap keterlambatan diperbarui: '.$recalc_count : '').'.'.$match_message
 			];
 		}
 
@@ -1299,6 +1305,70 @@ class Presence extends CI_Controller{
 			'total_rows' => 0,
 			'message' => 'Terjadi kesalahan saat menyimpan data presensi.'
 		];
+	}
+
+	/**
+	 * Hitung ulang entry_time_late dan rest_time_late seluruh record 'normal'
+	 * dalam periode payroll berjalan untuk branch ini, berdasarkan shift terkini.
+	 * Dipanggil setelah setiap sync sehingga perubahan shift yang terjadi setelah
+	 * rekap pertama kali tersimpan tetap tercermin di data kehadiran.
+	 */
+	private function _recalc_period_lateness($branch_id){
+		$period_start = $this->_current_period_start();
+		$today = date('Y-m-d');
+
+		$rows = $this->db
+			->select('presence.id, presence.user_id, presence.flow_date, presence.entry_time, presence.rest_time_in, presence.rest_time_out, presence.entry_time_late, presence.rest_time_late')
+			->join('users', 'users.id = presence.user_id')
+			->join('position', 'position.id = users.position_id')
+			->where('position.branch_id', $branch_id)
+			->where('presence.presence_type', 'normal')
+			->where('presence.flow_date >=', $period_start)
+			->where('presence.flow_date <=', $today)
+			->get('presence')->result_array();
+
+		$updated = 0;
+		foreach($rows as $row){
+			$shift = $this->db
+				->select('shift.*')
+				->where([
+					'users_shift_additional.user_id' => $row['user_id'],
+					'additional_date' => $row['flow_date'],
+					'additional_type' => 'work'
+				])
+				->where(latest_schedule_subquery(), null, false)
+				->join('shift', 'shift.id = users_shift_additional.shift_id')
+				->get('users_shift_additional')->row_array();
+
+			if(empty($shift)) continue;
+
+			$recalc = [];
+
+			$new_entry_late = !empty($row['entry_time'])
+				? late_minutes($shift['start_time_late'], $row['entry_time']) : 0;
+			if((int)$row['entry_time_late'] !== (int)$new_entry_late){
+				$recalc['entry_time_late'] = $new_entry_late;
+			}
+
+			$new_rest_late = 0;
+			if(!empty($row['rest_time_in']) && !empty($row['rest_time_out'])){
+				$rest_limit = date('H:i:s', strtotime($row['rest_time_in'].' +'.$shift['rest_time_range'].' minutes'));
+				$rest_out_t = date('H:i:s', strtotime($row['rest_time_out']));
+				if($rest_out_t <= $shift['end_time_rest']){
+					$new_rest_late = late_minutes($rest_limit, $row['rest_time_out']);
+				}
+			}
+			if((int)$row['rest_time_late'] !== (int)$new_rest_late){
+				$recalc['rest_time_late'] = $new_rest_late;
+			}
+
+			if(!empty($recalc)){
+				$this->db->where('id', $row['id'])->update('presence', $recalc);
+				$updated++;
+			}
+		}
+
+		return $updated;
 	}
 
 	public function call_presensi($employee_id){
@@ -1923,23 +1993,20 @@ class Presence extends CI_Controller{
 					continue;
 				}
 
-				if($this->_has_pray_presence($existing)){
-					$skipped_rows++;
-					continue;
-				}
-
+				// Latest scan wins per sholat: jika ada data scan baru untuk sholat tertentu,
+				// timpa data lama sholat tersebut. Sholat yang tidak punya scan baru (null)
+				// dibiarkan tidak berubah. Record yang sudah ada tidak di-skip lagi.
 				$update = [];
-				foreach($pray_data as $field => $value){
-					if(strpos($field, '_time_late') !== false){
-						if((empty($existing[$field]) || $existing[$field] == 0) && !empty($value)){
-							$update[$field] = $value;
-						}
-						continue;
-					}
+				foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'] as $pray){
+					$p_in  = $pray_data[$pray.'_time_in'];
+					$p_out = $pray_data[$pray.'_time_out'];
+					$p_late = isset($pray_data[$pray.'_time_late']) ? (int)$pray_data[$pray.'_time_late'] : 0;
 
-					if(empty($existing[$field]) && !empty($value)){
-						$update[$field] = $value;
-					}
+					if(empty($p_in)) continue;
+
+					$update[$pray.'_time_in']   = $p_in;
+					$update[$pray.'_time_out']  = !empty($p_out) ? $p_out : null;
+					$update[$pray.'_time_late'] = $p_late;
 				}
 
 				if(empty($update)){
@@ -1980,23 +2047,6 @@ class Presence extends CI_Controller{
 		];
 	}
 
-	private function _has_pray_presence($presence){
-		foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'] as $pray){
-			foreach(['time_in', 'time_out'] as $suffix){
-				$field = $pray.'_'.$suffix;
-				if(!empty($presence[$field]) && $presence[$field] != '0000-00-00 00:00:00'){
-					return true;
-				}
-			}
-
-			$field = $pray.'_time_late';
-			if(!empty($presence[$field]) && (int)$presence[$field] > 0){
-				return true;
-			}
-		}
-
-		return false;
-	}
 
 	private function _build_employee_matcher_by_finger_date($row_data, $from = null, $to = null){
 		return $this->attendance_employee_resolver->build_by_finger_date($row_data, $from, $to);
