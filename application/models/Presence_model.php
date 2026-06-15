@@ -851,11 +851,19 @@ Class Presence_model extends CI_Model{
 
               if($pray_late > $adt['late_multiple_count_pray']){
                 $pray_late -= $adt['late_multiple_count_pray'];
-                (int)$count = $pray_late / $adt['late_multiple_count_pray'];
+
+                if($adt['late_multiple_count_pray'] > 0){
+                  $count = (int)($pray_late / $adt['late_multiple_count_pray']);
+                }else{
+                  $count = 0;
+                }
 
                 $pray_fine += $count * $adt['late_amount_multiple_pray'];
-                if($pray_late % $adt['late_multiple_count_pray'] > 0){
-                  $pray_fine += $adt['late_amount_multiple_pray'];
+
+                if($adt['late_multiple_count_pray'] > 0){
+                  if($pray_late % $adt['late_multiple_count_pray'] > 0){
+                    $pray_fine += $adt['late_amount_multiple_pray'];
+                  }
                 }
               }
             }
