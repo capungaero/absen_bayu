@@ -377,6 +377,7 @@ Class Presence_model extends CI_Model{
             'name'     => $row['first_name'],
             'position' => $row['position_name'],
             'subdivision' => $row['subdivision_name'],
+            'location' => isset($row['location']) ? $row['location'] : '',
             'overtime_rate' => $row['overtime_hour_rate'],
             'salary'   => $row['salary'],
             'salary_minimum' => $row['salary_minimum'],

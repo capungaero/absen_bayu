@@ -329,7 +329,25 @@ table tbody th {
                             </div>
                         </div>
 
-                        <div class="col-md-3">
+                        <div class="col-md-2">
+                            <small><em class="fa fa-map-marker-alt"></em> By Penempatan</small>
+                            <select class="select-plugin" style="width: 100%" id="locationFilter">
+                                <option value="all">Semua</option>
+                                <?php
+                                    $loc_list = [];
+                                    foreach($attendance['list'] as $att){
+                                        $loc = isset($att['employee']['location']) ? trim((string)$att['employee']['location']) : '';
+                                        if($loc !== ''){ $loc_list[$loc] = $loc; }
+                                    }
+                                    ksort($loc_list);
+                                    foreach($loc_list as $loc){
+                                        echo '<option value="'.htmlspecialchars($loc, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($loc, ENT_QUOTES, 'UTF-8').'</option>';
+                                    }
+                                ?>
+                            </select>
+                        </div>
+
+                        <div class="col-md-2">
                             <small><em class="fa fa-id-badge"></em> By Posisi</small>
                             <select class="select-plugin" style="width: 100%" id="positionFilter">
                                 <option value="all">Semua</option>
@@ -339,7 +357,7 @@ table tbody th {
                             </select>
                         </div>
 
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <small><em class="fa fa-users"></em> By CV</small>
                             <select class="select-plugin" style="width: 100%" id="subdivision">
                                 <option value="all">Semua</option>
@@ -405,7 +423,7 @@ table tbody th {
                                   foreach ($attendance['list'] as $row){ $n++; 
                                     $total_work = $presence_in = 0;
                             ?>
-                                <tr data-subdivision="<?= $row['employee']['subdivision'] ?>" data-position="<?= $row['employee']['position'] ?>">
+                                <tr data-subdivision="<?= $row['employee']['subdivision'] ?>" data-position="<?= $row['employee']['position'] ?>" data-location="<?= htmlspecialchars(isset($row['employee']['location']) ? $row['employee']['location'] : '', ENT_QUOTES, 'UTF-8') ?>">
                                     <th style="background-color: #fff; font-weight: 500; border: 1px solid #999;">
                                         <?= $row['employee']['name'] ?><br>
                                         <small class="text-muted">
@@ -1917,48 +1935,31 @@ table tbody th {
         $('#rest_time_out').val(a.attr('data-restend'));
     })
 
-    $(document).on('keyup', '#autocomplete', function(){
-        var keyword = $(this).val();
-        var subdivision = $('#subdivision').val();
-        var position = $('#positionFilter').val();
-        EmployeeFilter(keyword, subdivision, position); 
-    });
+    $(document).on('keyup', '#autocomplete', function(){ runEmployeeFilter(); });
+    $(document).on('change', '#subdivision', function(){ runEmployeeFilter(); });
+    $(document).on('change', '#positionFilter', function(){ runEmployeeFilter(); });
+    $(document).on('change', '#locationFilter', function(){ runEmployeeFilter(); });
 
-    $(document).on('change', '#subdivision', function(){
-        var keyword = $('#autocomplete').val();
-        var subdivision = $(this).val();
-        var position = $('#positionFilter').val();
-        EmployeeFilter(keyword, subdivision, position);
-    });
+    function runEmployeeFilter(){
+        EmployeeFilter(
+            $('#autocomplete').val(),
+            $('#subdivision').val(),
+            $('#positionFilter').val(),
+            $('#locationFilter').val()
+        );
+    }
 
-    $(document).on('change', '#positionFilter', function(){
-        var keyword = $('#autocomplete').val();
-        var subdivision = $('#subdivision').val();
-        var position = $(this).val();
-        EmployeeFilter(keyword, subdivision, position);
-    });
-
-    function EmployeeFilter(keyword, subdivision, position){
+    function EmployeeFilter(keyword, subdivision, position, location){
         $('#listPresence tr').each(function(){
-            var count = 0;
-            var searchKeyword = $(this).text().search(new RegExp(keyword, "i"));
-            var searchSubdivision = false;
-            var searchPosition = false;
+            var searchKeyword     = $(this).text().search(new RegExp(keyword, "i"));
+            var searchSubdivision = ($(this).data('subdivision') == subdivision || subdivision == 'all');
+            var searchPosition    = ($(this).data('position') == position || position == 'all');
+            var searchLocation    = (typeof location === 'undefined' || location == 'all' || $(this).data('location') == location);
 
-            if($(this).data('subdivision') == subdivision || subdivision == 'all'){
-                searchSubdivision = true;
-            }
-
-            if($(this).data('position') == position || position == 'all'){
-                searchPosition = true;
-            }
-
-            if(searchKeyword < 0 || !searchSubdivision || !searchPosition) {
-              $(this).hide(); 
-
-            } else {
+            if(searchKeyword < 0 || !searchSubdivision || !searchPosition || !searchLocation){
+              $(this).hide();
+            }else{
               $(this).show();
-              count++;
             }
         });
     }
