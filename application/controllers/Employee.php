@@ -421,11 +421,31 @@ class Employee extends CI_Controller{
 			$cek = $this->employee->get_detail($find);
 
 			if($cek->num_rows() > 0){
+				$current = $cek->row_array();
+
+				// Guard: cegah 2 user AKTIF berbagi employee_code (sumber double-write
+				// absensi). Saat MENGAKTIFKAN, tolak bila sudah ada karyawan aktif lain
+				// dengan Kode/NIK yang sama.
+				if($current['active'] == '0' && !empty($current['employee_code'])){
+					$dup = $this->employee->get_detail([
+						'employee_code' => $current['employee_code'],
+						'users.active'  => 1,
+						'users.id !='   => $current['id']
+					]);
+					if($dup->num_rows() > 0){
+						echo json_encode([
+							'status'  => false,
+							'message' => 'Tidak bisa mengaktifkan: sudah ada karyawan aktif lain dengan Kode/NIK '.$current['employee_code'].'. Nonaktifkan dulu yang itu.'
+						]);
+						return;
+					}
+				}
+
 				$data = [
-					'active' 	  => $cek->row_array()['active'] == '0' ? '1' : '0',
+					'active' 	  => $current['active'] == '0' ? '1' : '0',
 					'last_status' => date('Y-m-d H:i:s')
 				];
-				if($cek->row_array()['active'] == '0'){
+				if($current['active'] == '0'){
 					$activation = $this->ion_auth->activate($find['users.id']);
 				}else{
 					$activation = $this->ion_auth->deactivate($find['users.id']);

@@ -1993,25 +1993,22 @@ class Presence extends CI_Controller{
 					continue;
 				}
 
-				// Latest scan wins per sholat: jika ada data scan baru untuk sholat tertentu,
-				// timpa data lama sholat tersebut. Sholat yang tidak punya scan baru (null)
-				// dibiarkan tidak berubah. Record yang sudah ada tidak di-skip lagi.
+				// Authoritative per row (clear-then-set): scan ini menentukan SEMUA kolom
+				// sholat untuk row ini. Sholat yang tidak punya tap di window saat ini
+				// dikosongkan (NULL), sehingga perubahan window jam sholat otomatis
+				// tercermin pada sync berikutnya tanpa perlu recompute manual.
+				// Aman karena tiap karyawan absen di satu mesin sholat: bila mesinnya
+				// ikut ter-download, semua tap hari itu ada; bila gagal, row ini tidak
+				// ber-flag (tanpa tap) sehingga di-skip di atas dan tidak ditimpa.
 				$update = [];
 				foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'] as $pray){
 					$p_in  = $pray_data[$pray.'_time_in'];
 					$p_out = $pray_data[$pray.'_time_out'];
 					$p_late = isset($pray_data[$pray.'_time_late']) ? (int)$pray_data[$pray.'_time_late'] : 0;
 
-					if(empty($p_in)) continue;
-
-					$update[$pray.'_time_in']   = $p_in;
+					$update[$pray.'_time_in']   = !empty($p_in)  ? $p_in  : null;
 					$update[$pray.'_time_out']  = !empty($p_out) ? $p_out : null;
-					$update[$pray.'_time_late'] = $p_late;
-				}
-
-				if(empty($update)){
-					$skipped_rows++;
-					continue;
+					$update[$pray.'_time_late'] = !empty($p_in)  ? $p_late : 0;
 				}
 
 				$this->db->where([
