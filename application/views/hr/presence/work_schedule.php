@@ -260,14 +260,28 @@
                     <input type="hidden" name="year" value="<?= $year ?>">
 
                     <div class="mb-3 d-flex align-items-center flex-wrap" style="gap: 8px;">
-                        <?php foreach($shift as $index => $row){
-                            $btn_class = $bulk_shift_button_classes[$index % count($bulk_shift_button_classes)];
-                        ?>
-                            <button type="button" class="btn <?= $btn_class ?> btn-sm set-all-shift" data-value="<?= htmlspecialchars($row['id'], ENT_QUOTES, 'UTF-8') ?>">Isi Semua <?= htmlspecialchars($row['shift_code'], ENT_QUOTES, 'UTF-8') ?></button>
-                        <?php } ?>
-                        <button type="button" class="btn btn-outline-secondary btn-sm set-all-shift" data-value="free">Isi Semua OFF</button>
                         <button type="button" class="btn btn-outline-primary btn-sm set-all-shift" data-value="">Kosongkan Semua</button>
                         <button type="button" class="btn btn-outline-info btn-sm" id="btnCopyPreviousSchedule"><i class="fa fa-copy"></i> Copy Periode Sebelumnya</button>
+
+                        <div class="d-flex align-items-center flex-wrap" style="gap:6px; margin-left:auto;">
+                            <input type="text" id="filterScheduleName" class="form-control form-control-sm" placeholder="Cari nama..." autocomplete="off" style="max-width:160px;">
+                            <select id="filterScheduleDivision" class="form-control form-control-sm" style="max-width:170px;">
+                                <option value="">Semua penempatan</option>
+                                <?php
+                                    $sched_divisions = [];
+                                    foreach($employees as $emp){
+                                        $dv = $emp['subdivision_name'] ?: $emp['position_name'];
+                                        if($dv !== '' && $dv !== null){ $sched_divisions[$dv] = $dv; }
+                                    }
+                                    ksort($sched_divisions);
+                                    foreach($sched_divisions as $dv){
+                                        echo '<option value="'.htmlspecialchars($dv, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($dv, ENT_QUOTES, 'UTF-8').'</option>';
+                                    }
+                                ?>
+                            </select>
+                            <input type="date" id="filterScheduleDate" class="form-control form-control-sm" min="<?= reset($daterange['list']) ?>" max="<?= end($daterange['list']) ?>" style="max-width:160px;" title="Filter tanggal (kosongkan = semua tanggal)">
+                            <button type="button" class="btn btn-light btn-sm" id="btnResetScheduleFilter" title="Reset filter"><i class="fa fa-times"></i></button>
+                        </div>
                     </div>
 
                     <div class="schedule-wrapper">
@@ -279,7 +293,7 @@
                                     <th class="sticky-name schedule-sort" data-sort-type="text" data-sort-index="2">Nama <span class="sort-icon">&#8645;</span></th>
                                     <th class="schedule-sort" data-sort-type="text" data-sort-index="3">Posisi <span class="sort-icon">&#8645;</span></th>
                                     <?php foreach($daterange['list'] as $date_index => $date){ ?>
-                                        <th class="text-center schedule-sort" data-sort-type="shift" data-sort-index="<?= $date_index + 4 ?>"><?= date('d/m', strtotime($date)) ?> <span class="sort-icon">&#8645;</span><br><small><?= get_dayname($date) ?></small></th>
+                                        <th class="text-center schedule-sort schedule-date-col" data-date="<?= $date ?>" data-sort-type="shift" data-sort-index="<?= $date_index + 4 ?>"><?= date('d/m', strtotime($date)) ?> <span class="sort-icon">&#8645;</span><br><small><?= get_dayname($date) ?></small></th>
                                     <?php } ?>
                                 </tr>
                             </thead>
@@ -293,7 +307,7 @@
                                         <?php foreach($daterange['list'] as $date){
                                             $selected = isset($schedule_map[$employee['id']][$date]) ? $schedule_map[$employee['id']][$date] : '';
                                         ?>
-                                            <td>
+                                            <td class="schedule-date-col" data-date="<?= $date ?>">
                                                 <select class="form-control form-control-sm schedule-select" name="schedule[<?= $employee['id'] ?>][<?= $date ?>]">
                                                     <option value="">-</option>
                                                     <option value="free" <?= $selected == 'free' ? 'selected' : '' ?>>OFF</option>
@@ -1279,6 +1293,43 @@ $(document).on('click', '.set-all-shift', function(){
     var value = $(this).data('value');
     $('.schedule-select').val(value);
     refreshGameBoard();
+});
+
+/* ===== Filter jadwal: nama, penempatan, tanggal ===== */
+function applyScheduleRowFilter(){
+    var name = ($('#filterScheduleName').val() || '').toLowerCase().trim();
+    var div  = $('#filterScheduleDivision').val() || '';
+    var no = 0;
+    $('.schedule-table tbody tr').each(function(){
+        var $r = $(this);
+        var n = ($r.attr('data-employee-name') || '').toLowerCase();
+        var d = $r.attr('data-division') || '';
+        var show = (name === '' || n.indexOf(name) >= 0) && (div === '' || d === div);
+        $r.toggle(show);
+        if(show){ no++; $r.find('td.sticky-no').text(no); }
+    });
+}
+
+function applyScheduleDateFilter(){
+    var date = $('#filterScheduleDate').val() || '';
+    if(date === ''){
+        $('.schedule-date-col').show();
+    }else{
+        $('.schedule-date-col').each(function(){
+            $(this).toggle($(this).attr('data-date') === date);
+        });
+    }
+}
+
+$(document).on('input', '#filterScheduleName', applyScheduleRowFilter);
+$(document).on('change', '#filterScheduleDivision', applyScheduleRowFilter);
+$(document).on('change', '#filterScheduleDate', applyScheduleDateFilter);
+$(document).on('click', '#btnResetScheduleFilter', function(){
+    $('#filterScheduleName').val('');
+    $('#filterScheduleDivision').val('');
+    $('#filterScheduleDate').val('');
+    applyScheduleRowFilter();
+    applyScheduleDateFilter();
 });
 </script>
 
