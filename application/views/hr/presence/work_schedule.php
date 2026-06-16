@@ -262,20 +262,35 @@
                     <div class="mb-3 d-flex align-items-center flex-wrap" style="gap: 8px;">
                         <button type="button" class="btn btn-outline-primary btn-sm set-all-shift" data-value="">Kosongkan Semua</button>
                         <button type="button" class="btn btn-outline-info btn-sm" id="btnCopyPreviousSchedule"><i class="fa fa-copy"></i> Copy Periode Sebelumnya</button>
+                        <button type="button" class="btn btn-outline-warning btn-sm" id="btnNoSchedule"><i class="fa fa-user-clock"></i> No Schedule</button>
 
                         <div class="d-flex align-items-center flex-wrap" style="gap:6px; margin-left:auto;">
                             <input type="text" id="filterScheduleName" class="form-control form-control-sm" placeholder="Cari nama..." autocomplete="off" style="max-width:160px;">
-                            <select id="filterScheduleDivision" class="form-control form-control-sm" style="max-width:170px;">
-                                <option value="">Semua penempatan</option>
+                            <select id="filterScheduleLocation" class="form-control form-control-sm" style="max-width:170px;">
+                                <option value="">Semua lokasi</option>
                                 <?php
-                                    $sched_divisions = [];
+                                    $sched_locations = [];
                                     foreach($employees as $emp){
-                                        $dv = $emp['subdivision_name'] ?: $emp['position_name'];
-                                        if($dv !== '' && $dv !== null){ $sched_divisions[$dv] = $dv; }
+                                        $lc = isset($emp['location']) ? trim((string)$emp['location']) : '';
+                                        if($lc !== ''){ $sched_locations[$lc] = $lc; }
                                     }
-                                    ksort($sched_divisions);
-                                    foreach($sched_divisions as $dv){
-                                        echo '<option value="'.htmlspecialchars($dv, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($dv, ENT_QUOTES, 'UTF-8').'</option>';
+                                    ksort($sched_locations);
+                                    foreach($sched_locations as $lc){
+                                        echo '<option value="'.htmlspecialchars($lc, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($lc, ENT_QUOTES, 'UTF-8').'</option>';
+                                    }
+                                ?>
+                            </select>
+                            <select id="filterSchedulePosition" class="form-control form-control-sm" style="max-width:150px;">
+                                <option value="">Semua posisi</option>
+                                <?php
+                                    $sched_positions = [];
+                                    foreach($employees as $emp){
+                                        $ps = isset($emp['position_name']) ? trim((string)$emp['position_name']) : '';
+                                        if($ps !== ''){ $sched_positions[$ps] = $ps; }
+                                    }
+                                    ksort($sched_positions);
+                                    foreach($sched_positions as $ps){
+                                        echo '<option value="'.htmlspecialchars($ps, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($ps, ENT_QUOTES, 'UTF-8').'</option>';
                                     }
                                 ?>
                             </select>
@@ -299,7 +314,7 @@
                             </thead>
                             <tbody>
                                 <?php $no = 0; foreach($employees as $employee){ $no++; ?>
-                                    <tr data-employee-id="<?= $employee['id'] ?>" data-employee-code="<?= $employee['employee_code'] ?>" data-employee-name="<?= htmlspecialchars($employee['first_name'], ENT_QUOTES, 'UTF-8') ?>" data-position="<?= htmlspecialchars($employee['position_name'], ENT_QUOTES, 'UTF-8') ?>" data-division="<?= htmlspecialchars($employee['subdivision_name'] ?: $employee['position_name'], ENT_QUOTES, 'UTF-8') ?>" data-photo="<?= base_url('assets/images/users/'.($employee['photo'] ?: 'default_photo.jpg')) ?>">
+                                    <tr data-employee-id="<?= $employee['id'] ?>" data-employee-code="<?= $employee['employee_code'] ?>" data-employee-name="<?= htmlspecialchars($employee['first_name'], ENT_QUOTES, 'UTF-8') ?>" data-position="<?= htmlspecialchars($employee['position_name'], ENT_QUOTES, 'UTF-8') ?>" data-location="<?= htmlspecialchars(isset($employee['location']) ? $employee['location'] : '', ENT_QUOTES, 'UTF-8') ?>" data-division="<?= htmlspecialchars($employee['subdivision_name'] ?: $employee['position_name'], ENT_QUOTES, 'UTF-8') ?>" data-photo="<?= base_url('assets/images/users/'.($employee['photo'] ?: 'default_photo.jpg')) ?>">
                                         <td class="sticky-no text-center"><?= $no ?></td>
                                         <td class="sticky-col"><?= $employee['employee_code'] ?></td>
                                         <td class="sticky-name"><?= $employee['first_name'] ?></td>
@@ -330,6 +345,43 @@
                         <button type="submit" class="btn btn-success"><i class="fa fa-save"></i> Simpan Jadwal</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalNoSchedule" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa fa-user-clock"></i> Set No Schedule</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Kosongkan jadwal (no schedule) untuk satu karyawan pada rentang tanggal tertentu. Perubahan baru tersimpan setelah klik <b>Simpan Jadwal</b>.</p>
+                <div class="mb-2">
+                    <label>Karyawan</label>
+                    <select id="noSchedEmployee" class="form-control">
+                        <option value="">-- Pilih karyawan --</option>
+                        <?php foreach($employees as $emp){ ?>
+                            <option value="<?= $emp['id'] ?>"><?= htmlspecialchars($emp['first_name'].' ('.$emp['employee_code'].')', ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php } ?>
+                    </select>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <label>Dari tanggal</label>
+                        <input type="date" id="noSchedFrom" class="form-control" min="<?= reset($daterange['list']) ?>" max="<?= end($daterange['list']) ?>">
+                    </div>
+                    <div class="col-6">
+                        <label>Sampai tanggal</label>
+                        <input type="date" id="noSchedTo" class="form-control" min="<?= reset($daterange['list']) ?>" max="<?= end($daterange['list']) ?>">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-warning" id="btnApplyNoSchedule"><i class="fa fa-check"></i> Terapkan No Schedule</button>
             </div>
         </div>
     </div>
@@ -1295,16 +1347,18 @@ $(document).on('click', '.set-all-shift', function(){
     refreshGameBoard();
 });
 
-/* ===== Filter jadwal: nama, penempatan, tanggal ===== */
+/* ===== Filter jadwal: nama, lokasi penempatan, posisi, tanggal ===== */
 function applyScheduleRowFilter(){
     var name = ($('#filterScheduleName').val() || '').toLowerCase().trim();
-    var div  = $('#filterScheduleDivision').val() || '';
+    var loc  = $('#filterScheduleLocation').val() || '';
+    var pos  = $('#filterSchedulePosition').val() || '';
     var no = 0;
     $('.schedule-table tbody tr').each(function(){
         var $r = $(this);
         var n = ($r.attr('data-employee-name') || '').toLowerCase();
-        var d = $r.attr('data-division') || '';
-        var show = (name === '' || n.indexOf(name) >= 0) && (div === '' || d === div);
+        var l = $r.attr('data-location') || '';
+        var p = $r.attr('data-position') || '';
+        var show = (name === '' || n.indexOf(name) >= 0) && (loc === '' || l === loc) && (pos === '' || p === pos);
         $r.toggle(show);
         if(show){ no++; $r.find('td.sticky-no').text(no); }
     });
@@ -1322,14 +1376,56 @@ function applyScheduleDateFilter(){
 }
 
 $(document).on('input', '#filterScheduleName', applyScheduleRowFilter);
-$(document).on('change', '#filterScheduleDivision', applyScheduleRowFilter);
+$(document).on('change', '#filterScheduleLocation', applyScheduleRowFilter);
+$(document).on('change', '#filterSchedulePosition', applyScheduleRowFilter);
 $(document).on('change', '#filterScheduleDate', applyScheduleDateFilter);
 $(document).on('click', '#btnResetScheduleFilter', function(){
     $('#filterScheduleName').val('');
-    $('#filterScheduleDivision').val('');
+    $('#filterScheduleLocation').val('');
+    $('#filterSchedulePosition').val('');
     $('#filterScheduleDate').val('');
     applyScheduleRowFilter();
     applyScheduleDateFilter();
+});
+
+/* ===== Set No Schedule: kosongkan jadwal 1 karyawan utk rentang tanggal ===== */
+$(document).on('click', '#btnNoSchedule', function(){
+    $('#noSchedEmployee').val('');
+    $('#noSchedFrom').val('');
+    $('#noSchedTo').val('');
+    $('#modalNoSchedule').modal('show');
+});
+
+$(document).on('click', '#btnApplyNoSchedule', function(){
+    var empId = $('#noSchedEmployee').val();
+    var from  = $('#noSchedFrom').val();
+    var to    = $('#noSchedTo').val();
+
+    if(!empId){ alert('Pilih karyawan dulu.'); return; }
+    if(!from || !to){ alert('Pilih rentang tanggal (dari & sampai).'); return; }
+    if(from > to){ var tmp = from; from = to; to = tmp; }
+
+    var $row = $('.schedule-table tbody tr[data-employee-id="' + empId + '"]');
+    if(!$row.length){ alert('Karyawan tidak ditemukan di tabel.'); return; }
+
+    var count = 0;
+    $row.find('td.schedule-date-col').each(function(){
+        var d = $(this).attr('data-date');
+        if(d >= from && d <= to){
+            // No Schedule = opsi "-" (value kosong), BUKAN OFF (value "free")
+            $(this).find('select.schedule-select').val('').prop('selectedIndex', 0);
+            count++;
+        }
+    });
+
+    // Cache nilai shift (papan jadwal) harus di-invalidate supaya tidak baca nilai lama
+    if(typeof gameInvalidateShiftCache === 'function'){ gameInvalidateShiftCache(); }
+    if(typeof refreshGameBoard === 'function'){ refreshGameBoard(); }
+    $('#modalNoSchedule').modal('hide');
+
+    var msg = 'No schedule diterapkan untuk ' + count + ' tanggal. Klik <b>Simpan Jadwal</b> untuk menyimpan.';
+    if(typeof showScheduleMessage === 'function'){ showScheduleMessage('success', msg); }
+    else { alert('No schedule diterapkan untuk ' + count + ' tanggal. Klik Simpan Jadwal untuk menyimpan.'); }
 });
 </script>
 

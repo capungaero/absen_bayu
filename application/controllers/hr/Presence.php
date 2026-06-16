@@ -98,7 +98,7 @@ class Presence extends CI_Controller{
 			$from = reset($dates);
 			$to = end($dates);
 
-			$employees = $this->db->select('users.id, users.employee_code, users.first_name, users.photo, position.position_name, subdivision.subdivision_name')
+			$employees = $this->db->select('users.id, users.employee_code, users.first_name, users.photo, users.location, position.position_name, subdivision.subdivision_name')
 								 ->join('position', 'position.id = users.position_id')
 								 ->join('subdivision', 'subdivision.id = users.subdivision_id', 'LEFT')
 								 ->where('position.branch_id', $branch_id)
