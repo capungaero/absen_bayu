@@ -1420,6 +1420,7 @@ class Presence extends CI_Controller{
 			$month = str_pad($p['month'], 2, '0', STR_PAD_LEFT);
 			$year = $p['year'];
 			$sync_from_date = $this->_normalize_sync_from_date($month, $year, isset($p['sync_from_date']) ? $p['sync_from_date'] : null);
+			$sync_to_date   = $this->_normalize_sync_to_date($month, $year, isset($p['sync_to_date']) ? $p['sync_to_date'] : null);
 
 			$download = $this->_download_cloud_attlogs();
 			if($download === false){
@@ -1431,7 +1432,7 @@ class Presence extends CI_Controller{
 			}
 
 			$dat_files = $this->_save_cloud_attlog_files($download['machines'], $month, $year);
-			$excel = $this->_build_attlog_excel($download['machines'], $branch_id, $month, $year, $sync_from_date);
+			$excel = $this->_build_attlog_excel($download['machines'], $branch_id, $month, $year, $sync_from_date, $sync_to_date);
 			if(!$excel['status']){
 				echo json_encode($excel);
 				return;
@@ -1468,6 +1469,7 @@ class Presence extends CI_Controller{
 			$month = str_pad($p['month'], 2, '0', STR_PAD_LEFT);
 			$year = $p['year'];
 			$sync_from_date = $this->_normalize_sync_from_date($month, $year, isset($p['sync_from_date']) ? $p['sync_from_date'] : null);
+			$sync_to_date   = $this->_normalize_sync_to_date($month, $year, isset($p['sync_to_date']) ? $p['sync_to_date'] : null);
 
 			$download = $this->_download_pray_cloud_attlogs();
 			if($download === false){
@@ -1479,7 +1481,7 @@ class Presence extends CI_Controller{
 			}
 
 			$dat_files = $this->_save_cloud_attlog_files($download['machines'], $month, $year);
-			$excel = $this->_build_attlog_excel($download['machines'], $branch_id, $month, $year, $sync_from_date);
+			$excel = $this->_build_attlog_excel($download['machines'], $branch_id, $month, $year, $sync_from_date, $sync_to_date);
 			if(!$excel['status']){
 				echo json_encode($excel);
 				return;
@@ -1628,11 +1630,37 @@ class Presence extends CI_Controller{
 		return $date;
 	}
 
-	private function _build_attlog_excel($machines, $branch_id, $month, $year, $from_date = null){
+	// Normalisasi tanggal akhir sync (range/tanggal tunggal). Kosong = sampai akhir periode.
+	private function _normalize_sync_to_date($month, $year, $date){
+		$period = attlog_presence_period_range($month, $year);
+		$date = trim((string)$date);
+		if($date == ''){
+			return $period['to'];
+		}
+
+		$timestamp = strtotime($date);
+		if(!$timestamp){
+			return $period['to'];
+		}
+
+		$date = date('Y-m-d', $timestamp);
+		if($date < $period['from']){
+			return $period['from'];
+		}
+
+		if($date > $period['to']){
+			return $period['to'];
+		}
+
+		return $date;
+	}
+
+	private function _build_attlog_excel($machines, $branch_id, $month, $year, $from_date = null, $to_date = null){
 		$month = str_pad($month, 2, '0', STR_PAD_LEFT);
 		$period = attlog_presence_period_range($month, $year);
 		$from = !empty($from_date) ? $from_date : $period['from'];
-		$to = $period['to'];
+		$to = !empty($to_date) ? $to_date : $period['to'];
+		if($from > $to){ $swap = $from; $from = $to; $to = $swap; }
 
 		$finger_ids = [];
 		$match_rows = [];

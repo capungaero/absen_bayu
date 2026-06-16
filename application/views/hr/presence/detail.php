@@ -155,8 +155,17 @@ table tbody th {
                                     <button class="btn btn-primary w-100"><i class="fa fa-search"></i> Terapkan Cabang</button>
                                 </div>
                                 <div>
-                                    <label>Sync mulai tanggal</label>
-                                    <input type="date" class="form-control" id="syncFromDate" value="<?= $sync_from_default ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>">
+                                    <label>Sync tanggal</label>
+                                    <div class="sync-daterange-row" style="display:flex; gap:4px; align-items:center;">
+                                        <select class="form-control" id="syncMode" style="max-width:120px;">
+                                            <option value="from">Mulai tgl</option>
+                                            <option value="single">Tgl tunggal</option>
+                                            <option value="range">Rentang</option>
+                                        </select>
+                                        <input type="date" class="form-control" id="syncFromDate" value="<?= $sync_from_default ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>">
+                                        <span id="syncDateSep" style="display:none;">s/d</span>
+                                        <input type="date" class="form-control" id="syncToDate" value="<?= $sync_from_max ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>" style="display:none;">
+                                    </div>
                                 </div>
                                 <div class="presence-sync-options">
                                     <div class="form-check">
@@ -173,8 +182,17 @@ table tbody th {
                     <?php }else if(in_array($this->role, ['admin-branch', 'supervisor'])){ ?>
                         <div class="presence-sync-options mb-3">
                             <div>
-                                <label>Sync mulai tanggal</label>
-                                <input type="date" class="form-control" id="syncFromDate" value="<?= $sync_from_default ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>">
+                                <label>Sync tanggal</label>
+                                <div class="sync-daterange-row" style="display:flex; gap:4px; align-items:center;">
+                                    <select class="form-control" id="syncMode" style="max-width:120px;">
+                                        <option value="from">Mulai tgl</option>
+                                        <option value="single">Tgl tunggal</option>
+                                        <option value="range">Rentang</option>
+                                    </select>
+                                    <input type="date" class="form-control" id="syncFromDate" value="<?= $sync_from_default ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>">
+                                    <span id="syncDateSep" style="display:none;">s/d</span>
+                                    <input type="date" class="form-control" id="syncToDate" value="<?= $sync_from_max ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>" style="display:none;">
+                                </div>
                             </div>
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="useScheduleSync" checked>
@@ -1648,13 +1666,23 @@ table tbody th {
         var autoSyncStorageKey = 'presence_auto_sync_<?= $branch_id ?>_<?= $month ?>_<?= $year ?>';
         var useScheduleStorageKey = 'presence_use_schedule_<?= $branch_id ?>';
         var syncFromStorageKey = 'presence_sync_from_<?= $branch_id ?>_<?= $month ?>_<?= $year ?>';
+        var syncToStorageKey   = 'presence_sync_to_<?= $branch_id ?>_<?= $month ?>_<?= $year ?>';
+        var syncModeStorageKey = 'presence_sync_mode_<?= $branch_id ?>';
 
         function buildSyncData(includeSchedule){
+            var mode    = $('#syncMode').length ? $('#syncMode').val() : 'from';
+            var fromVal = $('#syncFromDate').length ? $('#syncFromDate').val() : '';
+            var toVal   = $('#syncToDate').length ? $('#syncToDate').val() : '';
+            var syncTo  = '';
+            if(mode === 'single'){ syncTo = fromVal; }
+            else if(mode === 'range'){ syncTo = toVal; }
+
             var data = {
                 branch_id : "<?= $branch_id ?>",
                 month     : "<?= $month ?>",
                 year      : "<?= $year ?>",
-                sync_from_date : $('#syncFromDate').length ? $('#syncFromDate').val() : '',
+                sync_from_date : fromVal,
+                sync_to_date   : syncTo,
                 myToken   : "<?php echo $this->security->get_csrf_hash() ?>"
             };
 
@@ -1725,9 +1753,37 @@ table tbody th {
             localStorage.setItem(syncFromStorageKey, $(this).val());
         });
 
+        $(document).on('change', '#syncToDate', function(){
+            localStorage.setItem(syncToStorageKey, $(this).val());
+        });
+
+        function applySyncMode(){
+            var mode = $('#syncMode').length ? $('#syncMode').val() : 'from';
+            if(mode === 'range'){
+                $('#syncDateSep, #syncToDate').show();
+            }else{
+                $('#syncDateSep, #syncToDate').hide();
+            }
+        }
+
+        $(document).on('change', '#syncMode', function(){
+            localStorage.setItem(syncModeStorageKey, $(this).val());
+            applySyncMode();
+        });
+
         if(localStorage.getItem(syncFromStorageKey)){
             $('#syncFromDate').val(localStorage.getItem(syncFromStorageKey));
         }
+
+        if(localStorage.getItem(syncToStorageKey)){
+            $('#syncToDate').val(localStorage.getItem(syncToStorageKey));
+        }
+
+        if(localStorage.getItem(syncModeStorageKey)){
+            $('#syncMode').val(localStorage.getItem(syncModeStorageKey));
+        }
+
+        applySyncMode();
 
         if(localStorage.getItem(useScheduleStorageKey) !== '0'){
             $('#useScheduleSync').prop('checked', true);
