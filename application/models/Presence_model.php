@@ -304,7 +304,7 @@ Class Presence_model extends CI_Model{
                 !isset($attendance[$att['additional_date']]) && 
                 in_array(get_dayname($att['additional_date']), ['Sabtu', 'Minggu']) &&
                 strtotime($current_now) >= strtotime($att['additional_date']) &&
-                $additional_att[$att['additional_date']]['code'] != '-'
+                !is_no_schedule_shift($additional_att[$att['additional_date']]['code'])
               ){
                 //$weekend_fine = $salary_per_day * 2;
                 //$fine += $weekend_fine;
@@ -668,13 +668,13 @@ Class Presence_model extends CI_Model{
     foreach ($additional as $adt){
       $total_work += $adt['additional_type'] == 'work' ? 1 : 0;
       $total_off += $adt['additional_type'] == 'free' ? 1 : 0;
-      $total_work_without_strip += ($adt['additional_type'] == 'work' && $adt['shift_code'] != '-') ? 1 : 0;
+      $total_work_without_strip += ($adt['additional_type'] == 'work' && !is_no_schedule_shift($adt['shift_code'])) ? 1 : 0;
 
       if(isset($daterange_list[$adt['additional_date']])){
         unset($daterange_list[$adt['additional_date']]);
       }
 
-      if($adt['shift_code'] == '-'){
+      if(is_no_schedule_shift($adt['shift_code'])){
         $strip++;
       }
 
@@ -1100,7 +1100,7 @@ Class Presence_model extends CI_Model{
         $is_absent_work = $row['type'] == 'work' &&
           !isset($attendance[$row['additional_date']]) &&
           strtotime($current_now) >= strtotime($row['additional_date']) &&
-          $row['code'] != '-';
+          !is_no_schedule_shift($row['code']);
         $is_weekend = in_array(get_dayname($row['additional_date']), ['Sabtu', 'Minggu']);
         $is_special_double = isset($double_deduction_dates[$row['additional_date']]);
 

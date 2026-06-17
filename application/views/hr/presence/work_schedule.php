@@ -1389,7 +1389,23 @@ $(document).on('click', '#btnResetScheduleFilter', function(){
 });
 
 /* ===== Set No Schedule: kosongkan jadwal 1 karyawan utk rentang tanggal ===== */
+<?php
+    // id shift "No Schedule" (kode NO-SC / '-' / nama NO SCHEDULE) untuk cabang ini
+    $no_sched_shift_id = '';
+    foreach($shift as $__s){
+        if(is_no_schedule_shift($__s['shift_code']) || is_no_schedule_shift($__s['shift_name'])){
+            $no_sched_shift_id = $__s['id'];
+            break;
+        }
+    }
+?>
+var NO_SCHED_SHIFT_ID = '<?= $no_sched_shift_id ?>';
+
 $(document).on('click', '#btnNoSchedule', function(){
+    if(!NO_SCHED_SHIFT_ID){
+        alert('Shift "No Schedule" (NO-SC) belum ada di master shift cabang ini. Tambahkan dulu di menu Shift.');
+        return;
+    }
     $('#noSchedEmployee').val('');
     $('#noSchedFrom').val('');
     $('#noSchedTo').val('');
@@ -1412,8 +1428,13 @@ $(document).on('click', '#btnApplyNoSchedule', function(){
     $row.find('td.schedule-date-col').each(function(){
         var d = $(this).attr('data-date');
         if(d >= from && d <= to){
-            // No Schedule = opsi "-" (value kosong), BUKAN OFF (value "free")
-            $(this).find('select.schedule-select').val('').prop('selectedIndex', 0);
+            // No Schedule = assign shift NO-SC (kode NO-SC / nama No SCHEDULE)
+            var $sel = $(this).find('select.schedule-select');
+            if(NO_SCHED_SHIFT_ID && $sel.find('option[value="' + NO_SCHED_SHIFT_ID + '"]').length){
+                $sel.val(NO_SCHED_SHIFT_ID);
+            }else{
+                $sel.val('').prop('selectedIndex', 0); // fallback: kosong "-"
+            }
             count++;
         }
     });

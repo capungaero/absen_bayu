@@ -24,3 +24,17 @@ if ( ! function_exists('latest_schedule_subquery'))
         )';
     }
 }
+
+if ( ! function_exists('is_no_schedule_shift'))
+{
+    /**
+     * True jika kode/nama shift menandakan "No Schedule" (tidak dijadwalkan):
+     * kode '-' atau 'NO-SC', atau nama 'NO SCHEDULE'. Hari ber-shift no-schedule
+     * tidak dihitung sebagai hari kerja/alpha dan tidak kena potongan/bonus kehadiran.
+     */
+    function is_no_schedule_shift($code)
+    {
+        $code = strtoupper(trim((string) $code));
+        return in_array($code, ['-', 'NO-SC', 'NO SCHEDULE'], true);
+    }
+}

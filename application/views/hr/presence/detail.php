@@ -465,14 +465,16 @@ table tbody th {
                                             $s[$string_date]++;
 
                                         }else{
-                                            if($workday['type'] == 'work'){
+                                            if($workday['type'] == 'work' && !is_no_schedule_shift($workday['code'])){
                                                 $color = 'f46a6a';
                                                 $code  = $workday['code'];
                                                 $s[$string_date]++;
+                                                $total_work++;
 
-                                                if($workday['code'] != '-'){
-                                                    $total_work++;
-                                                }
+                                            }else if($workday['type'] == 'work'){
+                                                // No Schedule: bukan alpha, tampil abu-abu dgn kode shift (NO-SC / -)
+                                                $color = 'cdcdcd';
+                                                $code  = $workday['code'];
 
                                             }else{
                                                 $color = 'cdcdcd';
