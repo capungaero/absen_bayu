@@ -336,12 +336,8 @@ class leave extends CI_Controller{
 				$this->leave->update($data, $leave_id);
 
 				if($p['status'] == 'approve'){
-					// Aturan: leave_type='sakit' selalu dibayar penuh (potongan 0%),
-					// terlepas dari acc_potongan yang dipilih approver.
-					if($leave['leave_type'] == 'sakit'){
-						$potongan = 0;
-					}
-
+					// Potongan mengikuti yang di-approve (acc_potongan) apa adanya untuk
+					// semua jenis izin termasuk sakit. (Aturan "sakit selalu penuh" dihapus.)
 					$range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
 					$this->db->where('user_id', $leave['user_id'])
 							 ->where_in('flow_date', $range)
@@ -439,7 +435,7 @@ class leave extends CI_Controller{
 
 	// Edit detail pengajuan izin (super admin only). Bila status sudah approve,
 	// presence per tanggal di-sync ulang (hapus range lama+baru, isi range baru
-	// sesuai potongan; sakit selalu dibayar penuh seperti aturan approve).
+	// sesuai potongan yang di-approve untuk semua jenis izin).
 	public function edit($leave_id){
 		if(in_array($this->role, ['admin']) && $this->input->is_ajax_request()){
 			$tr = $this->leave->get_detail(['leave.id' => $leave_id]);
@@ -488,7 +484,7 @@ class leave extends CI_Controller{
 			], $leave_id);
 
 			if($leave['leave_status'] == 'approve'){
-				$potongan = ($p['leave_type'] == 'sakit') ? 0 : (int)$acc_potongan;
+				$potongan = (int)$acc_potongan;
 				$old_range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
 				$all = array_values(array_unique(array_merge($old_range, $range)));
 

@@ -216,7 +216,7 @@
                     <textarea name="leave_reason" class="form-control" rows="2"><?= htmlspecialchars($leave['leave_reason'], ENT_QUOTES, 'UTF-8') ?></textarea>
                 </div>
                 <?php if($leave['leave_status'] == 'approve'){ ?>
-                    <div class="alert alert-warning mb-0"><small><i class="fa fa-exclamation-triangle"></i> Izin ini sudah <b>Disetujui</b>. Menyimpan akan <b>memperbarui rekap absen</b> (presence) sesuai tanggal & potongan baru. Sakit selalu dibayar penuh.</small></div>
+                    <div class="alert alert-warning mb-0"><small><i class="fa fa-exclamation-triangle"></i> Izin ini sudah <b>Disetujui</b>. Menyimpan akan <b>memperbarui rekap absen & denda</b> (presence) sesuai tanggal & potongan baru.</small></div>
                 <?php } ?>
             </div>
             <div class="modal-footer">

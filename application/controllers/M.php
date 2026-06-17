@@ -509,16 +509,13 @@ class M extends CI_Controller {
 
         $this->db->trans_begin();
 
-        // Potongan: sakit selalu 0%, lainnya pakai request bila ada, jika tidak default.
+        // Potongan: pakai request bila ada, jika tidak default. Berlaku untuk semua
+        // jenis izin termasuk sakit (aturan "sakit selalu penuh" dihapus).
         $potongan = 0;
         if ($status == 'approve') {
-            if ($leave['leave_type'] == 'sakit') {
-                $potongan = 0;
-            } else {
-                $potongan = ($leave['request_potongan'] !== null && $leave['request_potongan'] !== '')
-                    ? (int)$leave['request_potongan']
-                    : (int)$leave['default_potongan'];
-            }
+            $potongan = ($leave['request_potongan'] !== null && $leave['request_potongan'] !== '')
+                ? (int)$leave['request_potongan']
+                : (int)$leave['default_potongan'];
         }
 
         $this->leave->update([
