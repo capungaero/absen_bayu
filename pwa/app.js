@@ -61,6 +61,7 @@ async function render(){
   try{
     if(state.tab==='schedule') await renderSchedule(c);
     else if(state.tab==='payroll') await renderPayroll(c);
+    else if(state.tab==='requests') await renderRequests(c);
     else await renderProfile(c);
   }catch(err){ c.innerHTML='<div class="empty">'+(err.message||'Terjadi kesalahan')+'</div>'; }
   loader(false);
@@ -161,6 +162,91 @@ async function renderProfile(c){
   html += '<button class="btn-logout" id="btnLogout">Keluar</button></div>';
   c.innerHTML = html;
   $('#btnLogout').onclick=function(){ if(confirm('Keluar dari aplikasi?')) logout(); };
+}
+
+/* ---------- PENGAJUAN ---------- */
+function fdate(s){ if(!s) return '-'; var p=s.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
+function cap(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
+function escapeHtml(s){ var d=document.createElement('div'); d.textContent=s==null?'':s; return d.innerHTML; }
+function statusBadge(st){ var m={pending:['s-pending','Menunggu'],approve:['s-ok','Disetujui'],deny:['s-no','Ditolak'],cancel:['s-no','Dibatalkan']}; return m[st]||['s-pending',cap(st)]; }
+function previewFile(input, sel){ var box=$(sel); box.innerHTML=''; if(input.files&&input.files[0]){ var img=document.createElement('img'); img.src=URL.createObjectURL(input.files[0]); box.appendChild(img); } }
+function toast(msg){ var t=el('<div class="toast">'+escapeHtml(msg)+'</div>'); document.body.appendChild(t);
+  setTimeout(function(){ t.classList.add('show'); },10); setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){t.remove();},300); },2600); }
+
+async function renderRequests(c){
+  var d = await api('/requests');
+  if(!d.status){ c.innerHTML='<div class="empty">'+(d.message||'Gagal memuat')+'</div>'; return; }
+  var html = '<div class="req-actions"><button class="req-btn req-leave" id="btnAjuIzin">＋ Ajukan Izin</button>'
+    + '<button class="req-btn req-ot" id="btnAjuLembur">＋ Ajukan Lembur</button></div>';
+  html += '<div class="section-title">Riwayat Izin</div>';
+  if(!d.leaves.length) html += '<div class="empty" style="padding:14px">Belum ada pengajuan izin.</div>';
+  d.leaves.forEach(function(l){ var s=statusBadge(l.status); var rng=l.start===l.end?fdate(l.start):fdate(l.start)+' – '+fdate(l.end);
+    html += '<div class="req-card"><div class="req-row"><div><b>'+cap(l.type)+'</b><div class="req-sub">'+rng+'</div></div><span class="sbadge '+s[0]+'">'+s[1]+'</span></div>'
+      + '<div class="req-reason">'+escapeHtml(l.reason)+'</div>'
+      + (l.reject?'<div class="req-reject">Ditolak: '+escapeHtml(l.reject)+'</div>':'')
+      + (l.proof?'<a class="req-proof" href="'+l.proof+'" target="_blank">📎 Lihat bukti</a>':'')+'</div>';
+  });
+  html += '<div class="section-title" style="margin-top:14px">Riwayat Lembur</div>';
+  if(!d.overtimes.length) html += '<div class="empty" style="padding:14px">Belum ada pengajuan lembur.</div>';
+  d.overtimes.forEach(function(o){ var s=statusBadge(o.status);
+    html += '<div class="req-card"><div class="req-row"><div><b>Lembur '+o.hour+' jam</b><div class="req-sub">'+fdate(o.date)+'</div></div><span class="sbadge '+s[0]+'">'+s[1]+'</span></div>'
+      + (o.reject?'<div class="req-reject">Ditolak: '+escapeHtml(o.reject)+'</div>':'')
+      + (o.proof?'<a class="req-proof" href="'+o.proof+'" target="_blank">📎 Lihat bukti</a>':'')+'</div>';
+  });
+  c.innerHTML = html;
+  $('#btnAjuIzin').onclick = openLeaveForm;
+  $('#btnAjuLembur').onclick = openOvertimeForm;
+}
+
+function makeSheet(inner){
+  var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet"><div class="sheet-handle"></div>'+inner+'</div></div>');
+  document.body.appendChild(sheet);
+  sheet.addEventListener('click', function(e){ if(e.target===sheet) sheet.remove(); });
+  return sheet;
+}
+
+function openLeaveForm(){
+  var today=new Date().toISOString().slice(0,10);
+  var sheet=makeSheet('<div class="sheet-title">Ajukan Izin</div><form id="leaveForm" class="reqform">'
+    + '<label>Jenis Izin</label><select name="leave_type" id="lvType"><option value="izin">Izin</option><option value="cuti">Cuti</option><option value="sakit">Sakit</option></select>'
+    + '<div class="form2"><div><label>Dari Tanggal</label><input type="date" name="leave_start" min="'+today+'" required></div>'
+    + '<div><label>Sampai Tanggal</label><input type="date" name="leave_end" min="'+today+'" required></div></div>'
+    + '<label>Alasan</label><textarea name="leave_reason" rows="2" required placeholder="Tulis alasan izin..."></textarea>'
+    + '<label>Foto Bukti / Dokumen <span class="muted" id="lvReq">(opsional · wajib untuk sakit)</span></label>'
+    + '<input type="file" name="leave_proof" id="lvFile" accept="image/*" capture="environment"><div id="lvPrev" class="filePrev"></div>'
+    + '<p class="msg" id="lvMsg"></p><button class="btn-primary" id="lvSubmit" type="submit">Kirim Pengajuan</button>'
+    + '<button class="btn-sheet-close" type="button" id="lvCancel">Batal</button></form>');
+  $('#lvCancel').onclick=function(){ sheet.remove(); };
+  $('#lvType').onchange=function(){ $('#lvReq').textContent = this.value==='sakit' ? '(WAJIB untuk sakit)' : '(opsional)'; };
+  $('#lvFile').onchange=function(){ previewFile(this,'#lvPrev'); };
+  $('#leaveForm').onsubmit=function(e){ e.preventDefault(); submitForm('/submit_leave', this, '#lvSubmit', '#lvMsg', function(){ sheet.remove(); }); };
+}
+
+function openOvertimeForm(){
+  var today=new Date().toISOString().slice(0,10);
+  var sheet=makeSheet('<div class="sheet-title">Ajukan Lembur</div><form id="otForm" class="reqform">'
+    + '<label>Tanggal Lembur</label><input type="date" name="overtime_date" max="'+today+'" required>'
+    + '<label>Lama Lembur (jam)</label><input type="number" name="overtime_hour" step="0.5" min="0.5" required placeholder="mis. 2">'
+    + '<label>Foto Bukti <span class="muted">(wajib)</span></label>'
+    + '<input type="file" name="overtime_proof" id="otFile" accept="image/*" capture="environment" required><div id="otPrev" class="filePrev"></div>'
+    + '<p class="msg" id="otMsg"></p><button class="btn-primary" id="otSubmit" type="submit">Kirim Pengajuan</button>'
+    + '<button class="btn-sheet-close" type="button" id="otCancel">Batal</button></form>');
+  $('#otCancel').onclick=function(){ sheet.remove(); };
+  $('#otFile').onchange=function(){ previewFile(this,'#otPrev'); };
+  $('#otForm').onsubmit=function(e){ e.preventDefault(); submitForm('/submit_overtime', this, '#otSubmit', '#otMsg', function(){ sheet.remove(); }); };
+}
+
+async function submitForm(path, form, btnSel, msgSel, onOk){
+  var btn=$(btnSel), msg=$(msgSel), orig=btn.textContent;
+  msg.textContent=''; msg.className='msg'; btn.disabled=true; btn.textContent='Mengirim...';
+  try{
+    var r = await fetch(API+path, {method:'POST', headers:{'Authorization':'Bearer '+token()}, body:new FormData(form)});
+    var data = await r.json();
+    if(r.status===401){ logout(); return; }
+    if(data.status){ onOk(); toast(data.message||'Pengajuan terkirim'); render(); }
+    else { msg.textContent=data.message||'Gagal mengirim'; msg.className='msg err'; }
+  }catch(err){ msg.textContent='Gagal terhubung ke server'; msg.className='msg err'; }
+  btn.disabled=false; btn.textContent=orig;
 }
 
 /* ---------- BOOT ---------- */

@@ -55,10 +55,13 @@ $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
 // API JSON untuk PWA karyawan (stateless, token bearer; CSRF dikecualikan di config)
-$route['api/login']    = 'Api/login';
-$route['api/profile']  = 'Api/profile';
-$route['api/schedule'] = 'Api/schedule';
-$route['api/payroll']  = 'Api/payroll';
+$route['api/login']           = 'Api/login';
+$route['api/profile']         = 'Api/profile';
+$route['api/schedule']        = 'Api/schedule';
+$route['api/payroll']         = 'Api/payroll';
+$route['api/requests']        = 'Api/requests';
+$route['api/submit_leave']    = 'Api/submit_leave';
+$route['api/submit_overtime'] = 'Api/submit_overtime';
 
 $route['authentication/login']  = 'Auth';
 $route['do_login']				= 'Auth/do_login';
