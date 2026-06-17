@@ -1,0 +1,17 @@
+{
+  "name": "E-Karyawan Tiffany",
+  "short_name": "E-Karyawan",
+  "description": "Jadwal shift & slip gaji karyawan Tiffany Houseware & Mart",
+  "lang": "id",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#5b73e8",
+  "theme_color": "#5b73e8",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

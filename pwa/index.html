@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5b73e8">
+<title>Karyawan Tiffany</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+
+<!-- LOGIN -->
+<section id="loginView" class="view login-view hidden">
+  <div class="login-box">
+    <div class="brand"><div class="brand-logo">T</div><h1>E-Karyawan</h1><p>Tiffany Houseware &amp; Mart</p></div>
+    <form id="loginForm">
+      <label>Email</label>
+      <input type="email" id="email" autocomplete="username" placeholder="email@anda.com" required>
+      <label>Password</label>
+      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••" required>
+      <button type="submit" id="loginBtn" class="btn-primary">Masuk</button>
+      <p id="loginMsg" class="msg"></p>
+    </form>
+  </div>
+</section>
+
+<!-- APP -->
+<section id="appView" class="view hidden">
+  <header class="topbar">
+    <div>
+      <div class="hello">Halo,</div>
+      <div class="uname" id="uName">-</div>
+    </div>
+    <img id="uPhoto" class="avatar" alt="" src="icons/icon-192.png">
+  </header>
+
+  <main id="content" class="content"></main>
+
+  <nav class="bottomnav">
+    <button class="nav-item active" data-tab="schedule"><span class="ico">🗓️</span><span>Jadwal</span></button>
+    <button class="nav-item" data-tab="payroll"><span class="ico">💰</span><span>Gaji</span></button>
+    <button class="nav-item" data-tab="profile"><span class="ico">👤</span><span>Profil</span></button>
+  </nav>
+</section>
+
+<div id="loader" class="loader hidden"><div class="spinner"></div></div>
+
+<script src="app.js?v=1"></script>
+</body>
+</html>

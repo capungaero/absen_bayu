@@ -470,7 +470,8 @@ $config['csrf_expire'] = 7200;
 // requests so pagination/search does not fail with stale-token 403 responses.
 $config['csrf_regenerate'] = FALSE;
 $config['csrf_exclude_uris'] = array(
-    'wa/cron/(.*)' // Cron endpoint dipanggil tanpa session, dilindungi token sendiri
+    'wa/cron/(.*)', // Cron endpoint dipanggil tanpa session, dilindungi token sendiri
+    'api/(.*)'      // API untuk PWA karyawan: stateless, dilindungi token bearer sendiri
 );
 
 /*
