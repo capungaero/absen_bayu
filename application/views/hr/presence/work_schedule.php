@@ -1347,6 +1347,19 @@ $(document).on('click', '.set-all-shift', function(){
     refreshGameBoard();
 });
 
+/* ===== Hanya submit sel jadwal yang BERUBAH =====
+   Grid besar (71 karyawan x 31 hari = 2200+ field) melebihi PHP max_input_vars,
+   sehingga field karyawan urutan akhir terpotong & tak tersimpan. Solusi: simpan
+   nilai awal tiap sel, lalu saat submit non-aktifkan sel yang tidak berubah agar
+   tidak ikut terkirim (sel yang tak dikirim dibiarkan apa adanya oleh server). */
+$('.schedule-select').each(function(){ this.setAttribute('data-orig', this.value); });
+$(document).on('submit', '#formManualWorkSchedule', function(){
+    $('.schedule-select').each(function(){
+        if(this.value === this.getAttribute('data-orig')){ this.disabled = true; }
+    });
+    return true; // lanjutkan submit native; sel disabled tidak terkirim
+});
+
 /* ===== Filter jadwal: nama, lokasi penempatan, posisi, tanggal ===== */
 function applyScheduleRowFilter(){
     var name = ($('#filterScheduleName').val() || '').toLowerCase().trim();
