@@ -92,6 +92,10 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
 .kv.pos .v{color:var(--green)} .kv.neg .v{color:var(--red)}
 .kv.total{border-top:2px solid var(--line);border-bottom:0;margin-top:4px;padding-top:10px;font-weight:800}
 .sub-head{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:10px 0 2px}
+.kv-click{cursor:pointer}
+.kv-click:active{background:#f7f8fd}
+.kv-chev{display:inline-block;color:#c2c8de;font-weight:700;margin-left:5px;transform:translateY(1px)}
+.muted2{color:var(--muted);font-weight:400;font-size:12px}
 .chips{display:flex;gap:8px;margin-top:10px}
 .chip{flex:1;background:#f5f6fc;border-radius:11px;padding:9px;text-align:center}
 .chip .n{font-size:17px;font-weight:800} .chip .l{font-size:11px;color:var(--muted)}

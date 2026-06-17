@@ -128,6 +128,7 @@ class Api extends CI_Controller {
         $smap = []; foreach($rows as $r){ $smap[$r['d']] = $r; }
 
         $pres = $this->db->select('flow_date, entry_time, out_time, entry_time_late, presence_type,
+                rest_time_out, rest_time_in, rest_time_late,
                 subuh_time_in, subuh_time_out, subuh_time_late, dzuhur_time_in, dzuhur_time_out, dzuhur_time_late,
                 ashar_time_in, ashar_time_out, ashar_time_late, maghrib_time_in, maghrib_time_out, maghrib_time_late,
                 isha_time_in, isha_time_out, isha_time_late, friday_time_in, friday_time_out, friday_time_late')
@@ -168,8 +169,15 @@ class Api extends CI_Controller {
                 'name'   => $is_work ? $s['shift_name'] : ($is_nosched ? 'No Schedule' : ($s ? 'Libur' : 'Belum dijadwalkan')),
                 'time'   => $is_work && $s['start_time'] ? substr($s['start_time'],0,5).' - '.substr($s['end_time'],0,5) : null,
                 'status' => $status,
-                'entry'  => $pr && $pr['entry_time'] ? substr($pr['entry_time'],11,5) : null,
-                'out'    => $pr && $pr['out_time'] ? substr($pr['out_time'],11,5) : null,
+                'entry'      => $pr && $pr['entry_time'] ? substr($pr['entry_time'],11,5) : null,
+                'out'        => $pr && $pr['out_time'] ? substr($pr['out_time'],11,5) : null,
+                'entry_late' => $pr ? (int)$pr['entry_time_late'] : 0,
+                // istirahat: rest_time_in = mulai istirahat (keluar), rest_time_out = kembali kerja (masuk)
+                'rest'   => [
+                    'keluar' => $pr && !empty($pr['rest_time_in'])  ? substr($pr['rest_time_in'],11,5)  : null,
+                    'masuk'  => $pr && !empty($pr['rest_time_out']) ? substr($pr['rest_time_out'],11,5) : null,
+                    'late'   => $pr ? (int)$pr['rest_time_late'] : 0,
+                ],
                 'pray'   => ['count'=>$prayCount, 'items'=>$prayItems],
             ];
         }
@@ -179,44 +187,107 @@ class Api extends CI_Controller {
     // GET api/payroll?year=
     public function payroll(){
         if(!$this->_auth()) return;
+        $uid  = $this->user['id'];
         $year = (int)($this->input->get('year') ?: date('Y'));
         $slips = $this->db->select('pd.*, p.month, p.year, p.is_final')
             ->from('payroll_detail pd')->join('payroll p','p.id=pd.payroll_id')
-            ->where('pd.user_id', $this->user['id'])->where('p.year', $year)->where('p.is_final','1')
+            ->where('pd.user_id', $uid)->where('p.year', $year)->where('p.is_final','1')
             ->order_by('p.month','DESC')->get()->result_array();
+
+        // Rekap sholat per bulan (jumlah & total menit) dari presensi approved tahun ini.
+        $prayKeys = ['subuh'=>'Subuh','dzuhur'=>'Dzuhur','ashar'=>'Ashar','maghrib'=>'Maghrib','isha'=>'Isya'];
+        $prows = $this->db->select('flow_date, subuh_time_in, subuh_time_out, dzuhur_time_in, dzuhur_time_out,
+                ashar_time_in, ashar_time_out, maghrib_time_in, maghrib_time_out, isha_time_in, isha_time_out,
+                friday_time_in, friday_time_out')
+            ->where('user_id', $uid)->where('YEAR(flow_date)', $year)
+            ->where('presence_status', 'approved')->get('presence')->result_array();
+        $prayAgg = [];
+        foreach($prows as $r){
+            $m = (int)substr($r['flow_date'], 5, 2);
+            // Sholat Jumat menggantikan dzuhur di hari Jumat.
+            $cols = ['subuh'=>'subuh','dzuhur'=>(!empty($r['friday_time_in'])?'friday':'dzuhur'),'ashar'=>'ashar','maghrib'=>'maghrib','isha'=>'isha'];
+            foreach($cols as $slot=>$col){
+                $in = $r[$col.'_time_in']; $ot = $r[$col.'_time_out'];
+                if(empty($in)) continue;
+                if(!isset($prayAgg[$m][$slot])) $prayAgg[$m][$slot] = ['c'=>0,'min'=>0];
+                $prayAgg[$m][$slot]['c']++;
+                if(!empty($ot)){ $d = (strtotime($ot)-strtotime($in))/60; if($d > 0) $prayAgg[$m][$slot]['min'] += $d; }
+            }
+        }
 
         $out = [];
         foreach($slips as $s){
-            $potongan_alpha = (int)$s['salary_basic_out_alfa'] + (int)$s['salary_basic_out_off_work'];
-            $potongan_lain  = (int)$s['salary_out_fine'] + (int)$s['salary_out_deduction'] + (int)$s['salary_out_health'] + (int)$s['salary_out_work'] + (int)$s['salary_out_together'] + (int)$s['salary_debt'];
-            $bonus = (int)$s['salary_in_overtime'] + (int)$s['salary_in_insentive'];
+            $mo = (int)$s['month'];
+
+            // ---- BONUS (Lembur + Insentif/Bonus yang bisa diklik untuk rincian komisi) ----
+            $insentif = $this->db->select('i.insentif_name nm, pi.insentif_amount amt')
+                ->from('payroll_insentif pi')->join('insentif i', 'i.id = pi.insentif_id', 'left')
+                ->where('pi.user_id', $uid)
+                ->where('pi.insentif_month', $mo)->where('pi.insentif_year', $year)
+                ->where('pi.insentif_amount >', 0)->order_by('pi.insentif_amount','DESC')->get()->result_array();
+            $insItems = []; foreach($insentif as $b){ $insItems[] = ['label'=>trim($b['nm']) ?: 'Insentif', 'value'=>(int)$b['amt']]; }
+
+            $bonus = [];
+            if((int)$s['salary_in_overtime'] > 0) $bonus[] = ['label'=>'Lembur', 'value'=>(int)$s['salary_in_overtime']];
+            $insTotal = (int)$s['salary_in_insentive'] ?: array_sum(array_column($insItems,'value'));
+            if($insTotal > 0){ $bonus[] = ['label'=>'Insentif / Bonus', 'value'=>$insTotal, 'items'=>$insItems]; }
+
+            // ---- POTONGAN (Denda kehadiran + Potongan lain, masing-masing bisa diklik) ----
+            $deduksi = $this->db->select('d.deduction_name nm, pd.deduction_amount amt, pd.deduction_note note')
+                ->from('payroll_deduction pd')->join('deduction d', 'd.id = pd.deduction_id', 'left')
+                ->where('pd.user_id', $uid)
+                ->where('pd.deduction_month', $mo)->where('pd.deduction_year', $year)
+                ->where('pd.deduction_amount >', 0)->order_by('pd.deduction_amount','DESC')->get()->result_array();
+            $dedItems = []; foreach($deduksi as $d){ $dedItems[] = ['label'=>(trim($d['nm']) ?: 'Potongan').($d['note'] ? ' ('.trim($d['note']).')' : ''), 'value'=>(int)$d['amt']]; }
+
+            $potongan = [];
+            // Denda kehadiran: telat + alpha + tidak masuk
+            $dendaItems = [];
+            if((int)$s['salary_out_fine'] > 0)           $dendaItems[] = ['label'=>'Denda Keterlambatan', 'value'=>(int)$s['salary_out_fine']];
+            if((int)$s['salary_basic_out_alfa'] > 0)     $dendaItems[] = ['label'=>'Potongan Alpha', 'value'=>(int)$s['salary_basic_out_alfa']];
+            if((int)$s['salary_basic_out_off_work'] > 0) $dendaItems[] = ['label'=>'Potongan Tidak Masuk', 'value'=>(int)$s['salary_basic_out_off_work']];
+            $dendaTotal = array_sum(array_column($dendaItems,'value'));
+            if($dendaTotal > 0){ $potongan[] = ['label'=>'Denda', 'value'=>$dendaTotal, 'items'=>$dendaItems]; }
+
+            // Potongan lain: payroll_deduction (BPJS, kasbon, dll). Fallback ke kolom agregat (data lama/demo).
+            if(!$dedItems){
+                foreach(['salary_out_health'=>'BPJS Kesehatan','salary_out_work'=>'BPJS Ketenagakerjaan','salary_out_together'=>'Iuran Bersama'] as $col=>$lbl){
+                    if(isset($s[$col]) && (int)$s[$col] > 0) $dedItems[] = ['label'=>$lbl, 'value'=>(int)$s[$col]];
+                }
+            }
+            $dedTotal = array_sum(array_column($dedItems,'value'));
+            if(!$dedTotal) $dedTotal = (int)$s['salary_out_deduction'];
+            if($dedTotal > 0){ $potongan[] = ['label'=>'Potongan Lain', 'value'=>$dedTotal, 'items'=>$dedItems]; }
+
+            $total_bonus = 0; foreach($bonus as $b){ $total_bonus += $b['value']; }
+            $total_potongan = 0; foreach($potongan as $pp){ $total_potongan += $pp['value']; }
+
+            // ---- Rekap sholat bulan ini ----
+            $sholat = []; $sholatTotal = 0;
+            foreach($prayKeys as $k=>$lbl){
+                $c  = isset($prayAgg[$mo][$k]) ? (int)$prayAgg[$mo][$k]['c'] : 0;
+                $mn = isset($prayAgg[$mo][$k]) ? (int)round($prayAgg[$mo][$k]['min']) : 0;
+                $sholat[] = ['label'=>$lbl, 'count'=>$c, 'minutes'=>$mn];
+                $sholatTotal += $c;
+            }
+
             $out[] = [
-                'month'      => (int)$s['month'],
+                'month'      => $mo,
                 'month_name' => get_monthname($s['month']),
                 'year'       => (int)$s['year'],
                 'thp'        => (int)$s['salary_thp'],
-                'total_bonus'    => $bonus,
-                'total_potongan' => $potongan_alpha + $potongan_lain,
-                'pendapatan' => [
-                    ['label'=>'Gaji Pokok', 'value'=>(int)$s['salary_in_basic']],
-                    ['label'=>'Lembur',     'value'=>(int)$s['salary_in_overtime']],
-                    ['label'=>'Insentif / Bonus', 'value'=>(int)$s['salary_in_insentive']],
-                ],
-                'potongan' => [
-                    ['label'=>'Potongan Alpha',     'value'=>(int)$s['salary_basic_out_alfa']],
-                    ['label'=>'Potongan Tdk Masuk', 'value'=>(int)$s['salary_basic_out_off_work']],
-                    ['label'=>'Denda',              'value'=>(int)$s['salary_out_fine']],
-                    ['label'=>'Potongan Lain',      'value'=>(int)$s['salary_out_deduction']],
-                    ['label'=>'BPJS Kesehatan',     'value'=>(int)$s['salary_out_health']],
-                    ['label'=>'BPJS Ketenagakerjaan','value'=>(int)$s['salary_out_work']],
-                    ['label'=>'Iuran Bersama',      'value'=>(int)$s['salary_out_together']],
-                    ['label'=>'Kasbon / Hutang',    'value'=>(int)$s['salary_debt']],
-                ],
+                'gaji_pokok' => (int)$s['salary_in_basic'],
+                'bonus'          => $bonus,
+                'potongan'       => $potongan,
+                'total_bonus'    => $total_bonus,
+                'total_potongan' => $total_potongan,
                 'kehadiran' => [
                     'hadir'      => (int)$s['presence_count'],
                     'telat'      => (int)$s['presence_count_on_late'],
                     'lembur_jam' => (float)$s['total_overtime_hour'],
                 ],
+                'sholat'       => $sholat,
+                'sholat_total' => $sholatTotal,
             ];
         }
         $this->_json(['status'=>true, 'year'=>$year, 'slips'=>$out]);

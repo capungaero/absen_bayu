@@ -110,10 +110,16 @@ async function renderSchedule(c){
 function openDayDetail(idx){
   var x = state.days && state.days[idx]; if(!x) return;
   var dateStr = x.day + ', ' + x.date.split('-').reverse().join('-');
+  function lateTag(m){ return m>0 ? ' <span class="late-tag">telat '+m+'m</span>' : ''; }
   var work;
   if(x.entry || x.out){
-    work = '<div class="kv"><span>Jam Masuk</span><span class="v">'+(x.entry||'—')+'</span></div>'
+    work = '<div class="kv"><span>Jam Masuk</span><span class="v">'+(x.entry||'—')+lateTag(x.entry_late)+'</span></div>'
          + '<div class="kv"><span>Jam Pulang</span><span class="v">'+(x.out||'—')+'</span></div>';
+    var rest = x.rest || {};
+    if(rest.keluar || rest.masuk){
+      work += '<div class="kv"><span>Istirahat Keluar</span><span class="v">'+(rest.keluar||'—')+'</span></div>'
+            + '<div class="kv"><span>Istirahat Masuk</span><span class="v">'+(rest.masuk||'—')+lateTag(rest.late)+'</span></div>';
+    }
   } else {
     work = '<div class="kv"><span>Absen kerja</span><span class="v" style="color:var(--muted)">'+(x.status==='off'?'Libur':'Tidak ada')+'</span></div>';
   }
@@ -143,30 +149,88 @@ function shiftMonth(n){
   render();
 }
 
+function fmtDur(m){ m=Number(m)||0; if(m<=0) return '-'; var h=Math.floor(m/60), mm=m%60; return (h?h+'j ':'')+(mm?mm+'m':(h?'':'0m')); }
+
+// Baris ringkasan; bila punya rincian (items) baris bisa diklik untuk buka detail.
+function payRow(cls, label, valTxt, grp, si, idx, clickable){
+  var chev = clickable ? '<span class="kv-chev">›</span>' : '';
+  var attr = clickable ? ' class="kv '+cls+' kv-click" data-grp="'+grp+'" data-si="'+si+'" data-idx="'+idx+'"' : ' class="kv '+cls+'"';
+  return '<div'+attr+'><span>'+escapeHtml(label)+chev+'</span><span class="v">'+valTxt+'</span></div>';
+}
+
 async function renderPayroll(c){
   var d = await api('/payroll?year='+state.payYear);
   if(!d.status){ c.innerHTML='<div class="empty">'+(d.message||'Gagal memuat gaji')+'</div>'; return; }
+  state.slips = d.slips;
   var html = '<div class="period-nav"><button id="yPrev">‹</button><div class="label">Tahun '+d.year+'</div><button id="yNext">›</button></div>';
   if(!d.slips.length){ html += '<div class="empty">Belum ada slip gaji final untuk tahun ini.</div>'; }
-  d.slips.forEach(function(s){
+  d.slips.forEach(function(s, si){
     html += '<div class="card">';
     html += '<div class="slip-thp"><div class="lbl">Take Home Pay</div><div class="amt">'+rp(s.thp)+'</div><div class="mo">'+s.month_name+' '+s.year+'</div></div>';
+    // PENDAPATAN
     html += '<div class="sub-head">Pendapatan</div>';
-    s.pendapatan.forEach(function(p){ if(p.value) html+='<div class="kv pos"><span>'+p.label+'</span><span class="v">'+rp(p.value)+'</span></div>'; });
-    html += '<div class="kv total"><span>Total Pendapatan + Bonus</span></div>';
+    html += '<div class="kv pos"><span>Gaji Pokok</span><span class="v">'+rp(s.gaji_pokok)+'</span></div>';
+    (s.bonus||[]).forEach(function(b, bi){
+      var clickable = b.items && b.items.length > 0;
+      html += payRow('pos', b.label, '+ '+rp(b.value), 'bonus', si, bi, clickable);
+    });
+    html += '<div class="kv total"><span>Total Pendapatan</span><span class="v" style="color:var(--green)">'+rp(s.gaji_pokok + s.total_bonus)+'</span></div>';
+    // POTONGAN
     html += '<div class="sub-head">Potongan</div>';
-    var anyCut=false;
-    s.potongan.forEach(function(p){ if(p.value){ anyCut=true; html+='<div class="kv neg"><span>'+p.label+'</span><span class="v">- '+rp(p.value)+'</span></div>'; } });
-    if(!anyCut) html+='<div class="kv"><span>Tidak ada potongan</span><span class="v">'+rp(0)+'</span></div>';
+    if(s.potongan && s.potongan.length){
+      s.potongan.forEach(function(p, pi){
+        var clickable = p.items && p.items.length > 0;
+        html += payRow('neg', p.label, '- '+rp(p.value), 'potongan', si, pi, clickable);
+      });
+    } else { html += '<div class="kv"><span style="color:var(--muted)">Tidak ada potongan</span><span class="v">'+rp(0)+'</span></div>'; }
     html += '<div class="kv total"><span>Total Potongan</span><span class="v" style="color:var(--red)">- '+rp(s.total_potongan)+'</span></div>';
+    // KEHADIRAN
     html += '<div class="chips"><div class="chip"><div class="n">'+s.kehadiran.hadir+'</div><div class="l">Hadir</div></div>'
       + '<div class="chip"><div class="n">'+s.kehadiran.telat+'</div><div class="l">Telat</div></div>'
       + '<div class="chip"><div class="n">'+s.kehadiran.lembur_jam+'</div><div class="l">Jam Lembur</div></div></div>';
+    // REKAP SHOLAT
+    if(s.sholat && s.sholat.length){
+      html += '<div class="sub-head">Rekap Sholat ('+(s.sholat_total||0)+'x)</div>';
+      s.sholat.forEach(function(sh){
+        html += '<div class="kv"><span>'+sh.label+'</span><span class="v">'
+          + (sh.count>0 ? sh.count+'x <span class="muted2">· '+fmtDur(sh.minutes)+'</span>' : '<span style="color:var(--muted)">0x</span>')
+          + '</span></div>';
+      });
+    }
     html += '</div>';
   });
   c.innerHTML = html;
   $('#yPrev').onclick=function(){ state.payYear--; render(); };
   $('#yNext').onclick=function(){ state.payYear++; render(); };
+  // Klik baris ringkasan → tampilkan rincian
+  c.querySelectorAll('.kv-click').forEach(function(row){
+    row.onclick=function(){
+      var s = state.slips[+row.dataset.si]; if(!s) return;
+      var item = s[row.dataset.grp][+row.dataset.idx]; if(!item) return;
+      openPayDetail(item, row.dataset.grp==='bonus');
+    };
+  });
+}
+
+// Bottom-sheet rincian bonus/potongan
+function openPayDetail(item, isBonus){
+  var sign = isBonus ? '+ ' : '- ';
+  var col  = isBonus ? 'var(--green)' : 'var(--red)';
+  var rows = (item.items||[]).map(function(it){
+    return '<div class="kv"><span>'+escapeHtml(it.label)+'</span><span class="v" style="color:'+col+'">'+sign+rp(it.value)+'</span></div>';
+  }).join('') || '<div class="kv"><span style="color:var(--muted)">Tidak ada rincian</span></div>';
+  var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet">'
+    + '<div class="sheet-handle"></div>'
+    + '<div class="sheet-title">'+escapeHtml(item.label)+'</div>'
+    + '<div class="sheet-sub">Rincian '+(isBonus?'pendapatan':'potongan')+'</div>'
+    + rows
+    + '<div class="kv total"><span>Total</span><span class="v" style="color:'+col+'">'+sign+rp(item.value)+'</span></div>'
+    + '<button class="btn-sheet-close" id="sheetClose">Tutup</button>'
+    + '</div></div>');
+  document.body.appendChild(sheet);
+  function close(){ sheet.classList.add('closing'); setTimeout(function(){ sheet.remove(); }, 180); }
+  sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+  document.getElementById('sheetClose').onclick=close;
 }
 
 async function renderProfile(c){
