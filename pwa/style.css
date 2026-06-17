@@ -26,6 +26,9 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
   color:#fff;font-size:16px;font-weight:700}
 .btn-primary:active{background:var(--primary-d)}
 .btn-primary:disabled{opacity:.6}
+.demo-wrap{text-align:center;margin-top:14px;border-top:1px dashed var(--line);padding-top:14px}
+.btn-demo{background:#eef0fb;color:var(--primary);border:1px solid #d6dbf5;border-radius:11px;padding:11px 16px;font-weight:700;font-size:14px;width:100%}
+.btn-demo:active{background:#e2e6fa}
 .msg{text-align:center;font-size:13px;margin:12px 0 0;min-height:18px}
 .msg.err{color:var(--red)} .msg.ok{color:var(--green)}
 
