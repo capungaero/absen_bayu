@@ -230,6 +230,7 @@ $route['hr/leave/acc']  = 'hr/Leave/acc';
 $route['hr/leave/acc/detail/(:num)'] = 'hr/Leave/detail_acc/$1';
 $route['change_status_leave/(:num)'] = 'hr/Leave/change_status/$1';
 $route['cancel_status_leave/(:num)'] = 'hr/Leave/cancel_status/$1';
+$route['edit_leave/(:num)'] = 'hr/Leave/edit/$1';
 
 // ============ ATTENDANCE ================
 $route['attendance']                    = 'Attendance/index';

@@ -436,4 +436,93 @@ class leave extends CI_Controller{
 			show_404();
 		}
 	}
+
+	// Edit detail pengajuan izin (super admin only). Bila status sudah approve,
+	// presence per tanggal di-sync ulang (hapus range lama+baru, isi range baru
+	// sesuai potongan; sakit selalu dibayar penuh seperti aturan approve).
+	public function edit($leave_id){
+		if(in_array($this->role, ['admin']) && $this->input->is_ajax_request()){
+			$tr = $this->leave->get_detail(['leave.id' => $leave_id]);
+			if($tr->num_rows() == 0){
+				echo json_encode(['status' => false, 'message' => 'Data izin tidak ditemukan']);
+				return;
+			}
+			$leave = $tr->row_array();
+			$p = $this->input->post();
+
+			$this->form_validation->set_data($p);
+			$this->form_validation->set_rules('leave_type', 'Jenis Izin', 'required|in_list[izin,cuti,sakit]');
+			$this->form_validation->set_rules('leave_start', 'Tanggal Mulai', 'required');
+			$this->form_validation->set_rules('leave_end', 'Tanggal Selesai', 'required');
+			$this->form_validation->set_rules('leave_reason', 'Alasan Izin', 'required');
+			if($this->form_validation->run() == FALSE){
+				echo json_encode(['status' => false, 'message' => strip_tags(validation_errors())]);
+				return;
+			}
+
+			$start = $p['leave_start'];
+			$end   = $p['leave_end'];
+			if(strtotime($end) < strtotime($start)){ $tmp = $start; $start = $end; $end = $tmp; }
+
+			$range = get_daterange_list($start, $end);
+			$totalDay = 0;
+			foreach($range as $d){ $totalDay += in_array(get_dayname($d), ['Sabtu', 'Minggu']) ? 2 : 1; }
+
+			$request_potongan = (isset($p['request_potongan']) && $p['request_potongan'] !== '') ? (int)$p['request_potongan'] : null;
+			$acc_potongan = $leave['acc_potongan'];
+			if($leave['leave_status'] == 'approve' && isset($p['acc_potongan']) && $p['acc_potongan'] !== ''){
+				$acc_potongan = (int)$p['acc_potongan'];
+			}
+
+			$this->db->trans_begin();
+			$this->leave->update([
+				'leave_type'           => $p['leave_type'],
+				'leave_start'          => $start,
+				'leave_end'            => $end,
+				'leave_range'          => diffInDays($start, $end) + 1,
+				'leave_reason'         => $p['leave_reason'],
+				'request_potongan'     => $request_potongan,
+				'jumlah_hari_potongan' => $totalDay,
+				'acc_potongan'         => $acc_potongan,
+				'updated_at'           => date('Y-m-d H:i:s'),
+			], $leave_id);
+
+			if($leave['leave_status'] == 'approve'){
+				$potongan = ($p['leave_type'] == 'sakit') ? 0 : (int)$acc_potongan;
+				$old_range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
+				$all = array_values(array_unique(array_merge($old_range, $range)));
+
+				$this->db->where('user_id', $leave['user_id'])
+						 ->where_in('flow_date', $all)
+						 ->delete('presence');
+
+				$now = date('Y-m-d H:i:s');
+				$presence = [];
+				foreach($range as $d){
+					$presence[] = [
+						'user_id'           => $leave['user_id'],
+						'flow_date'         => $d,
+						'created_at'        => $now,
+						'input_by'          => 'manual',
+						'presence_get_paid' => 100 - $potongan,
+						'presence_type'     => $p['leave_type'],
+						'presence_status'   => 'approved',
+						'input_by_user_id'  => $this->userdata->user_id,
+						'is_overtime'       => '0'
+					];
+				}
+				if(!empty($presence)){ $this->db->insert_batch('presence', $presence); }
+			}
+
+			if($this->db->trans_status()){
+				$this->db->trans_commit();
+				echo json_encode(['status' => true]);
+			}else{
+				$this->db->trans_rollback();
+				echo json_encode(['status' => false, 'message' => 'Terjadi kesalahan saat menyimpan']);
+			}
+		}else{
+			show_404();
+		}
+	}
 }

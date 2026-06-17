@@ -93,6 +93,9 @@
 
                             <div class="col-md-12 text-end">
                                  <a href="javascript:void(0)" data-bs-target="#modalPreview" data-bs-toggle="modal" class="btn btn-primary"><i class="fa fa-image"></i> Lihat Bukti Izin</a> &emsp;
+                                <?php if($role == 'admin'){ ?>
+                                    <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalEditLeave" class="btn btn-warning"><i class="fa fa-edit"></i> Edit Detail</a> &nbsp;
+                                <?php } ?>
                                 <?php if($leave['leave_status'] == 'pending'){ ?>
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalApprove" class="btn btn-success text-end bodyStatus"><i class="fa fa-check-circle"></i> Setujui</a> &nbsp;
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalDeny" class="btn btn-outline-danger text-end bodyStatus"><i class="fa fa-ban"></i> Tolak</a>
@@ -168,6 +171,82 @@
         </div><!-- /.modal-content -->
     </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
+
+<?php if($role == 'admin'){ ?>
+<form id="formEditLeave">
+<input type="hidden" name="<?php echo $this->security->get_csrf_token_name() ?>" value="<?php echo $this->security->get_csrf_hash() ?>">
+<div class="modal fade" id="modalEditLeave" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" style="color:#000"><i class="fa fa-edit"></i> Edit Detail Pengajuan Izin</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label><b>Jenis Izin</b></label>
+                    <select name="leave_type" class="form-control">
+                        <?php foreach(['izin'=>'Izin','cuti'=>'Cuti','sakit'=>'Sakit'] as $v=>$lbl){ ?>
+                            <option value="<?= $v ?>" <?= $leave['leave_type']==$v?'selected':'' ?>><?= $lbl ?></option>
+                        <?php } ?>
+                    </select>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-2">
+                        <label><b>Tanggal Mulai</b></label>
+                        <input type="date" name="leave_start" class="form-control" value="<?= $leave['leave_start'] ?>">
+                    </div>
+                    <div class="col-6 mb-2">
+                        <label><b>Tanggal Selesai</b></label>
+                        <input type="date" name="leave_end" class="form-control" value="<?= $leave['leave_end'] ?>">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-2">
+                        <label><b>Keringanan Potongan (%)</b></label>
+                        <input type="number" name="request_potongan" class="form-control" min="0" max="100" placeholder="kosong = tidak ada" value="<?= $leave['request_potongan'] ?>">
+                    </div>
+                    <div class="col-6 mb-2">
+                        <label><b>Potongan Diterima (%)</b></label>
+                        <input type="number" name="acc_potongan" class="form-control" min="0" max="100" value="<?= $leave['acc_potongan'] ?>">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label><b>Alasan Izin</b></label>
+                    <textarea name="leave_reason" class="form-control" rows="2"><?= htmlspecialchars($leave['leave_reason'], ENT_QUOTES, 'UTF-8') ?></textarea>
+                </div>
+                <?php if($leave['leave_status'] == 'approve'){ ?>
+                    <div class="alert alert-warning mb-0"><small><i class="fa fa-exclamation-triangle"></i> Izin ini sudah <b>Disetujui</b>. Menyimpan akan <b>memperbarui rekap absen</b> (presence) sesuai tanggal & potongan baru. Sakit selalu dibayar penuh.</small></div>
+                <?php } ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
+                <button class="btn btn-warning" id="btnEditLeave">Simpan Perubahan</button>
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+
+<script type="text/javascript">
+$(document).on('submit', '#formEditLeave', function(e){
+    e.preventDefault();
+    var btn = $('#btnEditLeave');
+    $.ajax({
+        url: "<?= site_url('edit_leave/'.$leave['id']) ?>",
+        dataType: "json", method: "POST",
+        data: new FormData(this), processData: false, contentType: false,
+        beforeSend: function(){ btn.html(show_loading()).attr('disabled','disabled'); },
+        success: function(res){
+            if(res.status){ window.location.reload(); }
+            else { alert(res.message || 'Gagal menyimpan perubahan'); }
+        },
+        complete: function(){ btn.html('Simpan Perubahan').removeAttr('disabled'); }
+    });
+    return false;
+});
+</script>
+<?php } ?>
 
 <?php if($leave['leave_status'] == 'pending'){ ?>
 
