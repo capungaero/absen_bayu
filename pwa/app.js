@@ -69,21 +69,56 @@ async function render(){
 async function renderSchedule(c){
   var d = await api('/schedule?month='+state.schedMonth+'&year='+state.schedYear);
   if(!d.status){ c.innerHTML='<div class="empty">'+(d.message||'Gagal memuat jadwal')+'</div>'; return; }
+  state.days = d.days;
   var html = '<div class="period-nav"><button id="pPrev">‹</button><div class="label">'+d.month_name+' '+d.year+'</div><button id="pNext">›</button></div>';
   var badgeMap={present:['b-present','Hadir'],late:['b-late','Telat'],absent:['b-absent','Alpha'],permit:['b-permit','Izin'],off:['b-off','Libur'],scheduled:['b-scheduled','Jadwal'],none:['b-none','-']};
-  d.days.forEach(function(x){
+  d.days.forEach(function(x,i){
     var b=badgeMap[x.status]||badgeMap.none;
     var sub = x.time ? x.time : x.name;
     if(x.entry) sub = 'Masuk '+x.entry+(x.out?' · Pulang '+x.out:'');
     var dd = x.date.slice(8,10);
-    html += '<div class="day-row '+(x.status==='off'?'day-off':'')+'">'
+    var pray = (x.pray && x.pray.count) ? '<span class="pray-pill">🕌 '+x.pray.count+'</span>' : '';
+    html += '<div class="day-row '+(x.status==='off'?'day-off':'')+'" data-idx="'+i+'">'
       + '<div class="day-date"><div class="d">'+dd+'</div><div class="w">'+x.day.slice(0,3)+'</div></div>'
-      + '<div class="day-main"><div class="day-shift">'+x.code+'</div><div class="day-sub">'+(sub||'-')+'</div></div>'
-      + '<div class="badge '+b[0]+'">'+b[1]+'</div></div>';
+      + '<div class="day-main"><div class="day-shift">'+x.code+pray+'</div><div class="day-sub">'+(sub||'-')+'</div></div>'
+      + '<div class="badge '+b[0]+'">'+b[1]+'</div><span class="chev">›</span></div>';
   });
   c.innerHTML = html;
   $('#pPrev').onclick=function(){ shiftMonth(-1); };
   $('#pNext').onclick=function(){ shiftMonth(1); };
+  c.querySelectorAll('.day-row').forEach(function(row){
+    row.addEventListener('click', function(){ openDayDetail(parseInt(row.dataset.idx,10)); });
+  });
+}
+
+function openDayDetail(idx){
+  var x = state.days && state.days[idx]; if(!x) return;
+  var dateStr = x.day + ', ' + x.date.split('-').reverse().join('-');
+  var work;
+  if(x.entry || x.out){
+    work = '<div class="kv"><span>Jam Masuk</span><span class="v">'+(x.entry||'—')+'</span></div>'
+         + '<div class="kv"><span>Jam Pulang</span><span class="v">'+(x.out||'—')+'</span></div>';
+  } else {
+    work = '<div class="kv"><span>Absen kerja</span><span class="v" style="color:var(--muted)">'+(x.status==='off'?'Libur':'Tidak ada')+'</span></div>';
+  }
+  var pray='';
+  (x.pray && x.pray.items || []).forEach(function(p){
+    var val = p.in ? (p.in + (p.out?' – '+p.out:' – —')) : '<span style="color:var(--muted)">Tidak absen</span>';
+    var late = p.late>0 ? ' <span class="late-tag">telat '+p.late+'m</span>' : '';
+    pray += '<div class="kv"><span>'+p.label+'</span><span class="v">'+val+late+'</span></div>';
+  });
+  var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet">'
+    + '<div class="sheet-handle"></div>'
+    + '<div class="sheet-title">'+dateStr+'</div>'
+    + '<div class="sheet-sub">'+x.code+' · '+x.name+(x.time?' ('+x.time+')':'')+'</div>'
+    + '<div class="sub-head">Absen Kerja</div>'+work
+    + '<div class="sub-head">Absen Sholat</div>'+(pray||'<div class="kv"><span style="color:var(--muted)">Tidak ada data sholat</span></div>')
+    + '<button class="btn-sheet-close" id="sheetClose">Tutup</button>'
+    + '</div></div>');
+  document.body.appendChild(sheet);
+  function close(){ sheet.classList.add('closing'); setTimeout(function(){ sheet.remove(); }, 180); }
+  sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+  document.getElementById('sheetClose').onclick=close;
 }
 function shiftMonth(n){
   state.schedMonth += n;

@@ -106,7 +106,10 @@ class Api extends CI_Controller {
             ->get('users_shift_additional')->result_array();
         $smap = []; foreach($rows as $r){ $smap[$r['d']] = $r; }
 
-        $pres = $this->db->select('flow_date, entry_time, out_time, entry_time_late, presence_type')
+        $pres = $this->db->select('flow_date, entry_time, out_time, entry_time_late, presence_type,
+                subuh_time_in, subuh_time_out, subuh_time_late, dzuhur_time_in, dzuhur_time_out, dzuhur_time_late,
+                ashar_time_in, ashar_time_out, ashar_time_late, maghrib_time_in, maghrib_time_out, maghrib_time_late,
+                isha_time_in, isha_time_out, isha_time_late, friday_time_in, friday_time_out, friday_time_late')
             ->where('user_id', $this->user['id'])->where('flow_date >=', $from)->where('flow_date <=', $to)
             ->where('presence_status', 'approved')->get('presence')->result_array();
         $pmap = []; foreach($pres as $p){ $pmap[$p['flow_date']] = $p; }
@@ -125,6 +128,18 @@ class Api extends CI_Controller {
                 else $status = 'scheduled';
             } else if($s){ $status = 'off'; }
 
+            // Rekap sholat hari ini (urut: subuh, dzuhur/jumat, ashar, maghrib, isya)
+            $friday = (get_dayname($d) === 'Jumat');
+            $prayDefs = [['subuh','Subuh'], ($friday ? ['friday','Jumat'] : ['dzuhur','Dzuhur']), ['ashar','Ashar'], ['maghrib','Maghrib'], ['isha','Isya']];
+            $prayItems = []; $prayCount = 0;
+            foreach($prayDefs as $pd){
+                $k = $pd[0];
+                $pin  = $pr && !empty($pr[$k.'_time_in'])  ? substr($pr[$k.'_time_in'], 11, 5)  : null;
+                $pout = $pr && !empty($pr[$k.'_time_out']) ? substr($pr[$k.'_time_out'], 11, 5) : null;
+                if($pin) $prayCount++;
+                $prayItems[] = ['label'=>$pd[1], 'in'=>$pin, 'out'=>$pout, 'late'=>$pr ? (int)$pr[$k.'_time_late'] : 0];
+            }
+
             $days[] = [
                 'date'   => $d,
                 'day'    => get_dayname($d),
@@ -134,6 +149,7 @@ class Api extends CI_Controller {
                 'status' => $status,
                 'entry'  => $pr && $pr['entry_time'] ? substr($pr['entry_time'],11,5) : null,
                 'out'    => $pr && $pr['out_time'] ? substr($pr['out_time'],11,5) : null,
+                'pray'   => ['count'=>$prayCount, 'items'=>$prayItems],
             ];
         }
         $this->_json(['status'=>true, 'month'=>(int)$month, 'year'=>$year, 'month_name'=>get_monthname($month), 'from'=>$from, 'to'=>$to, 'days'=>$days]);
