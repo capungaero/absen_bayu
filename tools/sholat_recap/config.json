@@ -1,0 +1,37 @@
+{
+  "_catatan": "Window jam sholat + toleransi per cabang. Sesuaikan dgn pengaturan cabang di app. Format jam 24h HH:MM.",
+  "cloud": {
+    "base_url": "http://solutioncloud.co.id/",
+    "machines": [
+      { "sn": "BWXP212161070", "pass": "solution", "name": "Mesin Sholat Sudirman", "type": "pray" },
+      { "sn": "6339163400576", "pass": "solution", "name": "Mesin Sholat Gambir",   "type": "pray" }
+    ]
+  },
+  "tolerance_minutes": 15,
+  "evaluate_prayers": ["dzuhur", "ashar", "maghrib"],
+  "default_branch": "RG",
+  "branches": {
+    "RG": {
+      "label": "TIFFANY HOUSEWARE SDR (Sudirman)",
+      "windows": {
+        "subuh":   ["04:49", "06:00"],
+        "dzuhur":  ["11:30", "15:26"],
+        "ashar":   ["15:27", "18:19"],
+        "maghrib": ["18:20", "19:29"],
+        "isha":    ["19:30", "23:59"],
+        "friday":  ["11:30", "15:20"]
+      }
+    },
+    "GBR": {
+      "label": "TIFFANY HOUSEWARE GBR (Gambir)",
+      "windows": {
+        "subuh":   ["04:49", "06:00"],
+        "dzuhur":  ["11:30", "15:50"],
+        "ashar":   ["15:51", "18:37"],
+        "maghrib": ["18:38", "19:29"],
+        "isha":    ["19:30", "23:59"],
+        "friday":  ["11:30", "15:20"]
+      }
+    }
+  }
+}

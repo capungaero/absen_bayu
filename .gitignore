@@ -13,6 +13,14 @@ rahasia.env
 
 # Kredensial & artefak kerja (jangan pernah di-commit)
 ftp.txt
+/setup_pc/
+
+# Tool rekap sholat — data runtime jangan di-commit (kode tetap boleh)
+/tools/sholat_recap/employees.csv
+/tools/sholat_recap/dat/
+/tools/sholat_recap/testdat/
+/tools/sholat_recap/*.dat
+/tools/sholat_recap/*.html
 application/config/email.local.php
 application/config/database.local.php
 /resume.md
@@ -113,6 +121,10 @@ test_db3.php
 # tidak accidentally expose data karyawan/jadwal yang juga di-stage di sini).
 !database/add_early_leave_columns.sql
 !database/backfill_sakit_presence_get_paid.sql
+
+# Allow kode tool rekap sholat (override *.csv & config.json di atas)
+!tools/sholat_recap/config.json
+!tools/sholat_recap/employees.sample.csv
 
 # User Guide
 /user_guide/
