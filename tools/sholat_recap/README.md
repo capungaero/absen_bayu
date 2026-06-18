@@ -22,16 +22,21 @@ bash export_employees.sh
 
 # 2. taruh file .dat mesin sholat ke folder, mis. ./dat/
 
-# 3. buat laporan (default: ringkasan + harian-detail):
-python recap.py --dat ./dat --employees employees.csv \
-       --from 2026-06-01 --to 2026-06-30
+# 3. buat laporan (default: BULAN INI + hanya karyawan AKTIF):
+python recap.py --dat ./dat --employees employees.csv
 
 # 4. buka di browser:
 #    laporan_sholat.html         -> ringkasan + rekap per karyawan
 #    laporan_sholat_harian.html  -> DETAIL HARIAN (per tanggal x karyawan x sholat)
 ```
-Opsi `--from`/`--to` boleh dikosongkan (otomatis ikut rentang data).
+**Default:** rentang = **bulan berjalan**, dan **karyawan non-aktif diabaikan**
+(finger yang tak ada di `employees.csv` di-skip). Atur dengan:
+- `--month 6 --year 2026` — pilih bulan tertentu.
+- `--from 2026-06-01 --to 2026-06-30` — rentang manual.
+- `--all-employees` — ikutkan finger yang tak ada di employees.csv (tampil sbg angka).
+
 Boleh beberapa sumber: `--dat ./dat fileA.dat fileB.dat`.
+> Agar status aktif akurat, perbarui `employees.csv` via `export_employees.sh`.
 
 **Pilih jenis laporan** dengan `--mode`:
 - `--mode both` (default): buat dua-duanya.

@@ -373,8 +373,12 @@ def main():
     ap.add_argument('--dat', nargs='+', required=True, help='Folder/berkas .dat mesin sholat')
     ap.add_argument('--employees', help='CSV: finger_id,name,branch')
     ap.add_argument('--config', default=os.path.join(os.path.dirname(__file__), 'config.json'))
-    ap.add_argument('--from', dest='dfrom', help='Tanggal mulai YYYY-MM-DD')
-    ap.add_argument('--to', dest='dto', help='Tanggal akhir YYYY-MM-DD')
+    ap.add_argument('--from', dest='dfrom', help='Tanggal mulai YYYY-MM-DD (default: awal bulan ini)')
+    ap.add_argument('--to', dest='dto', help='Tanggal akhir YYYY-MM-DD (default: akhir bulan ini)')
+    ap.add_argument('--month', type=int, help='Bulan (1-12) — alih-alih --from/--to')
+    ap.add_argument('--year', type=int, help='Tahun — dipakai bersama --month')
+    ap.add_argument('--all-employees', action='store_true',
+                    help='Sertakan finger yang tak ada di employees.csv (default: hanya karyawan aktif).')
     ap.add_argument('--out', default='laporan_sholat.html')
     ap.add_argument('--daily-out', dest='daily_out', default='laporan_sholat_harian.html')
     ap.add_argument('--mode', choices=['summary', 'daily', 'both'], default='both',
@@ -388,13 +392,32 @@ def main():
     eval_p = cfg.get('evaluate_prayers', ['dzuhur', 'ashar', 'maghrib'])
     default_branch = cfg.get('default_branch') or next(iter(cfg['branches']))
 
-    taps, files, tap_n = parse_dat(a.dat, a.dfrom, a.dto)
+    # Rentang tanggal: --month/--year, atau --from/--to, atau default BULAN INI.
+    dfrom, dto = a.dfrom, a.dto
+    if a.month:
+        y = a.year or date.today().year
+        dfrom = '%04d-%02d-01' % (y, a.month)
+        nm = date(y + (a.month == 12), (a.month % 12) + 1, 1)
+        dto = (date(nm.year, nm.month, 1) - __import__('datetime').timedelta(days=1)).isoformat()
+    if not dfrom or not dto:
+        t = date.today()
+        nm = date(t.year + (t.month == 12), (t.month % 12) + 1, 1)
+        eom = (nm - __import__('datetime').timedelta(days=1)).isoformat()
+        dfrom = dfrom or '%04d-%02d-01' % (t.year, t.month)
+        dto = dto or eom
+
     emp = load_employees(a.employees)
+    taps, files, tap_n = parse_dat(a.dat, dfrom, dto)
 
     data = {}
     workdays = 0
     all_dates = []
+    skipped_inactive = 0
     for finger, days in taps.items():
+        # Default: abaikan karyawan non-aktif (finger tak ada di employees.csv).
+        if not a.all_employees and emp and finger not in emp:
+            skipped_inactive += 1
+            continue
         info = emp.get(finger, {'name': finger, 'branch': ''})
         br = info['branch'] if info['branch'] in cfg['branches'] else default_branch
         windows = cfg['branches'][br]['windows']
@@ -410,7 +433,7 @@ def main():
         sys.exit('Tidak ada tap dalam rentang tanggal yang diberikan.')
 
     meta = {
-        'from': a.dfrom or min(all_dates), 'to': a.dto or max(all_dates),
+        'from': dfrom or min(all_dates), 'to': dto or max(all_dates),
         'now': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'file_n': len(files), 'tap_n': tap_n, 'tol_min': tol_min,
         'emp_n': len(data), 'workday_n': workdays, 'eval_prayers': eval_p,
@@ -427,9 +450,11 @@ def main():
 
     unmapped = sum(1 for f in data if f not in emp)
     print('OK: %s' % ', '.join(written))
-    print('  %d berkas, %d tap unik, %d karyawan, %d hari-kerja' % (
-        len(files), tap_n, len(data), workdays))
-    if unmapped:
+    print('  periode %s s/d %s · %d berkas · %d tap unik · %d karyawan · %d hari-kerja' % (
+        meta['from'], meta['to'], len(files), tap_n, len(data), workdays))
+    if skipped_inactive:
+        print('  %d finger non-aktif diabaikan (tak ada di employees.csv).' % skipped_inactive)
+    if unmapped and a.all_employees:
         print('  PERHATIAN: %d finger_id tak ada di employees.csv (tampil sebagai angka).' % unmapped)
 
 
