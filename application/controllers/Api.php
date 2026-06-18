@@ -8,11 +8,6 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Api extends CI_Controller {
 
-    // Demo / test tanpa login. Set DEMO_ENABLED=false untuk mematikan di produksi.
-    // DEMO_UID = akun karyawan DEMO khusus (data dummy, tidak membuka data karyawan asli).
-    const DEMO_ENABLED = true;
-    const DEMO_UID     = 1532;
-
     private $user = null;
 
     public function __construct(){
@@ -73,20 +68,6 @@ class Api extends CI_Controller {
         }
         $u = $this->ion_auth->user()->row();
         $this->ion_auth->logout(); // stateless: tidak pakai session, hanya token
-        $this->_json([
-            'status' => true,
-            'token'  => $this->apitoken->issue($u->id),
-            'user'   => ['name'=>trim($u->first_name.' '.$u->last_name), 'code'=>$u->employee_code]
-        ]);
-    }
-
-    // POST/GET api/demo_login — token akun demo tanpa kredensial (gated by flag)
-    public function demo_login(){
-        if(!self::DEMO_ENABLED || !self::DEMO_UID){
-            $this->_json(['status'=>false, 'message'=>'Mode demo dinonaktifkan'], 403); return;
-        }
-        $u = $this->db->where('id', self::DEMO_UID)->where('active', 1)->get('users')->row();
-        if(!$u){ $this->_json(['status'=>false, 'message'=>'Akun demo tidak ditemukan'], 404); return; }
         $this->_json([
             'status' => true,
             'token'  => $this->apitoken->issue($u->id),

@@ -56,7 +56,6 @@ $route['translate_uri_dashes'] = FALSE;
 
 // API JSON untuk PWA karyawan (stateless, token bearer; CSRF dikecualikan di config)
 $route['api/login']           = 'Api/login';
-$route['api/demo_login']      = 'Api/demo_login';
 $route['api/profile']         = 'Api/profile';
 $route['api/schedule']        = 'Api/schedule';
 $route['api/payroll']         = 'Api/payroll';

@@ -39,21 +39,6 @@ $('#loginForm').addEventListener('submit', async function(e){
   btn.disabled=false; btn.textContent='Masuk';
 });
 
-var demoBtn = $('#demoBtn');
-if(demoBtn){
-  demoBtn.addEventListener('click', async function(){
-    var msg=$('#loginMsg'); msg.textContent=''; msg.className='msg';
-    demoBtn.disabled=true; demoBtn.textContent='Memuat demo...';
-    try{
-      var res = await fetch(API+'/demo_login', {method:'POST'});
-      var data = await res.json();
-      if(data.status){ localStorage.setItem(TKEY, data.token); await boot(); }
-      else { msg.textContent=data.message||'Demo tidak tersedia'; msg.className='msg err'; }
-    }catch(err){ msg.textContent='Tidak bisa terhubung ke server'; msg.className='msg err'; }
-    demoBtn.disabled=false; demoBtn.textContent='▶ Coba Demo (tanpa login)';
-  });
-}
-
 function logout(){
   localStorage.removeItem(TKEY);
   $('#appView').classList.add('hidden');
