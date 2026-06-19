@@ -3,7 +3,7 @@
 var API = '/absen/api';
 var TKEY = 'tiffany_emp_token';
 
-var state = { tab:'schedule', user:null, schedMonth:(new Date()).getMonth()+1, schedYear:(new Date()).getFullYear(), payYear:(new Date()).getFullYear() };
+var state = { tab:'schedule', user:null, schedMonth:(new Date()).getMonth()+1, schedYear:(new Date()).getFullYear(), payMonth:(new Date()).getMonth()+1, payYear:(new Date()).getFullYear(), payCache:{} };
 
 function $(s){ return document.querySelector(s); }
 function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
@@ -38,6 +38,21 @@ $('#loginForm').addEventListener('submit', async function(e){
   }catch(err){ msg.textContent='Tidak bisa terhubung ke server'; msg.className='msg err'; }
   btn.disabled=false; btn.textContent='Masuk';
 });
+
+var demoBtn = $('#demoBtn');
+if(demoBtn){
+  demoBtn.addEventListener('click', async function(){
+    var msg=$('#loginMsg'); msg.textContent=''; msg.className='msg';
+    demoBtn.disabled=true; demoBtn.textContent='Memuat demo...';
+    try{
+      var res = await fetch(API+'/demo_login', {method:'POST'});
+      var data = await res.json();
+      if(data.status){ localStorage.setItem(TKEY, data.token); await boot(); }
+      else { msg.textContent=data.message||'Demo tidak tersedia'; msg.className='msg err'; }
+    }catch(err){ msg.textContent='Tidak bisa terhubung ke server'; msg.className='msg err'; }
+    demoBtn.disabled=false; demoBtn.textContent='▶ Coba Demo (tanpa login)';
+  });
+}
 
 function logout(){
   localStorage.removeItem(TKEY);
@@ -143,16 +158,42 @@ function payRow(cls, label, valTxt, grp, si, idx, clickable){
   return '<div'+attr+'><span>'+escapeHtml(label)+chev+'</span><span class="v">'+valTxt+'</span></div>';
 }
 
+var MONTH_NAMES = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+async function fetchPayYear(yr){
+  if(state.payCache[yr]) return state.payCache[yr];
+  var d = await api('/payroll?year='+yr);
+  if(!d.status) return null;
+  var map = {};
+  (d.slips||[]).forEach(function(s){ map[s.month] = s; });
+  state.payCache[yr] = map;
+  return map;
+}
+
+function payNav(delta){
+  var m = state.payMonth + delta;
+  var y = state.payYear;
+  if(m < 1){ m = 12; y--; }
+  if(m > 12){ m = 1; y++; }
+  state.payMonth = m; state.payYear = y;
+  render();
+}
+
 async function renderPayroll(c){
-  var d = await api('/payroll?year='+state.payYear);
-  if(!d.status){ c.innerHTML='<div class="empty">'+(d.message||'Gagal memuat gaji')+'</div>'; return; }
-  state.slips = d.slips;
-  var html = '<div class="period-nav"><button id="yPrev">‹</button><div class="label">Tahun '+d.year+'</div><button id="yNext">›</button></div>';
-  if(!d.slips.length){ html += '<div class="empty">Belum ada slip gaji final untuk tahun ini.</div>'; }
-  d.slips.forEach(function(s, si){
+  var yr = state.payYear, mo = state.payMonth;
+  var map = await fetchPayYear(yr);
+  if(!map){ c.innerHTML='<div class="empty">Gagal memuat data gaji</div>'; return; }
+  var s = map[mo] || null;
+
+  var html = '<div class="period-nav"><button id="yPrev">‹</button><div class="label">'+MONTH_NAMES[mo]+' '+yr+'</div><button id="yNext">›</button></div>';
+
+  if(!s){
+    html += '<div class="empty">Belum ada slip gaji final untuk bulan ini.</div>';
+  } else {
+    state.slips = [s];
+    var si = 0;
     html += '<div class="card">';
     html += '<div class="slip-thp"><div class="lbl">Take Home Pay</div><div class="amt">'+rp(s.thp)+'</div><div class="mo">'+s.month_name+' '+s.year+'</div></div>';
-    // PENDAPATAN
     html += '<div class="sub-head">Pendapatan</div>';
     html += '<div class="kv pos"><span>Gaji Pokok</span><span class="v">'+rp(s.gaji_pokok)+'</span></div>';
     (s.bonus||[]).forEach(function(b, bi){
@@ -160,7 +201,6 @@ async function renderPayroll(c){
       html += payRow('pos', b.label, '+ '+rp(b.value), 'bonus', si, bi, clickable);
     });
     html += '<div class="kv total"><span>Total Pendapatan</span><span class="v" style="color:var(--green)">'+rp(s.gaji_pokok + s.total_bonus)+'</span></div>';
-    // POTONGAN
     html += '<div class="sub-head">Potongan</div>';
     if(s.potongan && s.potongan.length){
       s.potongan.forEach(function(p, pi){
@@ -169,11 +209,9 @@ async function renderPayroll(c){
       });
     } else { html += '<div class="kv"><span style="color:var(--muted)">Tidak ada potongan</span><span class="v">'+rp(0)+'</span></div>'; }
     html += '<div class="kv total"><span>Total Potongan</span><span class="v" style="color:var(--red)">- '+rp(s.total_potongan)+'</span></div>';
-    // KEHADIRAN
     html += '<div class="chips"><div class="chip"><div class="n">'+s.kehadiran.hadir+'</div><div class="l">Hadir</div></div>'
       + '<div class="chip"><div class="n">'+s.kehadiran.telat+'</div><div class="l">Telat</div></div>'
       + '<div class="chip"><div class="n">'+s.kehadiran.lembur_jam+'</div><div class="l">Jam Lembur</div></div></div>';
-    // REKAP SHOLAT
     if(s.sholat && s.sholat.length){
       html += '<div class="sub-head">Rekap Sholat ('+(s.sholat_total||0)+'x)</div>';
       s.sholat.forEach(function(sh){
@@ -183,16 +221,20 @@ async function renderPayroll(c){
       });
     }
     html += '</div>';
-  });
+  }
   c.innerHTML = html;
-  $('#yPrev').onclick=function(){ state.payYear--; render(); };
-  $('#yNext').onclick=function(){ state.payYear++; render(); };
-  // Klik baris ringkasan → tampilkan rincian
+  $('#yPrev').onclick=function(){ payNav(-1); };
+  $('#yNext').onclick=function(){ payNav(1); };
   c.querySelectorAll('.kv-click').forEach(function(row){
     row.onclick=function(){
       var s = state.slips[+row.dataset.si]; if(!s) return;
-      var item = s[row.dataset.grp][+row.dataset.idx]; if(!item) return;
-      openPayDetail(item, row.dataset.grp==='bonus');
+      var grp = row.dataset.grp, idx = +row.dataset.idx;
+      var item = s[grp][idx]; if(!item) return;
+      if(grp==='potongan' && item.label==='Denda' && s.fine_detail){
+        openFineDetail(s.fine_detail, s.month_name+' '+s.year);
+      } else {
+        openPayDetail(item, grp==='bonus');
+      }
     };
   });
 }
@@ -201,9 +243,17 @@ async function renderPayroll(c){
 function openPayDetail(item, isBonus){
   var sign = isBonus ? '+ ' : '- ';
   var col  = isBonus ? 'var(--green)' : 'var(--red)';
-  var rows = (item.items||[]).map(function(it){
-    return '<div class="kv"><span>'+escapeHtml(it.label)+'</span><span class="v" style="color:'+col+'">'+sign+rp(it.value)+'</span></div>';
-  }).join('') || '<div class="kv"><span style="color:var(--muted)">Tidak ada rincian</span></div>';
+  var hasSub = (item.items||[]).some(function(it){ return !!it.sub; });
+  var rows;
+  if(hasSub){
+    rows = '<table class="fd-tbl">' + (item.items||[]).map(function(it){
+      return '<tr><td>'+escapeHtml(it.label)+'</td><td class="tc">'+escapeHtml(it.sub||'')+'</td><td class="tr" style="color:'+col+'">'+sign+rp(it.value)+'</td></tr>';
+    }).join('') + '</table>';
+  } else {
+    rows = (item.items||[]).map(function(it){
+      return '<div class="kv"><span>'+escapeHtml(it.label)+'</span><span class="v" style="color:'+col+'">'+sign+rp(it.value)+'</span></div>';
+    }).join('') || '<div class="kv"><span style="color:var(--muted)">Tidak ada rincian</span></div>';
+  }
   var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet">'
     + '<div class="sheet-handle"></div>'
     + '<div class="sheet-title">'+escapeHtml(item.label)+'</div>'
@@ -213,6 +263,119 @@ function openPayDetail(item, isBonus){
     + '<button class="btn-sheet-close" id="sheetClose">Tutup</button>'
     + '</div></div>');
   document.body.appendChild(sheet);
+  function close(){ sheet.classList.add('closing'); setTimeout(function(){ sheet.remove(); }, 180); }
+  sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+  document.getElementById('sheetClose').onclick=close;
+}
+
+// Format tanggal YYYY-MM-DD → "dd MMM YYYY"
+function fmtDate(s){
+  if(!s) return '-';
+  var m=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agt','Sep','Okt','Nov','Des'];
+  var p=s.split('-');
+  return parseInt(p[2],10)+' '+m[parseInt(p[1],10)-1]+' '+p[0];
+}
+
+// Detail denda bottom-sheet with tabs
+function openFineDetail(fd, period){
+  var d = fd.detail || {};
+  var entry = d.entry || {};
+  var rest = d.rest || {};
+  var pray = d.pray || {};
+  var leave = d.leave || {};
+
+  function tableRows(arr, minuteLabel){
+    if(!arr || !arr.length) return '<div class="fd-empty">Tidak ada data</div>';
+    return '<table class="fd-tbl">' + arr.map(function(r){
+      var mid = r.half ? 'Tdk finger' : ((parseInt(r.in_minute,10)||0)+' '+(minuteLabel||'Menit'));
+      return '<tr><td>'+fmtDate(r.date)+'</td><td class="tc">'+mid+'</td><td class="tr">'+rp(r.amount)+'</td></tr>';
+    }).join('') + '</table>';
+  }
+
+  function sectionBlock(title, count, amount, arr, minuteLabel){
+    if(!arr || !arr.length) return '';
+    return '<div class="fd-sec">'
+      + '<div class="fd-sec-title"><span>'+title+'</span><span class="fd-cnt">'+count+'x</span><span class="fd-amt">'+rp(amount)+'</span></div>'
+      + tableRows(arr, minuteLabel)
+      + '</div>';
+  }
+
+  // Tab: Kehadiran
+  var tabKehadiran = '';
+  var dayLate = (entry.day||{}).late || [];
+  var dayHalf = (entry.day||{}).half || [];
+  var dayEarly = (entry.day||{}).early_leave || [];
+  var dayWknd = (entry.day||{}).weekend || [];
+  var daySpecial = (entry.day||{}).special_double || [];
+  tabKehadiran += sectionBlock('Terlambat', dayLate.length, entry.amount_in_late||0, dayLate);
+  tabKehadiran += sectionBlock('Finger Tidak Lengkap', dayHalf.length, entry.amount_in_half||0, dayHalf);
+  tabKehadiran += sectionBlock('Pulang Lebih Awal', dayEarly.length, entry.amount_early_leave||0, dayEarly);
+  if(dayWknd.length){
+    tabKehadiran += '<div class="fd-sec"><div class="fd-sec-title"><span>Alpha Weekend</span><span class="fd-cnt">'+dayWknd.length+'x</span><span class="fd-amt">'+rp((entry.amount_in_weekend||0)-(entry.amount_in_special_double||0))+'</span></div>'
+      + '<table class="fd-tbl">' + dayWknd.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td class="tc">'+r.in_count+'x</td><td class="tr">'+rp(r.amount)+'</td></tr>'; }).join('') + '</table></div>';
+  }
+  if(daySpecial.length){
+    tabKehadiran += '<div class="fd-sec"><div class="fd-sec-title"><span>Alpha Tgl Khusus</span><span class="fd-cnt">'+daySpecial.length+'x</span><span class="fd-amt">'+rp(entry.amount_in_special_double||0)+'</span></div>'
+      + '<table class="fd-tbl">' + daySpecial.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td class="tc">'+r.in_count+'x</td><td class="tr">'+rp(r.amount)+'</td></tr>'; }).join('') + '</table></div>';
+  }
+  if(!tabKehadiran) tabKehadiran = '<div class="fd-empty">Tidak ada denda kehadiran</div>';
+
+  // Tab: Istirahat
+  var restLate = (rest.late) || [];
+  var tabIstirahat = sectionBlock('Telat Istirahat', restLate.length, (rest.total||{}).in_fine||0, restLate);
+  if(!tabIstirahat) tabIstirahat = '<div class="fd-empty">Tidak ada denda istirahat</div>';
+
+  // Tab: Sholat
+  var prayNames = {subuh:'Subuh',dzuhur:'Dzuhur',ashar:'Ashar',maghrib:'Maghrib',isha:'Isya',friday:'Jumat'};
+  var prayDetail = (pray.detail) || {};
+  var tabSholat = '';
+  Object.keys(prayDetail).forEach(function(pk){
+    var pv = prayDetail[pk];
+    if(!pv.late || !pv.late.length) return;
+    tabSholat += sectionBlock(prayNames[pk]||pk, pv.late.length, (pv.total||{}).amount||0, pv.late);
+  });
+  if(!tabSholat) tabSholat = '<div class="fd-empty">Tidak ada denda sholat</div>';
+
+  // Tab: Izin
+  var leaveTypes = (leave.type) || {};
+  var leaveNames = {izin:'Izin',sakit:'Sakit',cuti:'Cuti'};
+  var tabIzin = '';
+  Object.keys(leaveTypes).forEach(function(lk){
+    var lv = leaveTypes[lk];
+    if(!lv.day || !lv.day.length) return;
+    tabIzin += '<div class="fd-sec"><div class="fd-sec-title"><span>'+(leaveNames[lk]||lk)+'</span><span class="fd-cnt">'+lv.day.length+'x</span><span class="fd-amt">'+rp(lv.total_amount||0)+'</span></div>'
+      + '<table class="fd-tbl">' + lv.day.map(function(d){ return '<tr><td>'+fmtDate(d.date)+'</td><td class="tc">'+d.percent+'%</td><td class="tr">'+rp(d.amount)+'</td></tr>'; }).join('') + '</table></div>';
+  });
+  if(!tabIzin) tabIzin = '<div class="fd-empty">Tidak ada denda izin</div>';
+
+  var tabs = [
+    {id:'kehadiran', label:'Kehadiran', content:tabKehadiran},
+    {id:'istirahat', label:'Istirahat', content:tabIstirahat},
+    {id:'sholat', label:'Sholat', content:tabSholat},
+    {id:'izin', label:'Izin', content:tabIzin}
+  ];
+
+  var tabBtns = tabs.map(function(t,i){ return '<button class="fd-tab'+(i===0?' active':'')+'" data-tab="'+t.id+'">'+t.label+'</button>'; }).join('');
+  var tabPanels = tabs.map(function(t,i){ return '<div class="fd-panel" id="fdp-'+t.id+'" style="'+(i>0?'display:none':'')+'">'+t.content+'</div>'; }).join('');
+
+  var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet fd-sheet">'
+    + '<div class="sheet-handle"></div>'
+    + '<div class="sheet-title" style="display:flex;align-items:center;gap:6px"><span style="font-size:18px">📋</span> Detail Denda — '+escapeHtml(period)+'</div>'
+    + '<div class="fd-total-box"><div class="fd-total-label">Total Denda</div><div class="fd-total-val">'+rp(fd.amount)+'</div></div>'
+    + '<div class="fd-tabs">'+tabBtns+'</div>'
+    + tabPanels
+    + '<button class="btn-sheet-close" id="sheetClose">Tutup</button>'
+    + '</div></div>');
+
+  document.body.appendChild(sheet);
+  sheet.querySelectorAll('.fd-tab').forEach(function(btn){
+    btn.onclick = function(){
+      sheet.querySelectorAll('.fd-tab').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      sheet.querySelectorAll('.fd-panel').forEach(function(p){ p.style.display='none'; });
+      sheet.querySelector('#fdp-'+btn.dataset.tab).style.display='';
+    };
+  });
   function close(){ sheet.classList.add('closing'); setTimeout(function(){ sheet.remove(); }, 180); }
   sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
   document.getElementById('sheetClose').onclick=close;

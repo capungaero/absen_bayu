@@ -8,6 +8,9 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Api extends CI_Controller {
 
+    const DEMO_ENABLED = true;
+    const DEMO_UID     = 1532;
+
     private $user = null;
 
     public function __construct(){
@@ -68,6 +71,20 @@ class Api extends CI_Controller {
         }
         $u = $this->ion_auth->user()->row();
         $this->ion_auth->logout(); // stateless: tidak pakai session, hanya token
+        $this->_json([
+            'status' => true,
+            'token'  => $this->apitoken->issue($u->id),
+            'user'   => ['name'=>trim($u->first_name.' '.$u->last_name), 'code'=>$u->employee_code]
+        ]);
+    }
+
+    // POST/GET api/demo_login
+    public function demo_login(){
+        if(!self::DEMO_ENABLED || !self::DEMO_UID){
+            $this->_json(['status'=>false, 'message'=>'Mode demo dinonaktifkan'], 403); return;
+        }
+        $u = $this->db->where('id', self::DEMO_UID)->where('active', 1)->get('users')->row();
+        if(!$u){ $this->_json(['status'=>false, 'message'=>'Akun demo tidak ditemukan'], 404); return; }
         $this->_json([
             'status' => true,
             'token'  => $this->apitoken->issue($u->id),
@@ -208,8 +225,26 @@ class Api extends CI_Controller {
                 ->where('pi.insentif_amount >', 0)->order_by('pi.insentif_amount','DESC')->get()->result_array();
             $insItems = []; foreach($insentif as $b){ $insItems[] = ['label'=>trim($b['nm']) ?: 'Insentif', 'value'=>(int)$b['amt']]; }
 
+            // Lembur detail per tanggal
+            $otRows = $this->db->select('overtime_date, overtime_hour')
+                ->where('user_id', $uid)->where('overtime_status', 'approve')
+                ->where('MONTH(overtime_date)', $mo)->where('YEAR(overtime_date)', $year)
+                ->order_by('overtime_date','DESC')->get('overtime')->result_array();
+            $otItems = [];
+            $otRate = (int)($this->user['overtime_hour_rate'] ?: 0);
+            foreach($otRows as $ot){
+                $jam = (float)$ot['overtime_hour'];
+                $otItems[] = [
+                    'label' => date('d M Y', strtotime($ot['overtime_date'])),
+                    'sub'   => rtrim(rtrim(number_format($jam,1,',',''),'0'),',').' jam',
+                    'value' => (int)round($jam * $otRate)
+                ];
+            }
+
             $bonus = [];
-            if((int)$s['salary_in_overtime'] > 0) $bonus[] = ['label'=>'Lembur', 'value'=>(int)$s['salary_in_overtime']];
+            if((int)$s['salary_in_overtime'] > 0){
+                $bonus[] = ['label'=>'Lembur', 'value'=>(int)$s['salary_in_overtime'], 'items'=>$otItems];
+            }
             $insTotal = (int)$s['salary_in_insentive'] ?: array_sum(array_column($insItems,'value'));
             if($insTotal > 0){ $bonus[] = ['label'=>'Insentif / Bonus', 'value'=>$insTotal, 'items'=>$insItems]; }
 
@@ -252,6 +287,8 @@ class Api extends CI_Controller {
                 $sholatTotal += $c;
             }
 
+            $fine_detail = !empty($s['payroll_fine']) ? json_decode($s['payroll_fine'], true) : null;
+
             $out[] = [
                 'month'      => $mo,
                 'month_name' => get_monthname($s['month']),
@@ -262,6 +299,7 @@ class Api extends CI_Controller {
                 'potongan'       => $potongan,
                 'total_bonus'    => $total_bonus,
                 'total_potongan' => $total_potongan,
+                'fine_detail'    => $fine_detail,
                 'kehadiran' => [
                     'hadir'      => (int)$s['presence_count'],
                     'telat'      => (int)$s['presence_count_on_late'],

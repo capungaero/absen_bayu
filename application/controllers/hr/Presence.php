@@ -1966,13 +1966,16 @@ class Presence extends CI_Controller{
 
 				if(!isset($input[$employee['id']][$date])){
 					$input[$employee['id']][$date] = attlog_payload_pray();
+					$input[$employee['id']][$date]['flag'] = true; // ada tap dari mesin → clear-then-set tetap jalan meski semua tap di luar window
 				}
 
 				$friday = get_dayname($date) == 'Jumat';
 				sort($row['time']);
 				foreach($row['time'] as $time){
 					$d_day = $date.' '.$time;
+					$assigned = false; // satu tap hanya boleh masuk satu prayer slot
 					foreach($prayer as $pray){
+						if($assigned){ break; }
 						if(($friday && $pray == 'dzuhur') || (!$friday && $pray == 'friday')){
 							continue;
 						}
@@ -1985,7 +1988,7 @@ class Presence extends CI_Controller{
 						foreach($param as $par){
 							if($input[$employee['id']][$date][$pray.'_time_'.$par] == '' && $time >= $pray_in && $time <= $pray_out){
 								$input[$employee['id']][$date][$pray.'_time_'.$par] = $d_day;
-								$input[$employee['id']][$date]['flag'] = true;
+								$assigned = true;
 								break;
 							}
 						}
@@ -2025,9 +2028,8 @@ class Presence extends CI_Controller{
 				// sholat untuk row ini. Sholat yang tidak punya tap di window saat ini
 				// dikosongkan (NULL), sehingga perubahan window jam sholat otomatis
 				// tercermin pada sync berikutnya tanpa perlu recompute manual.
-				// Aman karena tiap karyawan absen di satu mesin sholat: bila mesinnya
-				// ikut ter-download, semua tap hari itu ada; bila gagal, row ini tidak
-				// ber-flag (tanpa tap) sehingga di-skip di atas dan tidak ditimpa.
+				// Flag di-set saat inisialisasi (ada tap dari mesin), bukan hanya saat
+				// tap cocok window — sehingga orphan dari window lama ikut ter-clear.
 				$update = [];
 				foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'] as $pray){
 					$p_in  = $pray_data[$pray.'_time_in'];
