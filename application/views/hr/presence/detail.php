@@ -1021,6 +1021,25 @@ table tbody th {
 </form>
 <?php } ?>
 
+<div class="modal fade" id="modalSyncStaleConfirm" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title text-white"><i class="fa fa-exclamation-triangle"></i> Mesin Data Basi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="staleConfirmMsg" class="mb-2"></p>
+                <p class="text-muted mb-0 small">Kemungkinan mesin sedang offline atau gagal push ke Solution Cloud. Tetap proses data lama?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-warning" id="btnConfirmForceStale">Proses Tetap</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="modalUpload" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" role="dialog" aria-labelledby="staticBackdropLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -1615,69 +1634,59 @@ table tbody th {
             return false;
         });
 
-        $(document).on('click', '#btnSyncCloud', function(e){
-            e.preventDefault();
-
-            var btn = $('#btnSyncCloud');
-            var originalText = btn.html();
-
+        function doSyncAjax(url, data, btn, originalText, loadingMsg){
             $.ajax({
-                url      : "<?= site_url('sync_presence_cloud') ?>",
+                url      : url,
                 dataType : "json",
                 method   : "POST",
-                data     : buildSyncData(true),
+                data     : data,
                 beforeSend : function(){
                     $('#btnModalUpload, #btnSyncCloud, #btnSyncPrayCloud, #btnClearPresence').attr('disabled', 'disabled').addClass('disabled');
-                    btn.html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Sync reguler...');
-                    show_modal('info', 'Sedang mengambil data presensi reguler dari mesin absensi. Mohon tunggu sampai proses selesai.');
+                    btn.html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> ' + loadingMsg);
+                    show_modal('info', 'Sedang mengambil data dari mesin absensi. Mohon tunggu...');
                 },
                 success : function(res){
-                    var type = (res.status) ? 'success' : 'info';
-                    show_modal(type, res.message);
-
-                    if(res.status){
-                        window.location.reload();
+                    if(res.needs_confirm){
+                        // Ada mesin basi — tanya admin sebelum proses
+                        $('#modal-info').modal('hide');
+                        $('#staleConfirmMsg').html(res.message);
+                        $('#btnConfirmForceStale').off('click').on('click', function(){
+                            $('#modalSyncStaleConfirm').modal('hide');
+                            var forceData = $.extend({}, data, { force_stale: '1' });
+                            doSyncAjax(url, forceData, btn, originalText, loadingMsg);
+                        });
+                        $('#modalSyncStaleConfirm').modal('show');
+                        return;
                     }
+                    show_modal(res.status ? 'success' : 'info', res.message);
+                    if(res.status){ window.location.reload(); }
                 },
                 complete : function(){
                     $('#btnModalUpload, #btnSyncCloud, #btnSyncPrayCloud, #btnClearPresence').removeAttr('disabled').removeClass('disabled');
                     btn.html(originalText);
                 }
             });
+        }
 
+        $(document).on('click', '#btnSyncCloud', function(e){
+            e.preventDefault();
+            var btn = $(this);
+            doSyncAjax(
+                "<?= site_url('sync_presence_cloud') ?>",
+                buildSyncData(true),
+                btn, btn.html(), 'Sync reguler...'
+            );
             return false;
         });
 
         $(document).on('click', '#btnSyncPrayCloud', function(e){
             e.preventDefault();
-
-            var btn = $('#btnSyncPrayCloud');
-            var originalText = btn.html();
-
-            $.ajax({
-                url      : "<?= site_url('sync_pray_cloud') ?>",
-                dataType : "json",
-                method   : "POST",
-                data     : buildSyncData(false),
-                beforeSend : function(){
-                    $('#btnModalUpload, #btnSyncCloud, #btnSyncPrayCloud, #btnClearPresence').attr('disabled', 'disabled').addClass('disabled');
-                    btn.html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Sync sholat...');
-                    show_modal('info', 'Sedang mengambil data presensi sholat dari mesin BWXP212161070. Mohon tunggu sampai proses selesai.');
-                },
-                success : function(res){
-                    var type = (res.status) ? 'success' : 'info';
-                    show_modal(type, res.message);
-
-                    if(res.status){
-                        window.location.reload();
-                    }
-                },
-                complete : function(){
-                    $('#btnModalUpload, #btnSyncCloud, #btnSyncPrayCloud, #btnClearPresence').removeAttr('disabled').removeClass('disabled');
-                    btn.html(originalText);
-                }
-            });
-
+            var btn = $(this);
+            doSyncAjax(
+                "<?= site_url('sync_pray_cloud') ?>",
+                buildSyncData(false),
+                btn, btn.html(), 'Sync sholat...'
+            );
             return false;
         });
 

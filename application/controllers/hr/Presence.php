@@ -1446,9 +1446,20 @@ class Presence extends CI_Controller{
 			}
 
 			// Validasi kesegaran: dump dengan tap terbaru < hari ini menandakan mesin
-			// gagal push ke Solution (offline). Manual: tetap diproses + peringatan.
+			// gagal push ke Solution (offline). Manual: minta konfirmasi admin dulu.
 			$today = date('Y-m-d');
 			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, false);
+
+			// Jika ada mesin basi & admin belum konfirmasi → tanya dulu, jangan proses
+			if(!empty($fresh['stale']) && !$this->input->post('force_stale')){
+				echo json_encode([
+					'status'        => false,
+					'needs_confirm' => true,
+					'message'       => $fresh['note']
+				]);
+				return;
+			}
+
 			$process_machines = $fresh['process'];
 			if(empty($process_machines)){
 				echo json_encode([
@@ -1515,9 +1526,20 @@ class Presence extends CI_Controller{
 				return;
 			}
 
-			// Validasi kesegaran (sama dgn presensi kerja). Manual: proses + peringatan.
+			// Validasi kesegaran (sama dgn presensi kerja). Manual: minta konfirmasi admin dulu.
 			$today = date('Y-m-d');
 			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, false);
+
+			// Jika ada mesin basi & admin belum konfirmasi → tanya dulu, jangan proses
+			if(!empty($fresh['stale']) && !$this->input->post('force_stale')){
+				echo json_encode([
+					'status'        => false,
+					'needs_confirm' => true,
+					'message'       => $fresh['note']
+				]);
+				return;
+			}
+
 			$process_machines = $fresh['process'];
 			if(empty($process_machines)){
 				echo json_encode([
