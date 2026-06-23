@@ -104,6 +104,8 @@ application/config/database.local.php
 .mcp.json
 claude-flow.config.json
 /telegram-bridge/
+*.rvf
+*.rvf.lock
 
 # Tests
 /tests/tests/

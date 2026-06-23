@@ -21,12 +21,26 @@ class Presence extends CI_Controller{
 		$this->load->library('cloud_attlog_client');
 		$this->load->library('attlog_parser');
 
-		if(!$this->ion_auth->logged_in()){
-			redirect('');
-		}
+		if(is_cli()){
+			// Mode CLI (cron sync_cron). Tidak ada sesi login; akses hanya mungkin
+			// dari shell server. Pakai identitas admin pertama untuk created_by log.
+			$this->role = 'admin';
+			$admin = $this->db->select('users.id')
+				->from('users')
+				->join('users_groups', 'users_groups.user_id = users.id')
+				->join('groups', 'groups.id = users_groups.group_id')
+				->where('groups.name', 'admin')
+				->order_by('users.id', 'ASC')
+				->get()->row();
+			$this->userdata = (object)['id' => $admin ? (int)$admin->id : 0, 'branch_id' => 0];
+		}else{
+			if(!$this->ion_auth->logged_in()){
+				redirect('');
+			}
 
-		$this->role     = $this->ion_auth->get_users_groups()->row()->name;
-		$this->userdata = $this->ion_auth->user()->row();
+			$this->role     = $this->ion_auth->get_users_groups()->row()->name;
+			$this->userdata = $this->ion_auth->user()->row();
+		}
 	}
 
 	private function _resolve_branch_id($posted_branch_id = null){
@@ -1431,8 +1445,21 @@ class Presence extends CI_Controller{
 				return;
 			}
 
-			$dat_files = $this->_save_cloud_attlog_files($download['machines'], $month, $year);
-			$excel = $this->_build_attlog_excel($download['machines'], $branch_id, $month, $year, $sync_from_date, $sync_to_date);
+			// Validasi kesegaran: dump dengan tap terbaru < hari ini menandakan mesin
+			// gagal push ke Solution (offline). Manual: tetap diproses + peringatan.
+			$today = date('Y-m-d');
+			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, false);
+			$process_machines = $fresh['process'];
+			if(empty($process_machines)){
+				echo json_encode([
+					'status' => false,
+					'message' => 'Tidak ada mesin dengan data valid untuk diproses.'
+				]);
+				return;
+			}
+
+			$dat_files = $this->_save_cloud_attlog_files($process_machines, $month, $year);
+			$excel = $this->_build_attlog_excel($process_machines, $branch_id, $month, $year, $sync_from_date, $sync_to_date);
 			if(!$excel['status']){
 				echo json_encode($excel);
 				return;
@@ -1441,11 +1468,19 @@ class Presence extends CI_Controller{
 			$use_schedule = !isset($p['use_schedule']) || $p['use_schedule'] == '1';
 			$result = $this->_import_presence_sheet($excel['sheet_data'], $branch_id, 'sync', $month, $year, $use_schedule);
 
+			$pruned = $this->_prune_attlog_files();
+
 			$messages = [];
 			$messages[] = 'File DAT tersimpan: '.implode(', ', array_map('basename', $dat_files)).'.';
 			$messages[] = 'File Excel otomatis: '.basename($excel['path']).' ('.$excel['total_rows'].' log dari '.$excel['from'].' s/d '.$excel['to'].', '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
+			if(!empty($fresh['note'])){
+				$messages[] = '⚠️ '.$fresh['note'].' Data tetap diproses (mode manual) — periksa apakah mesin online.';
+			}
 			if(!empty($download['failed'])){
 				$messages[] = 'Mesin gagal: '.implode(', ', $download['failed']).'.';
+			}
+			if($pruned > 0){
+				$messages[] = 'File .dat lama dibersihkan: '.$pruned.' (disisakan 1 terbaru per mesin).';
 			}
 			$messages[] = $result['message'];
 
@@ -1480,8 +1515,20 @@ class Presence extends CI_Controller{
 				return;
 			}
 
-			$dat_files = $this->_save_cloud_attlog_files($download['machines'], $month, $year);
-			$excel = $this->_build_attlog_excel($download['machines'], $branch_id, $month, $year, $sync_from_date, $sync_to_date);
+			// Validasi kesegaran (sama dgn presensi kerja). Manual: proses + peringatan.
+			$today = date('Y-m-d');
+			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, false);
+			$process_machines = $fresh['process'];
+			if(empty($process_machines)){
+				echo json_encode([
+					'status' => false,
+					'message' => 'Tidak ada mesin sholat dengan data valid untuk diproses.'
+				]);
+				return;
+			}
+
+			$dat_files = $this->_save_cloud_attlog_files($process_machines, $month, $year);
+			$excel = $this->_build_attlog_excel($process_machines, $branch_id, $month, $year, $sync_from_date, $sync_to_date);
 			if(!$excel['status']){
 				echo json_encode($excel);
 				return;
@@ -1489,11 +1536,19 @@ class Presence extends CI_Controller{
 
 			$result = $this->_import_pray_sheet($excel['sheet_data'], $branch_id, $month, $year, 'sync_pray');
 
+			$pruned = $this->_prune_attlog_files();
+
 			$messages = [];
 			$messages[] = 'File DAT sholat tersimpan: '.implode(', ', array_map('basename', $dat_files)).'.';
 			$messages[] = 'File Excel sholat otomatis: '.basename($excel['path']).' ('.$excel['total_rows'].' log dari '.$excel['from'].' s/d '.$excel['to'].', '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
+			if(!empty($fresh['note'])){
+				$messages[] = '⚠️ '.$fresh['note'].' Data tetap diproses (mode manual) — periksa apakah mesin online.';
+			}
 			if(!empty($download['failed'])){
 				$messages[] = 'Mesin gagal: '.implode(', ', $download['failed']).'.';
+			}
+			if($pruned > 0){
+				$messages[] = 'File .dat lama dibersihkan: '.$pruned.' (disisakan 1 terbaru per mesin).';
 			}
 			$messages[] = $result['message'];
 
@@ -1504,6 +1559,108 @@ class Presence extends CI_Controller{
 		}else{
 			show_404();
 		}
+	}
+
+	/**
+	 * Sync otomatis untuk cron server (R3). HANYA bisa dijalankan via CLI:
+	 *   /usr/local/bin/php index.php hr/presence/sync_cron
+	 * Memakai ulang seluruh logika sync manual (single source of truth) dengan
+	 * strict freshness = TRUE: mesin dengan dump basi (tap terbaru bukan hari ini)
+	 * dilewati dan .dat-nya tidak disimpan. Periode = bulan berjalan, semua cabang.
+	 */
+	public function sync_cron(){
+		if(!is_cli()){
+			show_404();
+			return;
+		}
+
+		// Lock anti-overlap: kalau run sebelumnya belum selesai, keluar.
+		$lock_path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'absen_sync_cron.lock';
+		$lock = fopen($lock_path, 'c');
+		if($lock === false || !flock($lock, LOCK_EX | LOCK_NB)){
+			fwrite(STDOUT, "[".date('Y-m-d H:i:s')."] Instance sync_cron lain masih berjalan, keluar.\n");
+			return;
+		}
+
+		$log = function($m){ fwrite(STDOUT, '['.date('Y-m-d H:i:s').'] '.$m."\n"); };
+
+		$month  = date('m');
+		$year   = date('Y');
+		$today  = date('Y-m-d');
+		$period = attlog_presence_period_range($month, $year);
+		$from   = $period['from'];
+		$to     = $period['to'];
+
+		$branches = $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
+		$log("=== sync_cron mulai (periode $from s/d $to, ".count($branches)." cabang aktif) ===");
+
+		if(empty($branches)){
+			$log('Tidak ada cabang aktif. Berhenti.');
+			flock($lock, LOCK_UN); fclose($lock);
+			return;
+		}
+		$primary = (int)$branches[0]['id'];
+
+		// ---- PRESENSI KERJA: download global, import global, recalc tiap cabang ----
+		$download = $this->_download_cloud_attlogs();
+		if($download === false){
+			$log('ATTENDANCE: gagal download semua mesin Solution Cloud.');
+		}else{
+			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, true);
+			if(!empty($fresh['stale'])){ $log('ATTENDANCE dump basi dilewati: '.implode(', ', $fresh['stale'])); }
+			if(!empty($download['failed'])){ $log('ATTENDANCE mesin gagal login: '.implode(', ', $download['failed'])); }
+
+			if(empty($fresh['process'])){
+				$log('ATTENDANCE: tidak ada mesin dengan data segar hari ini, dilewati.');
+			}else{
+				$this->_save_cloud_attlog_files($fresh['process'], $month, $year);
+				$excel = $this->_build_attlog_excel($fresh['process'], $primary, $month, $year, $from, $to);
+				if(!$excel['status']){
+					$log('ATTENDANCE: '.$excel['message']);
+				}else{
+					$res = $this->_import_presence_sheet($excel['sheet_data'], $primary, 'sync', $month, $year, true);
+					$log('ATTENDANCE import: '.strip_tags($res['message']));
+					// Import sudah recalc cabang primary; recalc cabang lain.
+					foreach($branches as $i => $b){
+						if($i === 0){ continue; }
+						$n = $this->_recalc_period_lateness((int)$b['id']);
+						if($n > 0){ $log('Recalc keterlambatan '.$b['branch_name'].': '.$n.' baris.'); }
+					}
+				}
+			}
+		}
+
+		// ---- PRESENSI SHOLAT: download global, import PER cabang (window per cabang) ----
+		$pray = $this->_download_pray_cloud_attlogs();
+		if($pray === false){
+			$log('PRAY: gagal download / tidak ada mesin sholat aktif.');
+		}else{
+			$fresh = $this->_attlog_partition_fresh($pray['machines'], $today, true);
+			if(!empty($fresh['stale'])){ $log('PRAY dump basi dilewati: '.implode(', ', $fresh['stale'])); }
+			if(!empty($pray['failed'])){ $log('PRAY mesin gagal login: '.implode(', ', $pray['failed'])); }
+
+			if(empty($fresh['process'])){
+				$log('PRAY: tidak ada mesin dengan data segar hari ini, dilewati.');
+			}else{
+				$this->_save_cloud_attlog_files($fresh['process'], $month, $year);
+				$excel = $this->_build_attlog_excel($fresh['process'], $primary, $month, $year, $from, $to);
+				if(!$excel['status']){
+					$log('PRAY: '.$excel['message']);
+				}else{
+					foreach($branches as $b){
+						$res = $this->_import_pray_sheet($excel['sheet_data'], (int)$b['id'], $month, $year, 'sync_pray');
+						$log('PRAY '.$b['branch_name'].': '.strip_tags($res['message']));
+					}
+				}
+			}
+		}
+
+		$pruned = $this->_prune_attlog_files();
+		if($pruned > 0){ $log("Pembersihan .dat lama: $pruned file (disisakan 1 terbaru per mesin)."); }
+
+		$log('=== sync_cron selesai ===');
+		flock($lock, LOCK_UN);
+		fclose($lock);
 	}
 
 	public function clear_period(){
@@ -1604,6 +1761,66 @@ class Presence extends CI_Controller{
 			$paths[] = $path;
 		}
 		return $paths;
+	}
+
+	/**
+	 * Pisahkan mesin "segar" vs "basi" berdasarkan tanggal tap terbaru di dump.
+	 * Basi = tap terbaru < hari ini → mesin kemungkinan offline / gagal push ke
+	 * Solution Cloud sehingga cloud menyajikan dump lama.
+	 *   - $strict TRUE  (cron otomatis) : mesin basi DIBUANG dari proses + .dat dihapus.
+	 *   - $strict FALSE (sync manual)   : mesin basi TETAP diproses, hanya diberi catatan.
+	 * Return ['process' => [...mesin yang diproses...], 'stale' => [label...], 'note' => string].
+	 */
+	private function _attlog_partition_fresh($machines, $today, $strict){
+		$process = [];
+		$stale = [];
+		foreach($machines as $machine){
+			$latest = attlog_latest_tap_date($machine['raw']);
+			$is_fresh = ($latest !== null && $latest >= $today);
+			if($is_fresh){
+				$process[] = $machine;
+				continue;
+			}
+			$stale[] = $machine['sn'].' (data terakhir: '.($latest !== null ? $latest : 'tidak terbaca').')';
+			if(!$strict){
+				$process[] = $machine; // manual: tetap diproses dengan peringatan
+			}
+		}
+		return [
+			'process' => $process,
+			'stale'   => $stale,
+			'note'    => empty($stale) ? '' : 'Mesin dump basi (tap terbaru bukan '.$today.'): '.implode(', ', $stale).'.'
+		];
+	}
+
+	/**
+	 * Sisakan $keep_per_machine file .dat TERBARU per mesin (berdasarkan mtime),
+	 * hapus sisanya dari seluruh pohon uploads/attendance. File terbaru tetap
+	 * dipertahankan sebagai jejak audit + sumber fitur Check Fingers.
+	 * Return jumlah file terhapus.
+	 */
+	private function _prune_attlog_files($keep_per_machine = 1){
+		$base = FCPATH.'uploads'.DIRECTORY_SEPARATOR.'attendance';
+		$pattern = $base.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.'attlog_*.dat';
+		$files = glob($pattern);
+		if(empty($files)){ return 0; }
+
+		$by_sn = [];
+		foreach($files as $file){
+			if(preg_match('/attlog_(.+)_\d{8}_\d{6}\.dat$/', basename($file), $m)){
+				$by_sn[$m[1]][] = $file;
+			}
+		}
+
+		$deleted = 0;
+		foreach($by_sn as $list){
+			if(count($list) <= $keep_per_machine){ continue; }
+			usort($list, function($a, $b){ return filemtime($b) - filemtime($a); });
+			foreach(array_slice($list, $keep_per_machine) as $old){
+				if(@unlink($old)){ $deleted++; }
+			}
+		}
+		return $deleted;
 	}
 
 	private function _normalize_sync_from_date($month, $year, $date){

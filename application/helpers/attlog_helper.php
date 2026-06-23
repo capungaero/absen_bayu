@@ -106,6 +106,32 @@ if ( ! function_exists('attlog_payload_pray'))
     }
 }
 
+if ( ! function_exists('attlog_latest_tap_date'))
+{
+    /**
+     * Tanggal tap TERBARU (Y-m-d) di seluruh isi .dat, tanpa filter periode.
+     * Dipakai sebagai bukti kesegaran/keaktifan mesin: kalau tap terbaru bukan
+     * hari ini, dump kemungkinan basi (mesin offline / gagal push ke Solution
+     * Cloud). Return null kalau tidak ada baris valid.
+     */
+    function attlog_latest_tap_date($raw)
+    {
+        $lines = preg_split('/\r\n|\r|\n/', (string) $raw);
+        $max = null;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') { continue; }
+            $cols = preg_split('/\s+/', $line);
+            if (count($cols) < 3) { continue; }
+            $timestamp = strtotime($cols[1].' '.$cols[2]);
+            if (!$timestamp) { continue; }
+            $date = date('Y-m-d', $timestamp);
+            if ($max === null || $date > $max) { $max = $date; }
+        }
+        return $max;
+    }
+}
+
 if ( ! function_exists('attlog_presence_period_range'))
 {
     /**

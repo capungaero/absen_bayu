@@ -8,7 +8,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Api extends CI_Controller {
 
-    const DEMO_ENABLED = true;
+    const DEMO_ENABLED = false;
     const DEMO_UID     = 1532;
 
     private $user = null;
@@ -254,7 +254,34 @@ class Api extends CI_Controller {
                 ->where('pd.user_id', $uid)
                 ->where('pd.deduction_month', $mo)->where('pd.deduction_year', $year)
                 ->where('pd.deduction_amount >', 0)->order_by('pd.deduction_amount','DESC')->get()->result_array();
-            $dedItems = []; foreach($deduksi as $d){ $dedItems[] = ['label'=>(trim($d['nm']) ?: 'Potongan').($d['note'] ? ' ('.trim($d['note']).')' : ''), 'value'=>(int)$d['amt']]; }
+            // Early-leave presence detail for this month
+            $earlyRows = $this->db->select('flow_date, entry_time, out_time, early_leave_short_minutes')
+                ->where('user_id', $uid)->where('MONTH(flow_date)', $mo)->where('YEAR(flow_date)', $year)
+                ->where('is_early_leave', 1)->where('presence_status', 'approved')
+                ->order_by('flow_date','ASC')->get('presence')->result_array();
+            $earlyDays = [];
+            $dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+            foreach($earlyRows as $er){
+                $ts = strtotime($er['flow_date']);
+                $earlyDays[] = [
+                    'date'  => date('d M Y', $ts),
+                    'day'   => $dayNames[(int)date('w', $ts)],
+                    'in'    => $er['entry_time'] ? date('H:i', strtotime($er['entry_time'])) : '-',
+                    'out'   => $er['out_time']   ? date('H:i', strtotime($er['out_time']))   : '-',
+                    'short' => (int)$er['early_leave_short_minutes']
+                ];
+            }
+
+            $dedItems = [];
+            foreach($deduksi as $d){
+                $nm = trim($d['nm']) ?: 'Potongan';
+                $label = $nm.($d['note'] ? ' ('.trim($d['note']).')' : '');
+                $item = ['label'=>$label, 'value'=>(int)$d['amt']];
+                if(stripos($nm, 'pulang lebih awal') !== false || stripos($nm, 'kekurangan jam') !== false){
+                    $item['days'] = $earlyDays;
+                }
+                $dedItems[] = $item;
+            }
 
             $potongan = [];
             // Denda kehadiran: telat + alpha + tidak masuk
@@ -289,12 +316,29 @@ class Api extends CI_Controller {
 
             $fine_detail = !empty($s['payroll_fine']) ? json_decode($s['payroll_fine'], true) : null;
 
+            $gajiDetail = [
+                'gaji_full'   => (int)$s['salary_basic_in_full'],
+                'hadir'       => (int)$s['presence_count'],
+                'max_hadir'   => (int)$s['presence_max'],
+                'tepat_waktu' => (int)$s['presence_count_on_time'],
+                'telat'       => (int)$s['presence_count_on_late'],
+                'setengah'    => (int)$s['presence_count_on_half'],
+                'cuti'        => (int)$s['presence_count_on_cuti'],
+                'sakit'       => (int)$s['presence_count_on_sakit'],
+                'izin'        => (int)$s['presence_count_on_izin'],
+                'alpha_weekday' => (int)$s['presence_off_count_on_weekdays'],
+                'alpha_weekend' => (int)$s['presence_off_count_on_weekend'],
+                'pot_alpha'   => (int)$s['salary_basic_out_alfa'],
+                'pot_off'     => (int)$s['salary_basic_out_off_work'],
+            ];
+
             $out[] = [
                 'month'      => $mo,
                 'month_name' => get_monthname($s['month']),
                 'year'       => (int)$s['year'],
                 'thp'        => (int)$s['salary_thp'],
                 'gaji_pokok' => (int)$s['salary_in_basic'],
+                'gaji_detail'=> $gajiDetail,
                 'bonus'          => $bonus,
                 'potongan'       => $potongan,
                 'total_bonus'    => $total_bonus,

@@ -94,9 +94,21 @@ async function renderSchedule(c){
     if(x.entry) sub = 'Masuk '+x.entry+(x.out?' · Pulang '+x.out:'');
     var dd = x.date.slice(8,10);
     var pray = (x.pray && x.pray.count) ? '<span class="pray-pill">🕌 '+x.pray.count+'</span>' : '';
+    // Cek tidak lengkap
+    var warns = [];
+    var hasEntry = !!x.entry, hasOut = !!x.out;
+    if((hasEntry && !hasOut) || (!hasEntry && hasOut)) warns.push('absen tdk lengkap');
+    var rest = x.rest || {};
+    if((rest.keluar && !rest.masuk) || (!rest.keluar && rest.masuk)) warns.push('istirahat tdk lengkap');
+    var prayIncomplete = false;
+    (x.pray && x.pray.items || []).forEach(function(p){
+      if((p.in && !p.out) || (!p.in && p.out)) prayIncomplete = true;
+    });
+    if(prayIncomplete) warns.push('sholat tdk lengkap');
+    var warnHtml = warns.length ? '<div class="day-warn">'+warns.join(' · ')+'</div>' : '';
     html += '<div class="day-row '+(x.status==='off'?'day-off':'')+'" data-idx="'+i+'">'
       + '<div class="day-date"><div class="d">'+dd+'</div><div class="w">'+x.day.slice(0,3)+'</div></div>'
-      + '<div class="day-main"><div class="day-shift">'+x.code+pray+'</div><div class="day-sub">'+(sub||'-')+'</div></div>'
+      + '<div class="day-main"><div class="day-shift">'+x.code+pray+'</div><div class="day-sub">'+(sub||'-')+'</div>'+warnHtml+'</div>'
       + '<div class="badge '+b[0]+'">'+b[1]+'</div><span class="chev">›</span></div>';
   });
   c.innerHTML = html;
@@ -111,21 +123,39 @@ function openDayDetail(idx){
   var x = state.days && state.days[idx]; if(!x) return;
   var dateStr = x.day + ', ' + x.date.split('-').reverse().join('-');
   function lateTag(m){ return m>0 ? ' <span class="late-tag">telat '+m+'m</span>' : ''; }
+  var tl = '<span class="tl-tag">tidak lengkap</span>';
   var work;
   if(x.entry || x.out){
-    work = '<div class="kv"><span>Jam Masuk</span><span class="v">'+(x.entry||'—')+lateTag(x.entry_late)+'</span></div>'
-         + '<div class="kv"><span>Jam Pulang</span><span class="v">'+(x.out||'—')+'</span></div>';
+    var entryVal = (x.entry||'—')+lateTag(x.entry_late);
+    var outVal = x.out||'—';
+    if(x.entry && !x.out) outVal = '— '+tl;
+    if(!x.entry && x.out) entryVal = '— '+tl;
+    work = '<div class="kv"><span>Jam Masuk</span><span class="v">'+entryVal+'</span></div>'
+         + '<div class="kv"><span>Jam Pulang</span><span class="v">'+outVal+'</span></div>';
     var rest = x.rest || {};
     if(rest.keluar || rest.masuk){
-      work += '<div class="kv"><span>Istirahat Keluar</span><span class="v">'+(rest.keluar||'—')+'</span></div>'
-            + '<div class="kv"><span>Istirahat Masuk</span><span class="v">'+(rest.masuk||'—')+lateTag(rest.late)+'</span></div>';
+      var rOutVal = rest.keluar||'—';
+      var rInVal = (rest.masuk||'—')+lateTag(rest.late);
+      if(rest.keluar && !rest.masuk) rInVal = '— '+tl;
+      if(!rest.keluar && rest.masuk) rOutVal = '— '+tl;
+      work += '<div class="kv"><span>Istirahat Keluar</span><span class="v">'+rOutVal+'</span></div>'
+            + '<div class="kv"><span>Istirahat Masuk</span><span class="v">'+rInVal+'</span></div>';
     }
   } else {
     work = '<div class="kv"><span>Absen kerja</span><span class="v" style="color:var(--muted)">'+(x.status==='off'?'Libur':'Tidak ada')+'</span></div>';
   }
   var pray='';
   (x.pray && x.pray.items || []).forEach(function(p){
-    var val = p.in ? (p.in + (p.out?' – '+p.out:' – —')) : '<span style="color:var(--muted)">Tidak absen</span>';
+    var val;
+    if(p.in && p.out){
+      val = p.in+' – '+p.out;
+    } else if(p.in && !p.out){
+      val = p.in+' – — '+tl;
+    } else if(!p.in && p.out){
+      val = '— – '+p.out+' '+tl;
+    } else {
+      val = '<span style="color:var(--muted)">Tidak absen</span>';
+    }
     var late = p.late>0 ? ' <span class="late-tag">telat '+p.late+'m</span>' : '';
     pray += '<div class="kv"><span>'+p.label+'</span><span class="v">'+val+late+'</span></div>';
   });
@@ -195,7 +225,7 @@ async function renderPayroll(c){
     html += '<div class="card">';
     html += '<div class="slip-thp"><div class="lbl">Take Home Pay</div><div class="amt">'+rp(s.thp)+'</div><div class="mo">'+s.month_name+' '+s.year+'</div></div>';
     html += '<div class="sub-head">Pendapatan</div>';
-    html += '<div class="kv pos"><span>Gaji Pokok</span><span class="v">'+rp(s.gaji_pokok)+'</span></div>';
+    html += '<div class="kv pos kv-click" id="gajiPokokRow" style="cursor:pointer"><span>Gaji Pokok <span class="kv-chev">›</span></span><span class="v">'+rp(s.gaji_pokok)+'</span></div>';
     (s.bonus||[]).forEach(function(b, bi){
       var clickable = b.items && b.items.length > 0;
       html += payRow('pos', b.label, '+ '+rp(b.value), 'bonus', si, bi, clickable);
@@ -225,7 +255,12 @@ async function renderPayroll(c){
   c.innerHTML = html;
   $('#yPrev').onclick=function(){ payNav(-1); };
   $('#yNext').onclick=function(){ payNav(1); };
+  var gpRow = document.getElementById('gajiPokokRow');
+  if(gpRow && s){
+    gpRow.onclick = function(){ openGajiDetail(s.gaji_detail, s.gaji_pokok, s.month_name+' '+s.year); };
+  }
   c.querySelectorAll('.kv-click').forEach(function(row){
+    if(row.id === 'gajiPokokRow') return;
     row.onclick=function(){
       var s = state.slips[+row.dataset.si]; if(!s) return;
       var grp = row.dataset.grp, idx = +row.dataset.idx;
@@ -244,16 +279,23 @@ function openPayDetail(item, isBonus){
   var sign = isBonus ? '+ ' : '- ';
   var col  = isBonus ? 'var(--green)' : 'var(--red)';
   var hasSub = (item.items||[]).some(function(it){ return !!it.sub; });
-  var rows;
-  if(hasSub){
-    rows = '<table class="fd-tbl">' + (item.items||[]).map(function(it){
-      return '<tr><td>'+escapeHtml(it.label)+'</td><td class="tc">'+escapeHtml(it.sub||'')+'</td><td class="tr" style="color:'+col+'">'+sign+rp(it.value)+'</td></tr>';
-    }).join('') + '</table>';
-  } else {
-    rows = (item.items||[]).map(function(it){
-      return '<div class="kv"><span>'+escapeHtml(it.label)+'</span><span class="v" style="color:'+col+'">'+sign+rp(it.value)+'</span></div>';
-    }).join('') || '<div class="kv"><span style="color:var(--muted)">Tidak ada rincian</span></div>';
-  }
+  var rows = '';
+  (item.items||[]).forEach(function(it){
+    if(hasSub){
+      rows += '<table class="fd-tbl"><tr><td>'+escapeHtml(it.label)+'</td><td class="tc">'+escapeHtml(it.sub||'')+'</td><td class="tr" style="color:'+col+'">'+sign+rp(it.value)+'</td></tr></table>';
+    } else {
+      rows += '<div class="kv"><span>'+escapeHtml(it.label)+'</span><span class="v" style="color:'+col+'">'+sign+rp(it.value)+'</span></div>';
+    }
+    if(it.days && it.days.length){
+      rows += '<div class="ded-days"><table class="fd-tbl"><tr class="ded-days-hdr"><td>Hari/Tanggal</td><td class="tc">Masuk</td><td class="tc">Pulang</td><td class="tc">Kurang</td></tr>';
+      it.days.forEach(function(dy){
+        var dur = dy.short >= 60 ? Math.floor(dy.short/60)+'j '+dy.short%60+'m' : dy.short+'m';
+        rows += '<tr><td>'+escapeHtml(dy.day)+', '+escapeHtml(dy.date)+'</td><td class="tc">'+escapeHtml(dy['in'])+'</td><td class="tc">'+escapeHtml(dy.out)+'</td><td class="tc" style="color:var(--red)">'+dur+'</td></tr>';
+      });
+      rows += '</table></div>';
+    }
+  });
+  if(!rows) rows = '<div class="kv"><span style="color:var(--muted)">Tidak ada rincian</span></div>';
   var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet">'
     + '<div class="sheet-handle"></div>'
     + '<div class="sheet-title">'+escapeHtml(item.label)+'</div>'
@@ -262,6 +304,41 @@ function openPayDetail(item, isBonus){
     + '<div class="kv total"><span>Total</span><span class="v" style="color:'+col+'">'+sign+rp(item.value)+'</span></div>'
     + '<button class="btn-sheet-close" id="sheetClose">Tutup</button>'
     + '</div></div>');
+  document.body.appendChild(sheet);
+  function close(){ sheet.classList.add('closing'); setTimeout(function(){ sheet.remove(); }, 180); }
+  sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+  document.getElementById('sheetClose').onclick=close;
+}
+
+function openGajiDetail(gd, gajiPokok, period){
+  if(!gd){ return; }
+  var html = '<div class="sheet-handle"></div>'
+    + '<div class="sheet-title">Gaji Pokok</div>'
+    + '<div class="sheet-sub">'+period+'</div>';
+  html += '<div class="fd-total-box"><div class="fd-total-label">Gaji Pokok Diterima</div><div class="fd-total-val" style="color:var(--green)">'+rp(gajiPokok)+'</div></div>';
+  html += '<div class="sub-head">Perhitungan</div>';
+  html += '<div class="kv"><span>Gaji Full</span><span class="v">'+rp(gd.gaji_full)+'</span></div>';
+  var potAlpha = gd.pot_alpha || 0;
+  var potOff = gd.pot_off || 0;
+  if(potAlpha > 0) html += '<div class="kv neg"><span>Pot. Alpha</span><span class="v">- '+rp(potAlpha)+'</span></div>';
+  if(potOff > 0) html += '<div class="kv neg"><span>Pot. Tidak Masuk</span><span class="v">- '+rp(potOff)+'</span></div>';
+  html += '<div class="kv total"><span>Gaji Pokok</span><span class="v" style="color:var(--green)">'+rp(gajiPokok)+'</span></div>';
+  html += '<div class="sub-head">Rekap Kehadiran</div>';
+  html += '<div class="kv"><span>Hadir</span><span class="v">'+gd.hadir+' / '+gd.max_hadir+' hari</span></div>';
+  html += '<div class="kv"><span>Tepat Waktu</span><span class="v" style="color:var(--green)">'+gd.tepat_waktu+' hari</span></div>';
+  if(gd.telat > 0) html += '<div class="kv"><span>Terlambat</span><span class="v" style="color:var(--amber)">'+gd.telat+' hari</span></div>';
+  if(gd.setengah > 0) html += '<div class="kv"><span>Setengah Hari</span><span class="v" style="color:var(--amber)">'+gd.setengah+' hari</span></div>';
+  if(gd.cuti > 0) html += '<div class="kv"><span>Cuti</span><span class="v">'+gd.cuti+' hari</span></div>';
+  if(gd.sakit > 0) html += '<div class="kv"><span>Sakit</span><span class="v">'+gd.sakit+' hari</span></div>';
+  if(gd.izin > 0) html += '<div class="kv"><span>Izin</span><span class="v">'+gd.izin+' hari</span></div>';
+  var totalAlpha = (gd.alpha_weekday||0) + (gd.alpha_weekend||0);
+  if(totalAlpha > 0){
+    html += '<div class="kv"><span>Alpha</span><span class="v" style="color:var(--red)">'+totalAlpha+' hari</span></div>';
+    if(gd.alpha_weekday > 0) html += '<div class="kv" style="padding-left:12px"><span class="muted">Hari kerja</span><span class="v muted">'+gd.alpha_weekday+'</span></div>';
+    if(gd.alpha_weekend > 0) html += '<div class="kv" style="padding-left:12px"><span class="muted">Weekend</span><span class="v muted">'+gd.alpha_weekend+'</span></div>';
+  }
+  html += '<button class="btn-sheet-close" id="sheetClose">Tutup</button>';
+  var sheet = el('<div class="sheet-backdrop" id="sheetBd"><div class="sheet">'+html+'</div></div>');
   document.body.appendChild(sheet);
   function close(){ sheet.classList.add('closing'); setTimeout(function(){ sheet.remove(); }, 180); }
   sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
