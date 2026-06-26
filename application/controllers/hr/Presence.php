@@ -294,17 +294,6 @@ class Presence extends CI_Controller{
 
 				$date     = date('Y-m-d', strtotime($p['date']));
 
-				// Lock: hanya periode payroll berjalan yang boleh diubah jadwalnya.
-				// Data periode sebelumnya terkunci, tidak dapat diubah meski shift diganti.
-				$period_start = $this->_current_period_start();
-				if($date < $period_start){
-					echo json_encode([
-						'status' => false,
-						'message' => 'Tanggal '.indonesian_date($date).' berada di periode terkunci (sebelum '.indonesian_date($period_start).'). Jadwal periode sebelumnya tidak dapat diubah.'
-					]);
-					return;
-				}
-
 				// Deteksi presensi yang sudah masuk pada tanggal ini. Bila ada, ubah shift
 				// akan menghitung ulang rekap (keterlambatan/denda) -> minta konfirmasi dulu.
 				$existing_presence = $this->db->where(['user_id' => $p['user_id'], 'flow_date' => $date])
