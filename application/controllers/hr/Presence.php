@@ -1304,7 +1304,14 @@ class Presence extends CI_Controller{
 			// shift yang terjadi setelah rekap tersimpan tetap ikut menyesuaikan.
 			$recalc_count = 0;
 			if($method == 'sync'){
-				$recalc_count = $this->_recalc_period_lateness($branch_id);
+				$recalc_from = null;
+				$recalc_to   = null;
+				if($month !== null && $year !== null){
+					$prev = date('Y-m', strtotime($year.'-'.str_pad($month, 2, '0', STR_PAD_LEFT).'-01 -1 month'));
+					$recalc_from = $prev.'-'.START_PAYROLL_DATE;
+					$recalc_to   = $year.'-'.str_pad($month, 2, '0', STR_PAD_LEFT).'-'.END_PAYROLL_DATE;
+				}
+				$recalc_count = $this->_recalc_period_lateness($branch_id, $recalc_from, $recalc_to);
 			}
 			return [
 				'status' => true,
@@ -1323,13 +1330,14 @@ class Presence extends CI_Controller{
 
 	/**
 	 * Hitung ulang entry_time_late dan rest_time_late seluruh record 'normal'
-	 * dalam periode payroll berjalan untuk branch ini, berdasarkan shift terkini.
-	 * Dipanggil setelah setiap sync sehingga perubahan shift yang terjadi setelah
-	 * rekap pertama kali tersimpan tetap tercermin di data kehadiran.
+	 * dalam rentang tanggal yang ditentukan untuk branch ini, berdasarkan shift terkini.
+	 * $from/$to default ke periode payroll berjalan (untuk caller cron).
+	 * Caller sync manual mengirim rentang periode bulan yang di-import agar data
+	 * periode sebelumnya pun ikut direkap ulang.
 	 */
-	private function _recalc_period_lateness($branch_id){
-		$period_start = $this->_current_period_start();
-		$today = date('Y-m-d');
+	private function _recalc_period_lateness($branch_id, $from = null, $to = null){
+		if($from === null){ $from = $this->_current_period_start(); }
+		if($to   === null){ $to   = date('Y-m-d'); }
 
 		$rows = $this->db
 			->select('presence.id, presence.user_id, presence.flow_date, presence.entry_time, presence.rest_time_in, presence.rest_time_out, presence.entry_time_late, presence.rest_time_late')
@@ -1337,8 +1345,8 @@ class Presence extends CI_Controller{
 			->join('position', 'position.id = users.position_id')
 			->where('position.branch_id', $branch_id)
 			->where('presence.presence_type', 'normal')
-			->where('presence.flow_date >=', $period_start)
-			->where('presence.flow_date <=', $today)
+			->where('presence.flow_date >=', $from)
+			->where('presence.flow_date <=', $to)
 			->get('presence')->result_array();
 
 		$updated = 0;
@@ -1431,10 +1439,12 @@ class Presence extends CI_Controller{
 				$this->_branch_error_response();
 				return;
 			}
-			$month = str_pad($p['month'], 2, '0', STR_PAD_LEFT);
-			$year = $p['year'];
-			$sync_from_date = $this->_normalize_sync_from_date($month, $year, isset($p['sync_from_date']) ? $p['sync_from_date'] : null);
-			$sync_to_date   = $this->_normalize_sync_to_date($month, $year, isset($p['sync_to_date']) ? $p['sync_to_date'] : null);
+
+			$month = date('m');
+			$year = date('Y');
+			$period = attlog_presence_period_range($month, $year);
+			$sync_from_date = $period['from'];
+			$sync_to_date = $period['to'];
 
 			$download = $this->_download_cloud_attlogs();
 			if($download === false){
@@ -1476,32 +1486,214 @@ class Presence extends CI_Controller{
 				return;
 			}
 
-			$use_schedule = !isset($p['use_schedule']) || $p['use_schedule'] == '1';
-			$result = $this->_import_presence_sheet($excel['sheet_data'], $branch_id, 'sync', $month, $year, $use_schedule);
+			$preview = $this->_build_sync_preview_rows($excel['sheet_data'], $sync_from_date, $sync_to_date);
+			if(empty($preview['rows'])){
+				echo json_encode([
+					'status' => false,
+					'message' => 'Data cloud berhasil didownload, tapi tidak ada data pada periode berjalan '.$sync_from_date.' s/d '.$sync_to_date.'. Data periode sebelumnya tidak ditampilkan.'
+				]);
+				return;
+			}
 
-			$pruned = $this->_prune_attlog_files();
+			$token = $this->_sync_preview_token();
+			$this->session->set_userdata($this->_sync_preview_session_key($token), [
+				'branch_id' => $branch_id,
+				'month' => $month,
+				'year' => $year,
+				'from' => $sync_from_date,
+				'to' => $sync_to_date,
+				'sheet_data' => $excel['sheet_data'],
+				'rows' => $preview['rows'],
+				'created_at' => time()
+			]);
 
 			$messages = [];
 			$messages[] = 'File DAT tersimpan: '.implode(', ', array_map('basename', $dat_files)).'.';
-			$messages[] = 'File Excel otomatis: '.basename($excel['path']).' ('.$excel['total_rows'].' log dari '.$excel['from'].' s/d '.$excel['to'].', '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
+			$messages[] = 'Preview periode berjalan: '.$sync_from_date.' s/d '.$sync_to_date.' ('.$excel['total_rows'].' log, '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
 			if(!empty($fresh['note'])){
-				$messages[] = '⚠️ '.$fresh['note'].' Data tetap diproses (mode manual) — periksa apakah mesin online.';
+				$messages[] = '⚠️ '.$fresh['note'].' Data tetap ditampilkan (mode manual) — periksa apakah mesin online.';
 			}
 			if(!empty($download['failed'])){
 				$messages[] = 'Mesin gagal: '.implode(', ', $download['failed']).'.';
 			}
-			if($pruned > 0){
-				$messages[] = 'File .dat lama dibersihkan: '.$pruned.' (disisakan 1 terbaru per mesin).';
-			}
-			$messages[] = $result['message'];
+			$messages[] = 'Data periode sebelumnya tidak ditampilkan dan tidak akan diimport.';
 
 			echo json_encode([
-				'status' => $result['status'],
-				'message' => 'Sync cloud selesai memakai alur standar: download DAT -> konversi Excel -> import Excel.<br>'.implode('<br>', $messages)
+				'status' => true,
+				'preview' => true,
+				'preview_token' => $token,
+				'from' => $sync_from_date,
+				'to' => $sync_to_date,
+				'rows' => $preview['rows'],
+				'dates' => $preview['dates'],
+				'summary' => [
+					'total_rows' => count($preview['rows']),
+					'selected_rows' => $preview['selected_rows'],
+					'mapped_rows' => $excel['mapped_rows'],
+					'missing_rows' => $excel['missing_rows'],
+					'invalid_rows' => isset($excel['invalid_rows']) ? $excel['invalid_rows'] : 0,
+					'failed_machines' => isset($download['failed']) ? $download['failed'] : [],
+					'stale_note' => $fresh['note']
+				],
+				'message' => implode('<br>', $messages)
 			]);
 		}else{
 			show_404();
 		}
+	}
+
+	private function _sync_preview_session_key($token){
+		return 'sync_presence_preview_'.$token;
+	}
+
+	private function _sync_preview_token(){
+		if(function_exists('random_bytes')){
+			return bin2hex(random_bytes(16));
+		}
+		return md5(uniqid('sync_preview_', true));
+	}
+
+	private function _build_sync_preview_rows($sheet_data, $from, $to){
+		$rows = [];
+		$dates = [];
+		$selected = 0;
+		$count = count($sheet_data);
+
+		for($i = 1; $i < $count; $i++){
+			$row = $sheet_data[$i];
+			if(!isset($row[2]) || !isset($row[3])){ continue; }
+
+			$finger_id = trim((string)$row[2]);
+			$datetime = $this->_parse_presence_excel_datetime($row[3]);
+			if($finger_id == '' || !$datetime){ continue; }
+
+			$date = date('Y-m-d', strtotime($datetime));
+			if($date < $from || $date > $to){ continue; }
+
+			$name = isset($row[1]) ? trim((string)$row[1]) : '';
+			$status = ($name != '' && strtoupper($name) !== 'TIDAK DITEMUKAN') ? 'mapped' : 'missing';
+			$selected_default = $status === 'mapped';
+			if($selected_default){ $selected++; }
+			$dates[$date] = $date;
+
+			$key = sha1($finger_id.'|'.$datetime.'|'.(isset($row[4]) ? $row[4] : '').'|'.$i);
+			$rows[] = [
+				'key' => $key,
+				'finger_id' => $finger_id,
+				'employee_name' => $name != '' ? $name : 'TIDAK DITEMUKAN',
+				'date' => $date,
+				'weekday' => get_dayname($date),
+				'time' => date('H:i:s', strtotime($datetime)),
+				'datetime' => $datetime,
+				'machine_sn' => isset($row[4]) ? (string)$row[4] : '',
+				'status' => $status,
+				'selected_default' => $selected_default
+			];
+		}
+
+		ksort($dates);
+		return [
+			'rows' => $rows,
+			'dates' => array_values($dates),
+			'selected_rows' => $selected
+		];
+	}
+
+	public function import_sync_preview(){
+		if(!$this->input->is_ajax_request() || !in_array($this->role, ['admin', 'admin-branch'])){
+			show_404();
+			return;
+		}
+
+		$p = $this->input->post();
+		$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
+		if($branch_id === false){
+			$this->_branch_error_response();
+			return;
+		}
+
+		$token = isset($p['preview_token']) ? preg_replace('/[^a-f0-9]/i', '', (string)$p['preview_token']) : '';
+		if($token == ''){
+			echo json_encode(['status' => false, 'message' => 'Token preview tidak valid. Silakan sync ulang.']);
+			return;
+		}
+
+		$key = $this->_sync_preview_session_key($token);
+		$preview = $this->session->userdata($key);
+		if(empty($preview) || !is_array($preview)){
+			echo json_encode(['status' => false, 'message' => 'Data preview sudah kedaluwarsa. Silakan sync ulang.']);
+			return;
+		}
+
+		if((time() - (int)$preview['created_at']) > 1800){
+			$this->session->unset_userdata($key);
+			echo json_encode(['status' => false, 'message' => 'Data preview sudah lebih dari 30 menit. Silakan sync ulang.']);
+			return;
+		}
+
+		if((int)$preview['branch_id'] !== (int)$branch_id){
+			echo json_encode(['status' => false, 'message' => 'Cabang preview tidak sesuai. Silakan sync ulang.']);
+			return;
+		}
+
+		$selected_keys = isset($p['selected_keys']) ? $p['selected_keys'] : [];
+		if(!is_array($selected_keys)){ $selected_keys = [$selected_keys]; }
+		$selected = [];
+		foreach($selected_keys as $row_key){
+			$row_key = preg_replace('/[^a-f0-9]/i', '', (string)$row_key);
+			if($row_key != ''){ $selected[$row_key] = true; }
+		}
+
+		if(empty($selected)){
+			echo json_encode(['status' => false, 'message' => 'Pilih minimal satu data absen untuk diimport.']);
+			return;
+		}
+
+		$allowed = [];
+		foreach($preview['rows'] as $row){
+			if($row['status'] !== 'mapped'){ continue; }
+			if($row['date'] < $preview['from'] || $row['date'] > $preview['to']){ continue; }
+			if(isset($selected[$row['key']])){
+				$allowed[$row['finger_id'].'|'.$row['datetime'].'|'.$row['machine_sn']] = true;
+			}
+		}
+
+		if(empty($allowed)){
+			echo json_encode(['status' => false, 'message' => 'Tidak ada data valid yang dipilih untuk diimport.']);
+			return;
+		}
+
+		$sheet = [isset($preview['sheet_data'][0]) ? $preview['sheet_data'][0] : ['No', 'Nama', 'ID Fingerprint', 'Tanggal Jam Absen', 'Mesin']];
+		$count = count($preview['sheet_data']);
+		for($i = 1; $i < $count; $i++){
+			$row = $preview['sheet_data'][$i];
+			if(!isset($row[2]) || !isset($row[3])){ continue; }
+			$datetime = $this->_parse_presence_excel_datetime($row[3]);
+			if(!$datetime){ continue; }
+			$date = date('Y-m-d', strtotime($datetime));
+			if($date < $preview['from'] || $date > $preview['to']){ continue; }
+			$match_key = trim((string)$row[2]).'|'.$datetime.'|'.(isset($row[4]) ? (string)$row[4] : '');
+			if(isset($allowed[$match_key])){
+				$row[0] = count($sheet);
+				$sheet[] = $row;
+			}
+		}
+
+		if(count($sheet) <= 1){
+			echo json_encode(['status' => false, 'message' => 'Data terpilih tidak ditemukan lagi di preview. Silakan sync ulang.']);
+			return;
+		}
+
+		$use_schedule = !isset($p['use_schedule']) || $p['use_schedule'] == '1';
+		$result = $this->_import_presence_sheet($sheet, $branch_id, 'sync', $preview['month'], $preview['year'], $use_schedule);
+		if($result['status']){
+			$this->session->unset_userdata($key);
+		}
+
+		echo json_encode([
+			'status' => $result['status'],
+			'message' => $result['message']
+		]);
 	}
 
 	public function sync_pray_cloud(){
