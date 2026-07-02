@@ -1,4 +1,4 @@
-<?php $role = $this->ion_auth->get_users_groups()->row()->name; ?>
+﻿<?php $role = $this->ion_auth->get_users_groups()->row()->name; ?>
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
@@ -137,8 +137,30 @@
                             <?php } ?>
                         </div>
 
-                        <div class="col-md-3">
-                            <small><em class="fa fa-users"></em> Sub-Departement</small>
+                    </div>
+
+                    <div class="row mt-2">
+                        <div class="col-md-3"></div>
+                        <div class="col-md-2">
+                            <small><em class="fa fa-map-marker-alt"></em> By Penempatan</small>
+                            <select class="select-plugin" style="width: 100%" id="locationFilter">
+                                <option value="all">Semua</option>
+                                <?php foreach ($location_list as $loc) { ?>
+                                    <option value="<?= htmlspecialchars($loc, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($loc, ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <small><em class="fa fa-id-badge"></em> By Posisi</small>
+                            <select class="select-plugin" style="width: 100%" id="positionFilter">
+                                <option value="all">Semua</option>
+                                <?php foreach ($position_list as $pos) { ?>
+                                    <option value="<?= htmlspecialchars($pos, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($pos, ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <small><em class="fa fa-users"></em> By CV</small>
                             <select class="select-plugin" style="width: 100%" id="subdivision">
                                 <option value="all">Semua</option>
                                 <?php foreach ($subdivision as $row) { ?>
@@ -146,7 +168,6 @@
                                 <?php } ?>
                             </select>
                         </div>
-
                         <div class="col-md-3">
                             <small><em class="fa fa-search"></em> Pencarian</small>
                             <input id="autocomplete" type="text" class="form-control" placeholder="Cari Karyawan...">
@@ -162,6 +183,7 @@
 
                     <div class="col-md-12 mt-3 text-end">
                         <?php if(empty($payroll) && ($role == 'admin' || $role == 'admin-branch')){ ?>
+                                <button class="btn btn-outline-primary me-2" id="btnRecalcAuto" title="Hitung ulang Komisi Disiplin/Transport/Beras/Soskes/Sholat dari data presensi terkini ke kolom Komisi Lainnya"><i class="fa fa-calculator"></i> Hitung Komisi Otomatis</button>
                                 <div class="btn-group me-2" role="group">
                                     <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
                                         <i class="fa fa-file-excel"></i> Import Komisi/Denda
@@ -181,8 +203,9 @@
                                     </div>
                                 </div>
                                 <button class="btn btn-warning" id="btnGenerate"><i class="fa fa-lock"></i> Lock Gaji</button>
-                        <?php }else if(!empty($payroll) && ($role == 'admin' || $role == 'admin-branch')){ 
+                        <?php }else if(!empty($payroll) && ($role == 'admin' || $role == 'admin-branch')){
                                     if($payroll['is_final'] == '0'){ ?>
+                                        <button class="btn btn-outline-primary" id="btnRecalcAuto" title="Hitung ulang Komisi Disiplin/Transport/Beras/Soskes/Sholat dari data presensi terkini"><i class="fa fa-calculator"></i> Hitung Ulang Komisi Otomatis</button> &emsp;
                                         <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRollback"><i class="fa fa-refresh"></i> Rollback Gaji Ke Tahap Awal</button> &emsp;
                                         <button class="btn btn-success" id="btnSaveGaji"><i class="fa fa-check-circle"></i> Simpan Gaji</button>
 
@@ -521,10 +544,31 @@
     <?php } ?>
 
     <?php }else{ ?>
+        // Password gate lock gaji — sama seperti gate sync/hapus presensi.
+        var lockGatePass = '';
+        function promptLockPassword(onOk){
+            Swal.fire({
+                title: 'Password Lock Gaji',
+                input: 'password',
+                inputLabel: 'Masukkan password untuk melanjutkan',
+                inputPlaceholder: 'Password',
+                inputAttributes: { autocomplete: 'off', autocapitalize: 'off' },
+                showCancelButton: true,
+                confirmButtonText: 'Lanjutkan',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#f1b44c'
+            }).then(function(r){
+                if(r.isConfirmed){ onOk(r.value || ''); }
+            });
+        }
+
         $(document).on('click', '#btnGenerate', function(){
             r = confirm('Apakah anda yakin melakukan LOCK penggajian bulan ini ?');
             if(r){
-                $('#formGenerate').submit();
+                promptLockPassword(function(pass){
+                    lockGatePass = pass;
+                    $('#formGenerate').submit();
+                });
             }
         });
 
@@ -536,11 +580,29 @@
                 url      : "<?= site_url('generate_payroll/'.$month.'/'.$year) ?>",
                 method   : "POST",
                 dataType : "json",
-                data     : $('#formGenerate').serialize(),
+                data     : $('#formGenerate').serialize() + '&sync_gate_password=' + encodeURIComponent(lockGatePass),
+                timeout  : 180000,
                 beforeSend : function(){
                     btn.html('<i class="fa fa-spinner fa-spin"></i> Proses...').attr('disabled', 'disabled');
                 },
+                error : function(jqXHR, textStatus){
+                    var msg = textStatus === 'timeout'
+                        ? 'Proses terlalu lama (lebih dari 3 menit) dan dihentikan browser. Muat ulang halaman untuk cek apakah lock sudah tersimpan sebelum coba lagi.'
+                        : 'Terjadi kesalahan jaringan/server (' + (jqXHR.status || '?') + '). Muat ulang halaman untuk cek status sebelum coba lagi.';
+                    alert(msg);
+                    btn.html('<i class="fa fa-check-circle"></i> Generate Gaji').removeAttr('disabled');
+                },
                 success : function(res){
+                    if(res.need_password){
+                        btn.html('<i class="fa fa-lock"></i> Lock Gaji').removeAttr('disabled');
+                        Swal.fire({ icon:'error', title:'Password salah', text: res.message }).then(function(){
+                            promptLockPassword(function(pass){
+                                lockGatePass = pass;
+                                $('#formGenerate').submit();
+                            });
+                        });
+                        return;
+                    }
                     if(res.status){
                         window.location.reload();
 
@@ -556,17 +618,20 @@
         
     <?php } ?>
 
-    $(document).on('keyup', '#autocomplete', function(){
-        var keyword = $(this).val();
-        var subdivision = $('#subdivision').val();
-        EmployeeFilter(keyword, subdivision); 
+    $(document).ready(function(){
+        if(typeof $.fn.select2 === 'function'){
+            $('#locationFilter, #positionFilter').trigger('change');
+        }
     });
 
-    $(document).on('change', '#subdivision', function(){
-        var keyword = $('#autocomplete').val();
-        var subdivision = $(this).val();
-        EmployeeFilter(keyword, subdivision);
-    });
+    function runPayrollFilter(){
+        EmployeeFilter($('#autocomplete').val(), $('#subdivision').val(), $('#positionFilter').val(), $('#locationFilter').val());
+    }
+
+    $(document).on('keyup', '#autocomplete', function(){ runPayrollFilter(); });
+    $(document).on('change', '#subdivision',    function(){ runPayrollFilter(); });
+    $(document).on('change', '#positionFilter', function(){ runPayrollFilter(); });
+    $(document).on('change', '#locationFilter', function(){ runPayrollFilter(); });
 
     $(document).on('keyup', '#searchEmployee', function(){
         var keyword = $(this).val();
@@ -574,22 +639,27 @@
         EmployeeFilterExport(keyword, 'all'); 
     });
 
-    function EmployeeFilter(keyword, subdivision){
+    function EmployeeFilter(keyword, subdivision, position, location){
+        position = position || 'all';
+        location = location || 'all';
         $('#listPayroll tr').each(function(){
-            var count = 0;
-            var searchKeyword = $(this).text().search(new RegExp(keyword, "i"));
-            var searchSubdivision = false;
+            var searchKeyword = $(this).text().search(new RegExp(keyword, "i")) >= 0;
 
-            if($(this).data('subdivision') == subdivision || subdivision == 'all'){
-                searchSubdivision = true;
-            }
+            var rowSubdiv = $(this).attr('data-subdivision');
+            var rowPos    = $(this).attr('data-position');
+            var rowLoc    = $(this).attr('data-location');
 
-            if(searchKeyword < 0 || !searchSubdivision) {
-              $(this).hide(); 
+            // Rows without data-subdivision are grand-total rows — always show
+            var passSubdiv = (rowSubdiv === undefined) || (subdivision === 'all') || (rowSubdiv === subdivision);
+            // Rows without data-position are subdivision-header or total rows — skip position/location check
+            var isEmployeeRow = (rowPos !== undefined);
+            var passPos = !isEmployeeRow || (position === 'all') || (rowPos === position);
+            var passLoc = !isEmployeeRow || (location === 'all') || (rowLoc === location);
 
+            if(searchKeyword && passSubdiv && passPos && passLoc){
+                $(this).show();
             } else {
-              $(this).show();
-              count++;
+                $(this).hide();
             }
         });
     }
@@ -614,3 +684,42 @@
         });
     }
 </script>
+
+<?php if($role == 'admin' || $role == 'admin-branch'){ ?>
+<script type="text/javascript">
+    // Handler "Hitung Komisi Otomatis" — bisa dijalankan PRE-generate (payroll belum ada)
+    // maupun POST-generate saat TAHAP LOCK. Tombolnya disisipkan di kedua state.
+    $(document).on('click', '#btnRecalcAuto', function(){
+        var hasPayroll = <?= !empty($payroll) ? 'true' : 'false' ?>;
+        var msg = hasPayroll
+            ? 'Hitung ulang 5 komisi otomatis (Disiplin/Transport/Beras/Soskes/Sholat) berdasarkan data presensi terkini?\n\nNilai auto akan menimpa entri manual HR pada 5 item ini; THP per karyawan akan diperbarui.'
+            : 'Hitung otomatis 5 komisi (Disiplin/Transport/Beras/Soskes/Sholat) dari data presensi terkini? Nilai akan tertulis ke kolom Komisi Lainnya untuk semua karyawan periode ini.';
+        if(!confirm(msg)) return;
+        var btn = $('#btnRecalcAuto');
+        var label = btn.html();
+        $.ajax({
+            url      : "<?= site_url('recalc_auto_insentif/'.$branch_detail['id'].'/'.$month.'/'.$year) ?>",
+            method   : "POST",
+            dataType : "json",
+            timeout  : 600000, // 10 menit — hitung 100+ karyawan bisa lama
+            data     : { myToken : "<?php echo $this->security->get_csrf_hash() ?>" },
+            beforeSend : function(){
+                btn.html('<i class="fa fa-spinner fa-spin"></i> Proses... (mohon tunggu, bisa beberapa menit)').attr('disabled', 'disabled');
+            },
+            success : function(res){
+                if(res.status){
+                    alert(res.message || ('Berhasil. '+res.updated+' baris insentif diperbarui.'));
+                    window.location.reload();
+                }else{
+                    alert(res.message || 'Gagal hitung ulang.');
+                    btn.html(label).removeAttr('disabled');
+                }
+            },
+            error : function(){
+                alert('Gagal menghubungi server.');
+                btn.html(label).removeAttr('disabled');
+            }
+        });
+    });
+</script>
+<?php } ?>

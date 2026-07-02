@@ -182,6 +182,7 @@ $route['cancel_presence']			  = 'hr/Presence/cancel';
 
 $route['upload_presence'] 			  = 'hr/Presence/upload';
 $route['sync_presence_cloud'] 		  = 'hr/Presence/sync_cloud';
+$route['import_sync_presence_cloud'] = 'hr/Presence/import_sync_preview';
 $route['sync_pray_cloud'] 		  	  = 'hr/Presence/sync_pray_cloud';
 $route['clear_presence_period'] 	  = 'hr/Presence/clear_period';
 $route['upload_work_schedule'] 		  = 'hr/Presence/upload_work_schedule';
@@ -209,6 +210,7 @@ $route['payroll_rollback_to_lock/(:any)'] = 'hr/Payroll/rollback_to_lock/$1';
 $route['insert_out_work/(:any)'] = 'hr/Payroll/insert_out_work/$1';
 $route['insert_out_together/(:any)'] = 'hr/Payroll/insert_out_together/$1';
 $route['save_payroll/(:any)'] = 'hr/Payroll/save_payroll/$1';
+$route['recalc_auto_insentif/(:num)/(:num)/(:num)'] = 'hr/Payroll/recalc_auto_insentif/$1/$2/$3';
 $route['get_employee_with_payroll/(:num)'] = 'hr/Payroll/getEmployeePayroll/$1';
 $route['payroll_multiple_export_pdf/(:num)'] = 'hr/Payroll/payrollExportMultiplePDF/$1';
 
@@ -247,6 +249,13 @@ $route['attendance']                    = 'Attendance/index';
 $route['attendance/daily_report']       = 'Attendance/daily_report';
 $route['attendance/machine_report']     = 'Attendance/machine_report';
 $route['attendance/early_leave_report'] = 'Attendance/early_leave_report';
+
+// Payroll Simulator (read-only API, auth via CI3 session)
+$route['payroll_sim/employees']  = 'PayrollSim/employees';
+$route['payroll_sim/salary']     = 'PayrollSim/salary';
+$route['payroll_sim/insentif']   = 'PayrollSim/insentif';
+$route['payroll_sim/deduction']  = 'PayrollSim/deduction';
+$route['payroll_sim/branches']   = 'PayrollSim/branches';
 
 $route['panel/master_data/user'] 	= 'User';
 $route['insert_user']		   		= 'User/insert';

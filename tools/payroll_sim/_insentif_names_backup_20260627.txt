@@ -1,0 +1,11 @@
+id	branch_id	insentif_name
+5	1	Uang Beras
+9	1	Komisi Sholat
+12	1	Komisi Kehadiran
+18	2	Komis! Disiplin Kehadiran
+21	2	Komis! Sholat
+24	2	Komisi Beras
+27	2	Komis! Transport
+28	1	Komisi transport
+29	1	Komisi SosKes
+33	2	Komis! Soskes

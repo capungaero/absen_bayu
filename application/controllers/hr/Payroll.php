@@ -1,4 +1,4 @@
-<?php 
+﻿<?php 
 
 require_once FCPATH.'lib/vendor/autoload.php';
 require_once FCPATH.'application/libraries/dompdf/autoload.inc.php';
@@ -93,7 +93,18 @@ class Payroll extends CI_Controller{
 					$overtime = true;
 
 					$comp['attendance'] = $this->presence->get_attendance_by_branch($branch_id, $month, $year, $overtime);
-				
+
+					$locs = []; $poss = [];
+					foreach ($comp['attendance']['list'] as $att) {
+						$loc = isset($att['employee']['location']) ? trim((string)$att['employee']['location']) : '';
+						$pos = isset($att['employee']['position']) ? trim((string)$att['employee']['position']) : '';
+						if ($loc !== '') $locs[$loc] = $loc;
+						if ($pos !== '') $poss[$pos] = $pos;
+					}
+					ksort($locs); ksort($poss);
+					$data['location_list'] = array_values($locs);
+					$data['position_list']  = array_values($poss);
+
 				}else{
 					$employee_id = $this->role == 'employee' ? $this->userdata->user_id : '';
 					$table = '_payrollTableDone';
@@ -107,8 +118,16 @@ class Payroll extends CI_Controller{
 				    $payroll_list = $this->payroll->get_payment_list_by_id($data['payroll']['id'], $employee_id, $order_by);
 					$comp['attendance'] = $this->_toResponsePaymentList($payroll_list); 
 					$comp['payroll']	= $data['payroll'];
+
+					$locs = array_values(array_filter(array_unique(array_column($payroll_list, 'location'))));
+					$poss = array_values(array_filter(array_unique(array_column($payroll_list, 'position_name'))));
+					sort($locs); sort($poss);
+					$data['location_list'] = $locs;
+					$data['position_list']  = $poss;
 				}
 				
+				if(!isset($data['location_list'])) $data['location_list'] = [];
+				if(!isset($data['position_list']))  $data['position_list']  = [];
 				$data['subdivision']   = $this->subdivision->get_detail('branch_id', $branch_id)->result_array();
 				$data['branch_detail'] = $this->branch->get_detail('id', $branch_id)->row_array();
 				$comp['branch_detail'] = $data['branch_detail'];
@@ -128,35 +147,87 @@ class Payroll extends CI_Controller{
 		}	
 	}
 
+	// Verifikasi password gate (hash bcrypt SYNC_GATE_HASH di sync_gate.local.php —
+	// sama dengan gate sync/hapus presensi). Konstanta tidak ada = gate nonaktif.
+	private function _verify_sync_gate(){
+		if(!defined('SYNC_GATE_HASH') || SYNC_GATE_HASH === ''){
+			return true;
+		}
+		$pass = (string)$this->input->post('sync_gate_password');
+		return $pass !== '' && password_verify($pass, SYNC_GATE_HASH);
+	}
+
+	private function _sync_gate_error(){
+		echo json_encode([
+			'status'        => false,
+			'need_password' => true,
+			'message'       => 'Password salah atau belum diisi.'
+		]);
+	}
+
 	public function generate($month, $year){
 		if(in_array($this->role, ['admin', 'admin-branch', 'hr']) && $this->input->is_ajax_request()){
+			if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
+
+			// Proses berat (rekap semua karyawan cabang). Tanpa ini request dibunuh
+			// time-limit hosting / abort koneksi di tengah transaksi → 500 + rollback
+			// diam-diam tanpa jejak. Paralel dengan recalc_auto_insentif().
+			@set_time_limit(0);
+			@ini_set('memory_limit', '512M');
+			ignore_user_abort(true);
+
 			$p 	  = $this->input->post();
+			$month     = (int)$month;
+			$year      = (int)$year;
+			$branch_id = isset($p['branch_id']) ? (int)$p['branch_id'] : 0;
+			if(!$branch_id || $month < 1 || $month > 12 || $year < 2000 || $year > 2100){
+				echo json_encode(['status' => false, 'message' => 'Parameter tidak lengkap/tidak valid']);
+				return;
+			}
+			// Non-admin hanya boleh me-lock cabangnya sendiri (paralel rollback()).
+			if($this->role != 'admin' && (int)$this->userdata->branch_id !== $branch_id){
+				echo json_encode(['status' => false, 'message' => 'Akses cabang ditolak']);
+				return;
+			}
+
 			$data = [];
 			$find = [
 				'month'		=> $month,
 				'year'		=> $year,
-				'branch_id' => $p['branch_id']
+				'branch_id' => $branch_id
 			];
 
 			$cek = $this->payroll->get_detail($find)->num_rows();
 
 			if($cek == 0){
+				$t0 = microtime(true);
+				$profile = function($m) use ($t0){
+					@error_log('['.date('Y-m-d H:i:s').'] [GEN_PROFILE] '.$m.': '.round(microtime(true)-$t0, 2)."s\n", 3, APPPATH.'logs/gen_profile.log');
+				};
 				$this->db->trans_begin();
-				$branch_detail = $this->branch->get_detail('branch.id', $p['branch_id'])->row_array();
+				$branch_detail = $this->branch->get_detail('branch.id', $branch_id)->row_array();
 
 				$totalDayInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
 
-				$attendance    = $this->presence->get_attendance_by_branch($p['branch_id'], $month, $year, true);
+				// Tulis komisi otomatis (disiplin/transport/beras/soskes/sholat) ke payroll_insentif
+				// sebelum hitung detail — supaya nilai auto masuk ke salary_in_insentive di DB.
+				require_once APPPATH.'controllers/PayrollSim.php';
+				$sim = new PayrollSim();
+				$sim->apply_auto_to_payroll($branch_id, $month, $year);
+				$profile('apply_auto_to_payroll selesai');
+
+				$attendance    = $this->presence->get_attendance_by_branch($branch_id, $month, $year, true);
+				$profile('get_attendance_by_branch selesai');
 
 	            $time = date('Y-m-d H:i:s');
 	            $payroll = [
-	            	'branch_id' => $p['branch_id'],
+	            	'branch_id' => $branch_id,
 	            	'month'		=> $month,
 	            	'year'		=> $year,
 	            	'created_at'=> $time
 	            ];
 	            $this->db->insert('payroll', $payroll);
-	            $payroll_id = $this->db->where($payroll)->get('payroll')->row_array()['id'];
+	            $payroll_id = $this->db->insert_id();
 
 	            $n = 0;
             	$all_salary = $all_receive = $all_adjustment = $thp = $all_overtime = $all_salary_debt = 0;;
@@ -167,7 +238,7 @@ class Payroll extends CI_Controller{
 	                $total_work = $num_present = $num_late = $num_overtime = $max_work = $bpjs_work = $bpjs_health = $bpjs_together = 0;
 
 	                $fine = $this->presence->get_fine($user_id, $month, $year);
-	                $insentive = $this->presence->get_insentif($user_id, $p['branch_id'], $month, $year);
+	                $insentive = $this->presence->get_insentif($user_id, $branch_id, $month, $year);
 
 	                $presence = $fine['detail']['entry']['presence'];
 
@@ -214,8 +285,10 @@ class Payroll extends CI_Controller{
 	                
 	                $thp = ($payment_receive + $row['overtime']['amount'] + $row['insentif']['total']) - ($row['fine'] + $bpjs_work + $row['deduction']['total'] + $bpjs_together + $salary_basic_out_off_work);
 
-	                $thp = $thp < 0 ? 0 : $thp;
+	                // Hitung debt SEBELUM thp di-clamp ke 0 — urutan sebaliknya membuat
+	                // salary_debt selalu 0 (thp sudah keburu jadi 0 saat debt dihitung).
 	                $salary_debt = $thp < 0 ? $thp : 0;
+	                $thp = $thp < 0 ? 0 : $thp;
 
 	                $all_in 	  	+= $payment_receive;
 	                $all_overtime 	+= $row['overtime']['amount'];
@@ -288,11 +361,15 @@ class Payroll extends CI_Controller{
 	                ];
 	            }
 
-	            $this->db->insert_batch('payroll_detail', $data);
+	            $profile('loop per-karyawan selesai ('.$n.' karyawan)');
 
-	            $branch = $this->branch->get_detail('id', $p['branch_id'])->row_array();
-				$num    = $this->payroll->get_detail('branch_id', $p['branch_id'])->num_rows() + 1;
-				$code   = 'TRX-'.$branch['branch_code'].'-PYR-'.$num;
+	            $this->db->insert_batch('payroll_detail', $data);
+	            $profile('insert_batch payroll_detail selesai');
+
+	            $branch = $this->branch->get_detail('id', $branch_id)->row_array();
+				// Nomor dari payroll_id (auto-increment) — hitung num_rows+1 bisa
+				// menghasilkan kode duplikat setelah ada payroll yang di-rollback.
+				$code   = 'TRX-'.$branch['branch_code'].'-PYR-'.$payroll_id;
 
 	            $this->db->where('id', $payroll_id)->update('payroll', [
 	            	'payroll_code'	 		 	=> $code,
@@ -309,8 +386,10 @@ class Payroll extends CI_Controller{
 	            	'total_salary_debt'			=> $all_salary_debt
 	            ]);
 
+	            $profile('sebelum commit');
 	            if($this->db->trans_status()){
 	            	$this->db->trans_commit();
+	            	$profile('TOTAL selesai (commit)');
 	            	$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Penggajian berhasil digenerate', 'success'));
 	            	$res = [
 	            		'status'  => true,
@@ -982,10 +1061,16 @@ class Payroll extends CI_Controller{
 				$find['branch_id'] = $this->userdata->branch_id;
 			}
 
-			if($this->payroll->get_detail($find)->row_array()){
+			$payroll_row = $this->payroll->get_detail($find)->row_array();
+			if($payroll_row){
+				// Hapus detail dulu supaya tidak jadi baris orphan (dulu hanya baris
+				// payroll yang dihapus, payroll_detail-nya tertinggal).
+				$this->db->trans_begin();
+				$this->db->where('payroll_id', $payroll_row['id'])->delete('payroll_detail');
 				$this->db->where($find)->delete('payroll');
 
-				if($this->db->affected_rows() > 0){
+				if($this->db->trans_status()){
+					$this->db->trans_commit();
 					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Penggajian berhasil dirollback', 'success'));
 					$res = [
 						'status'  => true,
@@ -993,6 +1078,7 @@ class Payroll extends CI_Controller{
 					];
 
 				}else{
+					$this->db->trans_rollback();
 					$res = [
 						'status'  => false,
 						'message' => 'Terjadi kesalahan, data gagal dirollback'
@@ -1059,6 +1145,95 @@ class Payroll extends CI_Controller{
 		}else{
 			show_404();
 		}
+	}
+
+	// Hitung ulang 5 komisi otomatis & tulis ke payroll_insentif.
+	// Bisa dipanggil PRE-generate (branch+periode, payroll belum ada) maupun POST-generate
+	// (saat TAHAP LOCK; juga recompute payroll_detail). Final → ditolak (harus rollback dulu).
+	public function recalc_auto_insentif($branch_id, $month, $year){
+		if(!in_array($this->role, ['admin', 'admin-branch', 'hr']) || !$this->input->is_ajax_request()){
+			show_404(); return;
+		}
+		// Hitung 100+ karyawan × banyak query per orang bisa lewat default time limit hosting.
+		@set_time_limit(0);
+		@ini_set('memory_limit', '512M');
+		ignore_user_abort(true);
+		$branch_id = (int)$branch_id;
+		$month     = (int)$month;
+		$year      = (int)$year;
+		if(!$branch_id || !$month || !$year){
+			echo json_encode(['status'=>false, 'message'=>'Parameter tidak lengkap']); return;
+		}
+		if($this->role != 'admin' && (int)$this->userdata->branch_id !== $branch_id){
+			echo json_encode(['status'=>false, 'message'=>'Akses cabang ditolak']); return;
+		}
+
+		// Cek payroll periode ini (jika ada)
+		$payroll = $this->db->get_where('payroll', [
+			'branch_id' => $branch_id, 'month' => $month, 'year' => $year,
+		])->row_array();
+		if($payroll && $payroll['is_final'] == '1'){
+			echo json_encode(['status'=>false, 'message'=>'Payroll sudah final, lakukan rollback dulu sebelum hitung ulang']); return;
+		}
+
+		$this->db->trans_begin();
+
+		// 1. Tulis ulang komisi otomatis ke payroll_insentif
+		require_once APPPATH.'controllers/PayrollSim.php';
+		// Bypass CI_Controller constructor (double-init Template autoload bermasalah di CI 3).
+		// Lalu pasang properti CI yg dipakai PayrollSim dari singleton sekarang.
+		$sim = (new ReflectionClass('PayrollSim'))->newInstanceWithoutConstructor();
+		$sim->db    = $this->db;
+		$sim->input = $this->input;
+		$sim->load  = $this->load;
+		$updated = $sim->apply_auto_to_payroll($branch_id, $month, $year);
+
+		// 2. Bila payroll sudah ada (TAHAP LOCK): recompute payroll_detail
+		if($payroll){
+			$rows = $this->db->where('payroll_id', $payroll['id'])->get('payroll_detail')->result_array();
+			$all_adjustment = $all_receive = $all_salary_debt = 0;
+			foreach($rows as $r){
+				$ins = $this->presence->get_insentif($r['user_id'], $branch_id, $month, $year);
+				$new_ins_total = (int)round($ins['total']);
+
+				$thp = ($r['salary_in_basic'] + $r['salary_in_overtime'] + $new_ins_total)
+				     - ($r['salary_out_fine'] + $r['salary_out_work'] + $r['salary_out_deduction']
+				        + $r['salary_out_together'] + $r['salary_basic_out_off_work']);
+				$debt = $thp < 0 ? $thp : 0;
+				$thp  = $thp < 0 ? 0 : $thp;
+
+				$this->db->where('id', $r['id'])->update('payroll_detail', [
+					'salary_in_insentive' => $new_ins_total,
+					'payroll_insentive'   => json_encode($ins),
+					'salary_thp'          => $thp,
+					'salary_debt'         => $debt,
+				]);
+
+				$all_adjustment  += $new_ins_total;
+				$all_receive     += $thp;
+				$all_salary_debt += $debt;
+			}
+
+			$this->db->where('id', $payroll['id'])->update('payroll', [
+				'total_salary_in_insentive' => $all_adjustment,
+				'total_salary_thp'          => $all_receive,
+				'total_salary_debt'         => $all_salary_debt,
+			]);
+		}
+
+		if($this->db->trans_status() === false){
+			$this->db->trans_rollback();
+			echo json_encode(['status'=>false, 'message'=>'Transaksi gagal']); return;
+		}
+		$this->db->trans_commit();
+
+		echo json_encode([
+			'status'  => true,
+			'updated' => $updated,
+			'phase'   => $payroll ? 'lock' : 'pre',
+			'message' => 'Komisi otomatis berhasil dihitung ulang ('.$updated.' baris insentif diperbarui).'
+			            . ($payroll ? '' : ' Klik "Lock Gaji" untuk lanjut rekap.'),
+		]);
 	}
 
 	public function save_payroll($payroll_id){

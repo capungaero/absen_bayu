@@ -92,7 +92,7 @@ table tbody th {
                         $all_salary_thp += $row['salary_thp'];
                 ?>
                     
-                    <tr data-subdivision="<?= $sub['subdivision_name'] ?>">
+                    <tr data-subdivision="<?= htmlspecialchars($sub['subdivision_name']) ?>" data-position="<?= htmlspecialchars($row['position_name'] ?? '') ?>" data-location="<?= htmlspecialchars($row['location'] ?? '') ?>">
                         <th style="background-color: #fff">
                             <?= $row['first_name'] ?>
                             <br>

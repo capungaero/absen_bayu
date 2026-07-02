@@ -1,0 +1,8 @@
+.env
+node_modules/
+dist/
+
+# Skrip ad-hoc lokal — check_real*.php berisi kredensial DB produksi hardcoded, JANGAN commit
+check_*.php
+import_dump.php
+server.err

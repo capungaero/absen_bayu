@@ -122,7 +122,7 @@ table tbody th {
                 $all_fine += $row['fine'];
                 $all_debt_automate += $debt_automate;
         ?>
-            <tr data-subdivision="<?= $row['employee']['subdivision'] ?>">
+            <tr data-subdivision="<?= $row['employee']['subdivision'] ?>" data-position="<?= htmlspecialchars($row['employee']['position'], ENT_QUOTES, 'UTF-8') ?>" data-location="<?= htmlspecialchars(isset($row['employee']['location']) ? $row['employee']['location'] : '', ENT_QUOTES, 'UTF-8') ?>">
                 <th style="background-color: #fff">
                     <?= $row['employee']['name'] ?>
                     <br>

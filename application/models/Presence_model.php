@@ -711,7 +711,7 @@ Class Presence_model extends CI_Model{
     $attendance = [];
     $presence   = $this->_get_attendance($employee_id, $month, $year);
     $salaryPerDayForAlpha = $total_work > 0 ? round($employee['salary'] / $totalDayInMonth) : 0;
-    $salary_per_day = $total_work > 0 ? ($employee['salary'] / $total_day) : 0;
+    $salary_per_day = $total_work > 0 ? ($employee['salary'] / $totalDayInMonth) : 0;
     $fine = 0;
 
     $entry = [
@@ -1031,7 +1031,7 @@ Class Presence_model extends CI_Model{
         $rest['total']['in_fine'] += $rest_fine;
       }
 
-      if($in['presence_type'] == 'normal' && !empty($in['is_early_leave']) && (int)$in['early_leave_short_minutes'] > 0){
+      if($employee['is_fine_system'] == '1' && $in['presence_type'] == 'normal' && !empty($in['is_early_leave']) && (int)$in['early_leave_short_minutes'] > 0){
         $short_minutes = (int)$in['early_leave_short_minutes'];
         $entry['presence']['early_leave']++;
         $entry['total_early_leave_minutes'] += $short_minutes;

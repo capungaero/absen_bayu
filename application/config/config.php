@@ -470,8 +470,9 @@ $config['csrf_expire'] = 7200;
 // requests so pagination/search does not fail with stale-token 403 responses.
 $config['csrf_regenerate'] = FALSE;
 $config['csrf_exclude_uris'] = array(
-    'wa/cron/(.*)', // Cron endpoint dipanggil tanpa session, dilindungi token sendiri
-    'api/(.*)'      // API untuk PWA karyawan: stateless, dilindungi token bearer sendiri
+    'wa/cron/(.*)',      // Cron endpoint dipanggil tanpa session, dilindungi token sendiri
+    'api/(.*)',          // API untuk PWA karyawan: stateless, dilindungi token bearer sendiri
+    'payroll_sim/(.*)', // Payroll simulator: read-only, auth via session ion_auth
 );
 
 /*
@@ -540,3 +541,18 @@ $config['rewrite_short_tags'] = FALSE;
 | Array:		array('10.0.1.200', '192.168.5.0/24')
 */
 $config['proxy_ips'] = '';
+
+/*
+|--------------------------------------------------------------------------
+| Password Gate — sync & hapus presensi (opsional, gitignored)
+|--------------------------------------------------------------------------
+|
+| Bila ada, mendefinisikan konstanta SYNC_GATE_HASH (hash bcrypt) yang
+| dipakai untuk memverifikasi password khusus sebelum operasi sync/hapus
+| presensi. Jika file tidak ada, gate dinonaktifkan.
+|
+*/
+$absen_sync_gate = __DIR__ . '/sync_gate.local.php';
+if (is_file($absen_sync_gate)) {
+    require $absen_sync_gate;
+}

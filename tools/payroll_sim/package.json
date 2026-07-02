@@ -1,0 +1,26 @@
+{
+  "name": "payroll-sim",
+  "version": "1.0.0",
+  "description": "Simulator Gaji Tiffany Houseware",
+  "type": "module",
+  "scripts": {
+    "server": "node server.js",
+    "dev": "concurrently \"npm run server\" \"vite --port 5174\"",
+    "build": "vite build",
+    "start": "npm run dev"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.3.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mysql2": "^3.10.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "vite": "^5.3.4"
+  }
+}
