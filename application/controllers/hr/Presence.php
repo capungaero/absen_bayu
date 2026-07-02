@@ -8,7 +8,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xls;
 class Presence extends CI_Controller{
 
 	function __construct(){
-		parent::__construct();	
+		parent::__construct();
+		@ini_set('memory_limit', '512M');
 		$this->load->model('presence_model', 'presence');
 		$this->load->model('shift_model', 'shift');
 		$this->load->model('user_model', 'employee');
@@ -41,6 +42,9 @@ class Presence extends CI_Controller{
 			$this->role     = $this->ion_auth->get_users_groups()->row()->name;
 			$this->userdata = $this->ion_auth->user()->row();
 		}
+		// Tandai user aktif untuk trigger audit_log
+		$audit_uid = isset($this->userdata->id) ? (int)$this->userdata->id : 0;
+		$this->db->query("SET @audit_user_id = {$audit_uid}");
 	}
 
 	private function _resolve_branch_id($posted_branch_id = null){
@@ -224,6 +228,48 @@ class Presence extends CI_Controller{
 		}
 	}
 
+	/**
+	 * Periode payroll (month/year) yang memuat $date.
+	 * Periode bulan M = START_PAYROLL_DATE bln (M-1) s/d END_PAYROLL_DATE bln M,
+	 * jadi tanggal >= START_PAYROLL_DATE masuk periode bulan berikutnya.
+	 */
+	private function _payroll_period_of_date($date){
+		$ts = strtotime($date);
+		$d = (int)date('d', $ts); $m = (int)date('n', $ts); $y = (int)date('Y', $ts);
+		if($d >= START_PAYROLL_DATE){ $m++; if($m > 12){ $m = 1; $y++; } }
+		return ['month' => $m, 'year' => $y];
+	}
+
+	/** TRUE bila penggajian cabang+periode sudah dibuat (mengunci absen/jadwal). */
+	private function _payroll_locked($branch_id, $month, $year){
+		return $this->payroll->get_detail([
+			'branch_id' => (int)$branch_id,
+			'month'     => (int)$month,
+			'year'      => (int)$year,
+		])->num_rows() > 0;
+	}
+
+	/** Lock check pakai cabang langsung + tanggal. */
+	private function _locked_for_date($branch_id, $date){
+		$pp = $this->_payroll_period_of_date($date);
+		return $this->_payroll_locked($branch_id, $pp['month'], $pp['year']);
+	}
+
+	/** Lock check pakai cabang karyawan (paling akurat — payroll dikunci per cabang karyawan). */
+	private function _locked_for_user_date($user_id, $date){
+		$row = $this->db->select('position.branch_id')
+						->join('position', 'position.id = users.position_id')
+						->where('users.id', $user_id)
+						->get('users')->row_array();
+		if(empty($row)) return false;
+		return $this->_locked_for_date($row['branch_id'], $date);
+	}
+
+	private function _lock_message($month, $year){
+		return 'Periode penggajian '.str_pad($month, 2, '0', STR_PAD_LEFT).'/'.$year.' sudah dikunci (payroll telah dibuat). '
+		     . 'Rollback penggajian periode tersebut dulu untuk mengubah absen/jadwal.';
+	}
+
 	public function export_absen_report($month, $year, $branch_id = 0){
 		if(!in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
 			show_404();
@@ -293,6 +339,13 @@ class Presence extends CI_Controller{
 			if($cek->num_rows() > 0){
 
 				$date     = date('Y-m-d', strtotime($p['date']));
+
+				// Lock penggajian: jika payroll periode tanggal ini sudah dibuat, tolak.
+				if($this->_locked_for_date($cek->row_array()['branch_id'], $date)){
+					$pp = $this->_payroll_period_of_date($date);
+					echo json_encode(['status' => false, 'message' => $this->_lock_message($pp['month'], $pp['year'])]);
+					return;
+				}
 
 				// Deteksi presensi yang sudah masuk pada tanggal ini. Bila ada, ubah shift
 				// akan menghitung ulang rekap (keterlambatan/denda) -> minta konfirmasi dulu.
@@ -435,6 +488,13 @@ class Presence extends CI_Controller{
 							]);
 
 			if($cek->num_rows() > 0 || $this->role == 'admin'){
+
+				// Lock penggajian: tolak ubah jam kerja bila payroll periode tanggal ini sudah dibuat.
+				if($this->_locked_for_user_date($p['user_id'], $p['date'])){
+					$pp = $this->_payroll_period_of_date($p['date']);
+					echo json_encode(['status' => false, 'message' => $this->_lock_message($pp['month'], $pp['year'])]);
+					return;
+				}
 
 				$this->db->trans_begin();
 
@@ -623,6 +683,14 @@ class Presence extends CI_Controller{
 							]);
 
 			if($cek->num_rows() > 0 || $this->role == 'admin'){
+
+				// Lock penggajian: tolak ubah waktu sholat bila payroll periode tanggal ini sudah dibuat.
+				if($this->_locked_for_user_date($p['user_id'], $p['date'])){
+					$pp = $this->_payroll_period_of_date($p['date']);
+					echo json_encode(['status' => false, 'message' => $this->_lock_message($pp['month'], $pp['year'])]);
+					return;
+				}
+
 				$branch_detail = $this->branch->get_detail('branch.id', $branch_id)->row_array();
 				$prayer = ['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'];
 				$pray_check = true;
@@ -775,10 +843,18 @@ class Presence extends CI_Controller{
 	public function cancel(){
 		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
 			$presence_id = $this->input->post('presence_id');
-			$branch_id   = $this->presence->get_detail('presence.id', $presence_id)->row_array()['branch_id'];
+			$pres        = $this->presence->get_detail('presence.id', $presence_id)->row_array();
+			$branch_id   = $pres['branch_id'] ?? null;
 
 			if($this->userdata->branch_id == $branch_id || $this->role == 'admin'){
-				
+
+				// Lock penggajian: tolak batalkan kehadiran bila payroll periode tanggal ini sudah dibuat.
+				if(!empty($pres['flow_date']) && $this->_locked_for_date($branch_id, $pres['flow_date'])){
+					$pp = $this->_payroll_period_of_date($pres['flow_date']);
+					echo json_encode(['status' => false, 'message' => $this->_lock_message($pp['month'], $pp['year'])]);
+					return;
+				}
+
 				if($this->presence->delete($presence_id)){
 					$res = [
 						'status'  => true,
@@ -1105,6 +1181,15 @@ class Presence extends CI_Controller{
 	}
 
 	private function _import_presence_sheet($sheetData, $branch_id, $method = 'upload', $month = null, $year = null, $use_schedule = true){
+		// Lock penggajian: cegah sync/import menimpa presensi periode yang sudah di-payroll.
+		if($month !== null && $year !== null && $this->_payroll_locked($branch_id, $month, $year)){
+			return [
+				'status' => false,
+				'total_rows' => 0,
+				'message' => $this->_lock_message($month, $year).' Sinkronisasi/import dibatalkan agar rekap yang sudah digaji tidak tertimpa.'
+			];
+		}
+
 		$start_row = 1;
 		$countRow = count($sheetData);
 		$row_data = [];
@@ -1134,6 +1219,35 @@ class Presence extends CI_Controller{
 		$employee_map = $employee_matcher['map'];
 		$match_message = $this->_employee_match_message($employee_matcher['stats']);
 
+		// Batch-fetch shift jadwal utk semua kombinasi (karyawan, tanggal) yang cocok
+		// dalam SATU query — hindari N+1 (dulu 1 query per baris finger-tanggal, bisa
+		// ratusan-ribuan round-trip berurutan saat sync periode penuh).
+		$matched_user_ids = [];
+		$matched_dates = [];
+		foreach($row_data as $finger_id => $value){
+			foreach($value as $row){
+				$employee = isset($employee_map[$finger_id][$row['date']]) ? $employee_map[$finger_id][$row['date']] : null;
+				if(empty($employee)){ continue; }
+				$matched_user_ids[$employee['id']] = $employee['id'];
+				$matched_dates[$row['date']] = $row['date'];
+			}
+		}
+
+		$shift_map = [];
+		if(!empty($matched_user_ids) && !empty($matched_dates)){
+			$shift_rows = $this->db
+				->select('users_shift_additional.user_id, users_shift_additional.additional_date, shift.start_time_in, shift.start_time_out, shift.start_time_late, shift.end_time_in, shift.end_time_out, shift.start_time_rest, shift.end_time_rest, shift.rest_time_range, shift.id AS shift_id')
+				->join('shift', 'shift.id = users_shift_additional.shift_id')
+				->where_in('users_shift_additional.user_id', array_values($matched_user_ids))
+				->where_in('users_shift_additional.additional_date', array_values($matched_dates))
+				->where('users_shift_additional.additional_type', 'work')
+				->where(latest_schedule_subquery(), null, false)
+				->get('users_shift_additional')->result_array();
+			foreach($shift_rows as $s){
+				$shift_map[$s['user_id'].'|'.$s['additional_date']] = $s;
+			}
+		}
+
 		foreach($row_data as $finger_id => $value){
 			foreach($value as $row){
 				$date = $row['date'];
@@ -1148,15 +1262,7 @@ class Presence extends CI_Controller{
 				if(!isset($to_delete[$employee['id']])){ $to_delete[$employee['id']] = []; }
 				if(!in_array($date, $to_delete[$employee['id']])){ $to_delete[$employee['id']][] = $date; }
 
-				$shift = $this->db->select('*, shift.id AS shift_id')
-								  ->where([
-									  'user_id' => $employee['id'],
-									  'additional_date' => $date,
-									  'additional_type' => 'work'
-								  ])
-								  ->where(latest_schedule_subquery(), null, false)
-								  ->join('shift', 'shift.id = users_shift_additional.shift_id')
-								  ->get('users_shift_additional')->row_array();
+				$shift = isset($shift_map[$employee['id'].'|'.$date]) ? $shift_map[$employee['id'].'|'.$date] : null;
 
 				sort($row['time']);
 				$payload = attlog_payload();
@@ -1236,14 +1342,32 @@ class Presence extends CI_Controller{
 		$updated_rows = 0;
 		$skipped_rows = 0;
 		if($method == 'sync'){
+			// Batch-fetch baris presence yang sudah ada utk semua (user_id, flow_date) di
+			// $data dalam SATU query — hindari N+1 (dulu 1 SELECT + 1 INSERT/UPDATE per
+			// baris, bisa ratusan-ribuan round-trip berurutan saat sync periode penuh —
+			// ini akar penyebab "Import Terpilih" terasa macet/timeout tanpa pesan error).
+			$data_user_ids = array_values(array_unique(array_column($data, 'user_id')));
+			$data_dates = array_values(array_unique(array_column($data, 'flow_date')));
+			$existing_map = [];
+			if(!empty($data_user_ids) && !empty($data_dates)){
+				$existing_rows = $this->db
+					->select('id, user_id, flow_date, entry_time, out_time, rest_time_in, rest_time_out, entry_time_late, rest_time_late')
+					->where_in('user_id', $data_user_ids)
+					->where_in('flow_date', $data_dates)
+					->get('presence')->result_array();
+				foreach($existing_rows as $e){
+					$existing_map[$e['user_id'].'|'.$e['flow_date']] = $e;
+				}
+			}
+
+			$insert_rows = [];
+			$update_rows = [];
 			foreach($data as $row){
-				$existing = $this->db->where([
-					'user_id' => $row['user_id'],
-					'flow_date' => $row['flow_date']
-				])->get('presence')->row_array();
+				$existing = isset($existing_map[$row['user_id'].'|'.$row['flow_date']])
+					? $existing_map[$row['user_id'].'|'.$row['flow_date']] : null;
 
 				if(empty($existing)){
-					$this->db->insert('presence', $row);
+					$insert_rows[] = $row;
 					$saved_rows++;
 					continue;
 				}
@@ -1251,26 +1375,44 @@ class Presence extends CI_Controller{
 				// Latest scan wins — samakan dengan Python absen_sync.py (data mesin
 				// fingerprint selalu menimpa). Mencegah record kosong lama memblokir
 				// update & menjaga 2 jalur sync (PHP manual + Python cron) konsisten.
-				$update = [];
-				foreach(['entry_time', 'out_time', 'rest_time_in', 'rest_time_out'] as $field){
-					if(!empty($row[$field])){
-						$update[$field] = $row[$field];
-					}
-				}
-
+				$merged = [
+					'id' => $existing['id'],
+					'entry_time' => !empty($row['entry_time']) ? $row['entry_time'] : $existing['entry_time'],
+					'out_time' => !empty($row['out_time']) ? $row['out_time'] : $existing['out_time'],
+					'rest_time_in' => !empty($row['rest_time_in']) ? $row['rest_time_in'] : $existing['rest_time_in'],
+					'rest_time_out' => !empty($row['rest_time_out']) ? $row['rest_time_out'] : $existing['rest_time_out'],
+				];
 				foreach(['entry_time_late', 'rest_time_late'] as $field){
 					if(!empty($row[$field]) && $row[$field] > 0){
-						$update[$field] = $row[$field];
-					}else if(isset($row[$field]) && (empty($existing[$field]) || $existing[$field] == 0)){
-						$update[$field] = $row[$field];
+						$merged[$field] = $row[$field];
+					}else if(empty($existing[$field]) || $existing[$field] == 0){
+						$merged[$field] = $row[$field];
+					}else{
+						$merged[$field] = $existing[$field];
 					}
 				}
 
-				if(!empty($update)){
-					$this->db->where('id', $existing['id'])->update('presence', $update);
+				$changed = $merged['entry_time'] !== $existing['entry_time']
+					|| $merged['out_time'] !== $existing['out_time']
+					|| $merged['rest_time_in'] !== $existing['rest_time_in']
+					|| $merged['rest_time_out'] !== $existing['rest_time_out']
+					|| (int)$merged['entry_time_late'] !== (int)$existing['entry_time_late']
+					|| (int)$merged['rest_time_late'] !== (int)$existing['rest_time_late'];
+
+				if($changed){
+					$update_rows[] = $merged;
 					$updated_rows++;
 				}else{
 					$skipped_rows++;
+				}
+			}
+
+			if(!empty($insert_rows)){
+				$this->db->insert_batch('presence', $insert_rows);
+			}
+			if(!empty($update_rows)){
+				foreach(array_chunk($update_rows, 500) as $chunk){
+					$this->db->update_batch('presence', $chunk, 'id');
 				}
 			}
 		}else{
@@ -1328,6 +1470,12 @@ class Presence extends CI_Controller{
 		if($from === null){ $from = $this->_current_period_start(); }
 		if($to   === null){ $to   = date('Y-m-d'); }
 
+		// Lock penggajian: jangan hitung ulang lateness pada periode yang sudah di-payroll.
+		$pp = $this->_payroll_period_of_date($to);
+		if($this->_payroll_locked($branch_id, $pp['month'], $pp['year'])){
+			return 0;
+		}
+
 		$rows = $this->db
 			->select('presence.id, presence.user_id, presence.flow_date, presence.entry_time, presence.rest_time_in, presence.rest_time_out, presence.entry_time_late, presence.rest_time_late')
 			->join('users', 'users.id = presence.user_id')
@@ -1338,28 +1486,32 @@ class Presence extends CI_Controller{
 			->where('presence.flow_date <=', $to)
 			->get('presence')->result_array();
 
-		$updated = 0;
+		if(empty($rows)){ return 0; }
+
+		// Ambil semua shift terkait dalam SATU query (hindari N+1: dulu 1 query shift +
+		// 1 query update per baris presence, bisa ratusan round-trip berurutan tiap sync).
+		$shift_rows = $this->db
+			->select('users_shift_additional.user_id, users_shift_additional.additional_date, shift.start_time_late, shift.rest_time_range, shift.end_time_rest')
+			->join('shift', 'shift.id = users_shift_additional.shift_id')
+			->where('users_shift_additional.additional_type', 'work')
+			->where('users_shift_additional.additional_date >=', $from)
+			->where('users_shift_additional.additional_date <=', $to)
+			->where(latest_schedule_subquery(), null, false)
+			->get('users_shift_additional')->result_array();
+
+		$shift_map = [];
+		foreach($shift_rows as $s){
+			$shift_map[$s['user_id'].'|'.$s['additional_date']] = $s;
+		}
+
+		$batch = [];
 		foreach($rows as $row){
-			$shift = $this->db
-				->select('shift.*')
-				->where([
-					'users_shift_additional.user_id' => $row['user_id'],
-					'additional_date' => $row['flow_date'],
-					'additional_type' => 'work'
-				])
-				->where(latest_schedule_subquery(), null, false)
-				->join('shift', 'shift.id = users_shift_additional.shift_id')
-				->get('users_shift_additional')->row_array();
-
+			$shift = isset($shift_map[$row['user_id'].'|'.$row['flow_date']])
+				? $shift_map[$row['user_id'].'|'.$row['flow_date']] : null;
 			if(empty($shift)) continue;
-
-			$recalc = [];
 
 			$new_entry_late = !empty($row['entry_time'])
 				? late_minutes($shift['start_time_late'], $row['entry_time']) : 0;
-			if((int)$row['entry_time_late'] !== (int)$new_entry_late){
-				$recalc['entry_time_late'] = $new_entry_late;
-			}
 
 			$new_rest_late = 0;
 			if(!empty($row['rest_time_in']) && !empty($row['rest_time_out'])){
@@ -1369,17 +1521,25 @@ class Presence extends CI_Controller{
 					$new_rest_late = late_minutes($rest_limit, $row['rest_time_out']);
 				}
 			}
-			if((int)$row['rest_time_late'] !== (int)$new_rest_late){
-				$recalc['rest_time_late'] = $new_rest_late;
-			}
 
-			if(!empty($recalc)){
-				$this->db->where('id', $row['id'])->update('presence', $recalc);
-				$updated++;
+			if((int)$row['entry_time_late'] !== (int)$new_entry_late || (int)$row['rest_time_late'] !== (int)$new_rest_late){
+				// update_batch butuh kolom yang sama persis di tiap baris batch (kalau tidak,
+				// kolom yang absen di-set NULL oleh CI) — makanya dua field selalu disertakan.
+				$batch[] = [
+					'id' => $row['id'],
+					'entry_time_late' => $new_entry_late,
+					'rest_time_late' => $new_rest_late,
+				];
 			}
 		}
 
-		return $updated;
+		if(!empty($batch)){
+			foreach(array_chunk($batch, 500) as $chunk){
+				$this->db->update_batch('presence', $chunk, 'id');
+			}
+		}
+
+		return count($batch);
 	}
 
 	public function call_presensi($employee_id){
@@ -1422,6 +1582,7 @@ class Presence extends CI_Controller{
 
 	public function sync_cloud(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
+			if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1450,11 +1611,11 @@ class Presence extends CI_Controller{
 
 			// Jika ada mesin basi & admin belum konfirmasi → tanya dulu, jangan proses
 			if(!empty($fresh['stale']) && !$this->input->post('force_stale')){
-				echo json_encode([
+				echo json_encode($this->_with_csrf([
 					'status'        => false,
 					'needs_confirm' => true,
 					'message'       => $fresh['note']
-				]);
+				]));
 				return;
 			}
 
@@ -1506,7 +1667,7 @@ class Presence extends CI_Controller{
 			}
 			$messages[] = 'Data di luar rentang '.$sync_from_date.' s/d '.$sync_to_date.' tidak ditampilkan dan tidak akan diimport.';
 
-			echo json_encode([
+			echo json_encode($this->_with_csrf([
 				'status' => true,
 				'preview' => true,
 				'preview_token' => $token,
@@ -1524,7 +1685,7 @@ class Presence extends CI_Controller{
 					'stale_note' => $fresh['note']
 				],
 				'message' => implode('<br>', $messages)
-			]);
+			]));
 		}else{
 			show_404();
 		}
@@ -1593,6 +1754,8 @@ class Presence extends CI_Controller{
 			return;
 		}
 
+		if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
+
 		$p = $this->input->post();
 		$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 		if($branch_id === false){
@@ -1624,8 +1787,12 @@ class Presence extends CI_Controller{
 			return;
 		}
 
-		$selected_keys = isset($p['selected_keys']) ? $p['selected_keys'] : [];
-		if(!is_array($selected_keys)){ $selected_keys = [$selected_keys]; }
+		// Diterima sebagai satu string JSON (bukan field array selected_keys[] terpisah
+		// per baris) — rentang luas bisa >1000 baris terpilih, melebihi max_input_vars
+		// PHP, yang diam-diam memotong $_POST dan menjatuhkan field-field di ujung request.
+		$selected_keys_raw = $this->input->post('selected_keys');
+		$selected_keys = is_string($selected_keys_raw) ? json_decode($selected_keys_raw, true) : $selected_keys_raw;
+		if(!is_array($selected_keys)){ $selected_keys = []; }
 		$selected = [];
 		foreach($selected_keys as $row_key){
 			$row_key = preg_replace('/[^a-f0-9]/i', '', (string)$row_key);
@@ -1673,19 +1840,26 @@ class Presence extends CI_Controller{
 		}
 
 		$use_schedule = !isset($p['use_schedule']) || $p['use_schedule'] == '1';
-		$result = $this->_import_presence_sheet($sheet, $branch_id, 'sync', $preview['month'], $preview['year'], $use_schedule);
+		// Cek lock berdasarkan tanggal AKTUAL data (bukan bulan halaman — keduanya bisa berbeda).
+		$pp_actual = $this->_payroll_period_of_date($preview['from']);
+		if($this->_payroll_locked($branch_id, $pp_actual['month'], $pp_actual['year'])){
+			echo json_encode(['status' => false, 'message' => $this->_lock_message($pp_actual['month'], $pp_actual['year']).' Sinkronisasi/import dibatalkan agar rekap yang sudah digaji tidak tertimpa.']);
+			return;
+		}
+		$result = $this->_import_presence_sheet($sheet, $branch_id, 'sync', $pp_actual['month'], $pp_actual['year'], $use_schedule);
 		if($result['status']){
 			$this->session->unset_userdata($key);
 		}
 
-		echo json_encode([
+		echo json_encode($this->_with_csrf([
 			'status' => $result['status'],
 			'message' => $result['message']
-		]);
+		]));
 	}
 
 	public function sync_pray_cloud(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
+			if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1712,11 +1886,11 @@ class Presence extends CI_Controller{
 
 			// Jika ada mesin basi & admin belum konfirmasi → tanya dulu, jangan proses
 			if(!empty($fresh['stale']) && !$this->input->post('force_stale')){
-				echo json_encode([
+				echo json_encode($this->_with_csrf([
 					'status'        => false,
 					'needs_confirm' => true,
 					'message'       => $fresh['note']
-				]);
+				]));
 				return;
 			}
 
@@ -1754,10 +1928,10 @@ class Presence extends CI_Controller{
 			}
 			$messages[] = $result['message'];
 
-			echo json_encode([
+			echo json_encode($this->_with_csrf([
 				'status' => $result['status'],
 				'message' => 'Sync presensi sholat selesai.<br>'.implode('<br>', $messages)
-			]);
+			]));
 		}else{
 			show_404();
 		}
@@ -1867,6 +2041,7 @@ class Presence extends CI_Controller{
 
 	public function clear_period(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
+			if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1886,18 +2061,18 @@ class Presence extends CI_Controller{
 			if($this->db->trans_status()){
 				$this->db->trans_commit();
 				$this->_log_presence_import($branch_id, $month, $year, 'delete', $deleted);
-				echo json_encode([
+				echo json_encode($this->_with_csrf([
 					'status' => true,
 					'message' => 'Data absen periode payroll '.$from.' s/d '.$to.' berhasil dikosongkan. Total terhapus: '.$deleted.'.'
-				]);
+				]));
 				return;
 			}
 
 			$this->db->trans_rollback();
-			echo json_encode([
+			echo json_encode($this->_with_csrf([
 				'status' => false,
 				'message' => 'Gagal mengosongkan data absen.'
-			]);
+			]));
 		}else{
 			show_404();
 		}
@@ -1935,6 +2110,40 @@ class Presence extends CI_Controller{
 			return date('Y-m-'.START_PAYROLL_DATE);
 		}
 		return date('Y-m-'.START_PAYROLL_DATE, strtotime('first day of -1 month'));
+	}
+
+	/**
+	 * Verifikasi password gate untuk operasi sync/hapus presensi.
+	 * Password (POST 'sync_gate_password') dicocokkan dgn hash bcrypt
+	 * SYNC_GATE_HASH (application/config/sync_gate.local.php).
+	 * Bila konstanta tidak ada / kosong → gate dinonaktifkan (return true).
+	 */
+	/**
+	 * Sisipkan hash CSRF terkini ke payload JSON. csrf_regenerate=TRUE mengganti
+	 * token tiap request, dan cookie-nya httponly (JS tak bisa baca langsung) —
+	 * jadi klien butuh nilai baru ini utk request AJAX berikutnya di halaman yang
+	 * sama (dibaca oleh window.CI_CSRF via hook ajaxSuccess di layout/admin.php).
+	 */
+	private function _with_csrf($data){
+		$data['csrfHash'] = $this->security->get_csrf_hash();
+		return $data;
+	}
+
+	private function _verify_sync_gate(){
+		if(!defined('SYNC_GATE_HASH') || SYNC_GATE_HASH === ''){
+			return true;
+		}
+		$pass = (string)$this->input->post('sync_gate_password');
+		return $pass !== '' && password_verify($pass, SYNC_GATE_HASH);
+	}
+
+	/** Response JSON standar saat password gate gagal. */
+	private function _sync_gate_error(){
+		echo json_encode($this->_with_csrf([
+			'status'        => false,
+			'need_password' => true,
+			'message'       => 'Password sync salah atau belum diisi.'
+		]));
 	}
 
 	private function _log_presence_import($branch_id, $month, $year, $method, $total_rows){
@@ -2197,6 +2406,15 @@ class Presence extends CI_Controller{
 	}
 
 	private function _import_attlog_dat($raw, $branch_id, $month, $year, $preserve_existing = false, $use_schedule = true){
+		// Lock penggajian: cegah sync/import menimpa presensi periode yang sudah di-payroll.
+		if($month !== null && $year !== null && $this->_payroll_locked($branch_id, $month, $year)){
+			return [
+				'status' => false,
+				'total_rows' => 0,
+				'message' => $this->_lock_message($month, $year).' Sinkronisasi/import dibatalkan agar rekap yang sudah digaji tidak tertimpa.'
+			];
+		}
+
 		$period = attlog_presence_period_range($month, $year);
 		$from = $period['from'];
 		$to = $period['to'];
@@ -2327,6 +2545,15 @@ class Presence extends CI_Controller{
 	}
 
 	private function _import_pray_sheet($sheetData, $branch_id, $month = null, $year = null, $method = 'sync_pray'){
+		// Lock penggajian: cegah import sholat menimpa periode yang sudah di-payroll.
+		if($month !== null && $year !== null && $this->_payroll_locked($branch_id, $month, $year)){
+			return [
+				'status' => false,
+				'total_rows' => 0,
+				'message' => $this->_lock_message($month, $year).' Import sholat dibatalkan.'
+			];
+		}
+
 		$branch = $this->branch->get_detail('branch.id', $branch_id)->row_array();
 		if(empty($branch)){
 			return [
@@ -2699,6 +2926,12 @@ class Presence extends CI_Controller{
 			$month = str_pad($p['month'], 2, '0', STR_PAD_LEFT);
 			$year = $p['year'];
 			$schedules = isset($p['schedule']) && is_array($p['schedule']) ? $p['schedule'] : [];
+
+			// Lock penggajian: tolak simpan jadwal bila payroll periode ini sudah dibuat.
+			if($this->_payroll_locked($branch_id, $month, $year)){
+				$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-lock"></i> '.$this->_lock_message($month, $year), 'danger'));
+				redirect('hr/work-schedule/'.$month.'/'.$year.($this->role == 'admin' ? '?branch_id='.$branch_id : ''));
+			}
 
 			$daterange = getRangeWorkDate($month, $year);
 			$dates = $daterange['list'];

@@ -46,6 +46,26 @@ table tbody th {
   gap: 8px;
 }
 
+/* Tombol riwayat per sel absensi */
+.btn-audit-history {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 9px;
+  padding: 0 3px;
+  line-height: 14px;
+  opacity: 0;
+  transition: opacity .15s;
+  background: rgba(255,255,255,.85);
+  border: 1px solid #adb5bd;
+  border-radius: 3px;
+  color: #495057;
+  cursor: pointer;
+  z-index: 2;
+}
+td.attendance:hover .btn-audit-history { opacity: 1; }
+td.attendance { position: relative; }
+
 .presence-toolbar .btn {
   min-height: 38px;
 }
@@ -609,6 +629,11 @@ table tbody th {
                                                 <span id="early_leave_status_body_<?= $row_id ?>">
                                                     <?= $early_leave_badge_txt ?>
                                                 </span>
+                                                <?php if($role === 'admin' && $presence_id): ?>
+                                                <button class="btn-audit-history"
+                                                  onclick="event.stopPropagation();auditHistoryOpen(<?= (int)$presence_id ?>, '<?= htmlspecialchars($row['employee']['name'], ENT_QUOTES) ?>', '<?= $workday['date'] ?>')"
+                                                  title="Riwayat perubahan">H</button>
+                                                <?php endif; ?>
                                                 <span id="overtime_presence_<?= $row_id ?>">
                                                     <?php 
                                                         if($workday['present']['is_overtime_presence']){
@@ -1035,6 +1060,60 @@ table tbody th {
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
                 <button type="button" class="btn btn-warning" id="btnConfirmForceStale">Proses Tetap</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalSyncPreview" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-info">
+                <h5 class="modal-title text-white"><i class="fa fa-list"></i> Preview Sync Reguler</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="syncPreviewSummary" class="alert alert-info small"></div>
+                <div class="alert alert-warning small mb-2">Data di luar periode absen berjalan tidak ditampilkan dan tidak akan diimport.</div>
+                <div class="row mb-2">
+                    <div class="col-md-3">
+                        <label class="form-label small">Tanggal Dari</label>
+                        <input type="date" id="syncPreviewFromDate" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Tanggal Sampai</label>
+                        <input type="date" id="syncPreviewToDate" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-light btn-sm w-100" id="syncPreviewResetDate">Semua Tanggal</button>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="syncPreviewSelectAll" checked>
+                            <label class="form-check-label" for="syncPreviewSelectAll">Pilih semua data valid dalam range</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height:480px;overflow-y:auto">
+                    <table class="table table-sm table-bordered table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center" style="width:40px">Pilih</th>
+                                <th>Tanggal</th>
+                                <th>Jam</th>
+                                <th>ID Fingerprint</th>
+                                <th>Karyawan</th>
+                                <th>Mesin</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="syncPreviewRows"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-info" id="btnImportSyncPreview"><i class="fa fa-check"></i> Import Terpilih & Recalculate</button>
             </div>
         </div>
     </div>
@@ -1634,18 +1713,55 @@ table tbody th {
             return false;
         });
 
+        // Prompt password gate sebelum operasi sync/hapus.
+        // onOk(password) dipanggil bila admin submit; onCancel() bila dibatalkan.
+        function promptSyncPassword(onOk, onCancel){
+            Swal.fire({
+                title: 'Password Sync',
+                input: 'password',
+                inputLabel: 'Masukkan password untuk melanjutkan',
+                inputPlaceholder: 'Password sync',
+                inputAttributes: { autocomplete: 'off', autocapitalize: 'off' },
+                showCancelButton: true,
+                confirmButtonText: 'Lanjutkan',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#36b9cc'
+            }).then(function(r){
+                if(r.isConfirmed){ onOk(r.value || ''); }
+                else if(typeof onCancel === 'function'){ onCancel(); }
+            });
+        }
+
         function doSyncAjax(url, data, btn, originalText, loadingMsg){
             $.ajax({
                 url      : url,
                 dataType : "json",
                 method   : "POST",
                 data     : data,
+                timeout  : 180000,
                 beforeSend : function(){
                     $('#btnModalUpload, #btnSyncCloud, #btnSyncPrayCloud, #btnClearPresence').attr('disabled', 'disabled').addClass('disabled');
                     btn.html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> ' + loadingMsg);
                     show_modal('info', 'Sedang mengambil data dari mesin absensi. Mohon tunggu...');
                 },
+                error : function(jqXHR, textStatus){
+                    $('#modal-info').modal('hide');
+                    var msg = textStatus === 'timeout'
+                        ? 'Proses terlalu lama (lebih dari 3 menit) dan dihentikan browser. Data yang sempat tersimpan di server TIDAK otomatis dibatalkan — cek ulang halaman sebelum sync ulang.'
+                        : 'Terjadi kesalahan jaringan/server (' + (jqXHR.status || '?') + '). Coba lagi; kalau berulang, cek halaman sebelum sync ulang supaya tidak dobel proses.';
+                    Swal.fire({ icon: 'error', title: 'Sync gagal terkirim', text: msg });
+                },
                 success : function(res){
+                    if(res.need_password){
+                        // Password gate salah/kosong — minta ulang lalu coba lagi
+                        $('#modal-info').modal('hide');
+                        Swal.fire({ icon:'error', title:'Password salah', text: res.message }).then(function(){
+                            promptSyncPassword(function(pass){
+                                doSyncAjax(url, $.extend({}, data, { sync_gate_password: pass }), btn, originalText, loadingMsg);
+                            });
+                        });
+                        return;
+                    }
                     if(res.needs_confirm){
                         // Ada mesin basi — tanya admin sebelum proses
                         $('#modal-info').modal('hide');
@@ -1656,6 +1772,11 @@ table tbody th {
                             doSyncAjax(url, forceData, btn, originalText, loadingMsg);
                         });
                         $('#modalSyncStaleConfirm').modal('show');
+                        return;
+                    }
+                    if(res.preview){
+                        $('#modal-info').modal('hide');
+                        showSyncPreview(res);
                         return;
                     }
                     show_modal(res.status ? 'success' : 'info', res.message);
@@ -1671,27 +1792,169 @@ table tbody th {
         $(document).on('click', '#btnSyncCloud', function(e){
             e.preventDefault();
             var btn = $(this);
-            doSyncAjax(
-                "<?= site_url('sync_presence_cloud') ?>",
-                buildSyncData(true),
-                btn, btn.html(), 'Sync reguler...'
-            );
+            promptSyncPassword(function(pass){
+                doSyncAjax(
+                    "<?= site_url('sync_presence_cloud') ?>",
+                    $.extend(buildSyncData(true), { sync_gate_password: pass }),
+                    btn, btn.html(), 'Sync reguler...'
+                );
+            });
             return false;
         });
 
         $(document).on('click', '#btnSyncPrayCloud', function(e){
             e.preventDefault();
             var btn = $(this);
-            doSyncAjax(
-                "<?= site_url('sync_pray_cloud') ?>",
-                buildSyncData(false),
-                btn, btn.html(), 'Sync sholat...'
-            );
+            promptSyncPassword(function(pass){
+                doSyncAjax(
+                    "<?= site_url('sync_pray_cloud') ?>",
+                    $.extend(buildSyncData(false), { sync_gate_password: pass }),
+                    btn, btn.html(), 'Sync sholat...'
+                );
+            });
             return false;
+        });
+
+
+        var syncPreviewToken = '';
+        var syncPreviewRows = [];
+
+        function escapeHtml(value){
+            return $('<div>').text(value == null ? '' : value).html();
+        }
+
+        function showSyncPreview(res){
+            syncPreviewToken = res.preview_token || '';
+            syncPreviewRows = res.rows || [];
+            var summary = res.summary || {};
+            $('#syncPreviewSummary').html(
+                '<b>Periode:</b> ' + escapeHtml(res.from) + ' s/d ' + escapeHtml(res.to) + '<br>' +
+                '<b>Total preview:</b> ' + (summary.total_rows || 0) +
+                ' | <b>Valid default:</b> ' + (summary.selected_rows || 0) +
+                ' | <b>Cocok karyawan:</b> ' + (summary.mapped_rows || 0) +
+                ' | <b>Tidak cocok:</b> ' + (summary.missing_rows || 0) + '<br>' +
+                (res.message || '')
+            );
+
+            $('#syncPreviewFromDate').val(res.from || '');
+            $('#syncPreviewToDate').val(res.to || '');
+            $('#syncPreviewSelectAll').prop('checked', true);
+            renderSyncPreviewRows();
+            $('#modalSyncPreview').modal('show');
+        }
+
+        function syncPreviewInRange(row){
+            var fromDate = $('#syncPreviewFromDate').val() || '';
+            var toDate = $('#syncPreviewToDate').val() || '';
+            if(fromDate !== '' && row.date < fromDate){ return false; }
+            if(toDate !== '' && row.date > toDate){ return false; }
+            return true;
+        }
+
+        function renderSyncPreviewRows(){
+            var html = '';
+            syncPreviewRows.forEach(function(row){
+                if(!syncPreviewInRange(row)){ return; }
+                var valid = row.status === 'mapped';
+                var checked = valid && row.selected_default ? ' checked' : '';
+                var disabled = valid ? '' : ' disabled';
+                var badge = valid
+                    ? '<span class="badge bg-success">Valid</span>'
+                    : '<span class="badge bg-warning text-dark">Karyawan tidak ditemukan</span>';
+                html += '<tr data-date="' + escapeHtml(row.date) + '">';
+                html += '<td class="text-center"><input type="checkbox" class="sync-preview-check" value="' + escapeHtml(row.key) + '"' + checked + disabled + '></td>';
+                html += '<td>' + escapeHtml(row.date) + '<br><small class="text-muted">' + escapeHtml(row.weekday) + '</small></td>';
+                html += '<td>' + escapeHtml(row.time) + '</td>';
+                html += '<td><code>' + escapeHtml(row.finger_id) + '</code></td>';
+                html += '<td>' + escapeHtml(row.employee_name) + '</td>';
+                html += '<td>' + escapeHtml(row.machine_sn) + '</td>';
+                html += '<td>' + badge + '</td>';
+                html += '</tr>';
+            });
+            if(html === ''){
+                html = '<tr><td colspan="7" class="text-center text-muted">Tidak ada data untuk filter ini.</td></tr>';
+            }
+            $('#syncPreviewRows').html(html);
+        }
+
+        $(document).on('change', '#syncPreviewFromDate, #syncPreviewToDate', function(){
+            $('#syncPreviewSelectAll').prop('checked', true);
+            renderSyncPreviewRows();
+        });
+
+        $(document).on('click', '#syncPreviewResetDate', function(){
+            var firstDate = syncPreviewRows.length ? syncPreviewRows[0].date : '';
+            var lastDate = syncPreviewRows.length ? syncPreviewRows[syncPreviewRows.length - 1].date : '';
+            $('#syncPreviewFromDate').val(firstDate);
+            $('#syncPreviewToDate').val(lastDate);
+            $('#syncPreviewSelectAll').prop('checked', true);
+            renderSyncPreviewRows();
+        });
+
+        $(document).on('change', '#syncPreviewSelectAll', function(){
+            var checked = $(this).is(':checked');
+            $('#syncPreviewRows .sync-preview-check:not(:disabled)').prop('checked', checked);
+        });
+
+        function doImportSyncPreview(selected, pass){
+            var btn = $('#btnImportSyncPreview');
+            $.ajax({
+                url      : "<?= site_url('import_sync_presence_cloud') ?>",
+                dataType : "json",
+                method   : "POST",
+                data     : {
+                    branch_id : "<?= $branch_id ?>",
+                    preview_token : syncPreviewToken,
+                    // Dikirim sebagai satu string JSON, BUKAN array field terpisah
+                    // (selected_keys[]=...&selected_keys[]=...) — rentang sync yang luas
+                    // bisa >1000 baris terpilih, melebihi php.ini max_input_vars (1000 di
+                    // server ini), yang bikin PHP diam-diam memotong $_POST dan menjatuhkan
+                    // myToken/sync_gate_password di ujung request → 403 CSRF tanpa pesan.
+                    selected_keys : JSON.stringify(selected),
+                    use_schedule : ($('#useScheduleSync').length == 0 || $('#useScheduleSync').is(':checked')) ? '1' : '0',
+                    sync_gate_password : pass
+                },
+                timeout : 180000,
+                beforeSend : function(){
+                    btn.html(show_loading()).attr('disabled', 'disabled');
+                },
+                error : function(jqXHR, textStatus){
+                    var msg = textStatus === 'timeout'
+                        ? 'Proses terlalu lama (lebih dari 3 menit) dan dihentikan browser. Import BISA JADI sudah tersimpan di server — tutup modal ini lalu muat ulang halaman untuk cek sebelum coba lagi.'
+                        : 'Terjadi kesalahan jaringan/server (' + (jqXHR.status || '?') + '). Muat ulang halaman untuk cek apakah data sudah masuk sebelum coba lagi.';
+                    Swal.fire({ icon: 'error', title: 'Import gagal terkirim', text: msg });
+                },
+                success : function(res){
+                    if(res.need_password){
+                        btn.html('<i class="fa fa-check"></i> Import Terpilih & Recalculate').removeAttr('disabled');
+                        Swal.fire({ icon:'error', title:'Password salah', text: res.message }).then(function(){
+                            promptSyncPassword(function(p){ doImportSyncPreview(selected, p); });
+                        });
+                        return;
+                    }
+                    $('#modalSyncPreview').modal('hide');
+                    show_modal(res.status ? 'success' : 'info', res.message);
+                    if(res.status){ setTimeout(function(){ window.location.reload(); }, 2000); }
+                },
+                complete : function(){
+                    btn.html('<i class="fa fa-check"></i> Import Terpilih & Recalculate').removeAttr('disabled');
+                }
+            });
+        }
+
+        $(document).on('click', '#btnImportSyncPreview', function(){
+            var selected = [];
+            $('#syncPreviewRows .sync-preview-check:checked').each(function(){ selected.push($(this).val()); });
+            if(selected.length === 0){
+                show_modal('info', 'Pilih minimal satu data absen untuk diimport.');
+                return;
+            }
+            promptSyncPassword(function(pass){ doImportSyncPreview(selected, pass); });
         });
 
         var autoSyncTimer = null;
         var autoSyncRunning = false;
+        var autoSyncPassword = '';
         var autoSyncStorageKey = 'presence_auto_sync_<?= $branch_id ?>_<?= $month ?>_<?= $year ?>';
         var useScheduleStorageKey = 'presence_use_schedule_<?= $branch_id ?>';
         var syncFromStorageKey = 'presence_sync_from_<?= $branch_id ?>_<?= $month ?>_<?= $year ?>';
@@ -1711,8 +1974,7 @@ table tbody th {
                 month     : "<?= $month ?>",
                 year      : "<?= $year ?>",
                 sync_from_date : fromVal,
-                sync_to_date   : syncTo,
-                myToken   : "<?php echo $this->security->get_csrf_hash() ?>"
+                sync_to_date   : syncTo
             };
 
             if(includeSchedule){
@@ -1726,6 +1988,16 @@ table tbody th {
             $('#autoSyncFive').closest('.form-check').find('label').text(text);
         }
 
+        function disableAutoSync(){
+            $('#autoSyncFive').prop('checked', false);
+            localStorage.setItem(autoSyncStorageKey, '0');
+            clearInterval(autoSyncTimer);
+            autoSyncTimer = null;
+            autoSyncRunning = false;
+            autoSyncPassword = '';
+            setAutoSyncLabel('Auto sync 5 menit');
+        }
+
         function runAutoSync(){
             if(autoSyncRunning){
                 return;
@@ -1734,22 +2006,29 @@ table tbody th {
             autoSyncRunning = true;
             setAutoSyncLabel('Auto sync berjalan...');
 
+            function finishAutoSync(){
+                autoSyncRunning = false;
+                setAutoSyncLabel($('#autoSyncFive').is(':checked') ? 'Auto sync aktif 5 menit' : 'Auto sync 5 menit');
+            }
+
             $.ajax({
                 url      : "<?= site_url('sync_presence_cloud') ?>",
                 dataType : "json",
                 method   : "POST",
-                data     : buildSyncData(true)
-            }).always(function(){
+                data     : $.extend(buildSyncData(true), { sync_gate_password: autoSyncPassword })
+            }).done(function(res){
+                if(res && res.need_password){
+                    disableAutoSync();
+                    Swal.fire({ icon:'error', title:'Auto sync dimatikan', text:'Password sync salah/berubah. Aktifkan ulang dengan password yang benar.' });
+                    return;
+                }
                 $.ajax({
                     url      : "<?= site_url('sync_pray_cloud') ?>",
                     dataType : "json",
                     method   : "POST",
-                    data     : buildSyncData(false)
-                }).always(function(){
-                    autoSyncRunning = false;
-                    setAutoSyncLabel($('#autoSyncFive').is(':checked') ? 'Auto sync aktif 5 menit' : 'Auto sync 5 menit');
-                });
-            });
+                    data     : $.extend(buildSyncData(false), { sync_gate_password: autoSyncPassword })
+                }).always(finishAutoSync);
+            }).fail(finishAutoSync);
         }
 
         function startAutoSync(runNow){
@@ -1763,14 +2042,16 @@ table tbody th {
 
         $(document).on('change', '#autoSyncFive', function(){
             if($(this).is(':checked')){
-                localStorage.setItem(autoSyncStorageKey, '1');
-                startAutoSync(true);
+                // Minta password sekali; auto sync memakainya untuk tiap siklus.
+                promptSyncPassword(function(pass){
+                    autoSyncPassword = pass;
+                    localStorage.setItem(autoSyncStorageKey, '1');
+                    startAutoSync(true);
+                }, function(){
+                    $('#autoSyncFive').prop('checked', false);
+                });
             }else{
-                localStorage.setItem(autoSyncStorageKey, '0');
-                clearInterval(autoSyncTimer);
-                autoSyncTimer = null;
-                autoSyncRunning = false;
-                setAutoSyncLabel('Auto sync 5 menit');
+                disableAutoSync();
             }
         });
 
@@ -1820,7 +2101,46 @@ table tbody th {
 
         if(localStorage.getItem(autoSyncStorageKey) == '1'){
             $('#autoSyncFive').prop('checked', true);
-            startAutoSync(true);
+            // Password tidak disimpan lintas reload — minta ulang untuk melanjutkan auto sync.
+            promptSyncPassword(function(pass){
+                autoSyncPassword = pass;
+                startAutoSync(true);
+            }, function(){
+                disableAutoSync();
+            });
+        }
+
+        function doClearPresence(pass){
+            var btn = $('#btnClearPresence');
+            $.ajax({
+                url      : "<?= site_url('clear_presence_period') ?>",
+                dataType : "json",
+                method   : "POST",
+                data     : {
+                    branch_id : "<?= $branch_id ?>",
+                    month     : "<?= $month ?>",
+                    year      : "<?= $year ?>",
+                    sync_gate_password : pass
+                },
+                beforeSend : function(){
+                    btn.html(show_loading()).attr('disabled', 'disabled');
+                },
+                success : function(res){
+                    if(res.need_password){
+                        btn.html('<i class="fa fa-trash"></i> Hapus').removeAttr('disabled');
+                        Swal.fire({ icon:'error', title:'Password salah', text: res.message }).then(function(){
+                            promptSyncPassword(function(p){ doClearPresence(p); });
+                        });
+                        return;
+                    }
+                    var type = (res.status) ? 'success' : 'info';
+                    show_modal(type, res.message);
+                    if(res.status){ window.location.reload(); }
+                },
+                complete : function(){
+                    btn.html('<i class="fa fa-trash"></i> Hapus').removeAttr('disabled');
+                }
+            });
         }
 
         $(document).on('click', '#btnClearPresence', function(e){
@@ -1830,34 +2150,7 @@ table tbody th {
                 return false;
             }
 
-            var btn = $('#btnClearPresence');
-
-            $.ajax({
-                url      : "<?= site_url('clear_presence_period') ?>",
-                dataType : "json",
-                method   : "POST",
-                data     : {
-                    branch_id : "<?= $branch_id ?>",
-                    month     : "<?= $month ?>",
-                    year      : "<?= $year ?>",
-                    myToken   : "<?php echo $this->security->get_csrf_hash() ?>"
-                },
-                beforeSend : function(){
-                    btn.html(show_loading()).attr('disabled', 'disabled');
-                },
-                success : function(res){
-                    var type = (res.status) ? 'success' : 'info';
-                    show_modal(type, res.message);
-
-                    if(res.status){
-                        window.location.reload();
-                    }
-                },
-                complete : function(){
-                    btn.html('<i class="fa fa-trash"></i> Hapus').removeAttr('disabled');
-                }
-            });
-
+            promptSyncPassword(function(pass){ doClearPresence(pass); });
             return false;
         });
 
@@ -1975,3 +2268,4 @@ table tbody th {
         });
     }
 </script>
+<?php if($role === 'admin'): $this->load->view('audit/_history_modal'); endif; ?>
