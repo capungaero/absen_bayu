@@ -1429,11 +1429,10 @@ class Presence extends CI_Controller{
 				return;
 			}
 
-			$month = date('m');
-			$year = date('Y');
-			$period = attlog_presence_period_range($month, $year);
-			$sync_from_date = $period['from'];
-			$sync_to_date = $period['to'];
+			$month = str_pad($p['month'], 2, '0', STR_PAD_LEFT);
+			$year = $p['year'];
+			$sync_from_date = $this->_normalize_sync_from_date($month, $year, isset($p['sync_from_date']) ? $p['sync_from_date'] : null);
+			$sync_to_date   = $this->_normalize_sync_to_date($month, $year, isset($p['sync_to_date']) ? $p['sync_to_date'] : null);
 
 			$download = $this->_download_cloud_attlogs();
 			if($download === false){
@@ -1479,7 +1478,7 @@ class Presence extends CI_Controller{
 			if(empty($preview['rows'])){
 				echo json_encode([
 					'status' => false,
-					'message' => 'Data cloud berhasil didownload, tapi tidak ada data pada periode berjalan '.$sync_from_date.' s/d '.$sync_to_date.'. Data periode sebelumnya tidak ditampilkan.'
+					'message' => 'Data cloud berhasil didownload, tapi tidak ada data pada periode '.$sync_from_date.' s/d '.$sync_to_date.'. Data di luar rentang ini tidak ditampilkan.'
 				]);
 				return;
 			}
@@ -1498,14 +1497,14 @@ class Presence extends CI_Controller{
 
 			$messages = [];
 			$messages[] = 'File DAT tersimpan: '.implode(', ', array_map('basename', $dat_files)).'.';
-			$messages[] = 'Preview periode berjalan: '.$sync_from_date.' s/d '.$sync_to_date.' ('.$excel['total_rows'].' log, '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
+			$messages[] = 'Preview periode '.$sync_from_date.' s/d '.$sync_to_date.' ('.$excel['total_rows'].' log, '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
 			if(!empty($fresh['note'])){
 				$messages[] = '⚠️ '.$fresh['note'].' Data tetap ditampilkan (mode manual) — periksa apakah mesin online.';
 			}
 			if(!empty($download['failed'])){
 				$messages[] = 'Mesin gagal: '.implode(', ', $download['failed']).'.';
 			}
-			$messages[] = 'Data periode sebelumnya tidak ditampilkan dan tidak akan diimport.';
+			$messages[] = 'Data di luar rentang '.$sync_from_date.' s/d '.$sync_to_date.' tidak ditampilkan dan tidak akan diimport.';
 
 			echo json_encode([
 				'status' => true,
