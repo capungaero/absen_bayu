@@ -70,42 +70,58 @@ td.attendance { position: relative; }
   min-height: 38px;
 }
 
-.presence-filter-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(180px, 1fr));
-  gap: 14px;
-  align-items: end;
-}
-
-.presence-filter-grid .filter-wide {
-  grid-column: span 2;
-}
-
-.presence-sync-options {
+.presence-toprow {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  align-items: center;
-  padding-top: 8px;
+  align-items: end;
+  margin-bottom: 14px;
 }
 
-@media (max-width: 991px) {
-  .presence-filter-grid {
-    grid-template-columns: repeat(2, minmax(160px, 1fr));
-  }
+.presence-toprow .branch-field {
+  flex: 1 1 320px;
+  min-width: 220px;
+}
 
-  .presence-filter-grid .filter-wide {
-    grid-column: span 2;
-  }
+.presence-sync-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid #eef0f2;
+}
+
+.sync-daterange-group label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sync-daterange-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sync-daterange-row #syncMode {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 116px;
+}
+
+.sync-daterange-row input[type="date"] {
+  flex: 0 0 auto;
+  width: 150px;
 }
 
 @media (max-width: 575px) {
-  .presence-filter-grid {
-    grid-template-columns: 1fr;
+  .presence-toprow .branch-field {
+    flex: 1 1 100%;
   }
 
-  .presence-filter-grid .filter-wide {
-    grid-column: span 1;
+  .sync-daterange-row input[type="date"] {
+    width: 100%;
   }
 }
 
@@ -161,9 +177,9 @@ td.attendance { position: relative; }
                     </div>
 
                     <?php if($role == 'admin'){ ?>
-                        <form class="mb-3">
-                            <div class="presence-filter-grid">
-                                <div class="filter-wide">
+                        <form class="mb-0">
+                            <div class="presence-toprow">
+                                <div class="branch-field">
                                     <label>Pilih Cabang</label>
                                     <select class="form-control" name="branch_id" id="branch">
                                         <?php foreach ($branch as $row) { ?>
@@ -172,12 +188,14 @@ td.attendance { position: relative; }
                                     </select>
                                 </div>
                                 <div>
-                                    <button class="btn btn-primary w-100"><i class="fa fa-search"></i> Terapkan Cabang</button>
+                                    <button class="btn btn-primary"><i class="fa fa-search"></i> Terapkan Cabang</button>
                                 </div>
-                                <div>
+                            </div>
+                            <div class="presence-sync-toolbar mb-3">
+                                <div class="sync-daterange-group">
                                     <label>Sync tanggal</label>
-                                    <div class="sync-daterange-row" style="display:flex; gap:4px; align-items:center;">
-                                        <select class="form-control" id="syncMode" style="max-width:120px;">
+                                    <div class="sync-daterange-row">
+                                        <select class="form-control" id="syncMode">
                                             <option value="from">Mulai tgl</option>
                                             <option value="single">Tgl tunggal</option>
                                             <option value="range">Rentang</option>
@@ -187,24 +205,22 @@ td.attendance { position: relative; }
                                         <input type="date" class="form-control" id="syncToDate" value="<?= $sync_from_max ?>" min="<?= $sync_from_min ?>" max="<?= $sync_from_max ?>" style="display:none;">
                                     </div>
                                 </div>
-                                <div class="presence-sync-options">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="useScheduleSync" checked>
-                                        <label class="form-check-label" for="useScheduleSync">Pakai jadwal</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="autoSyncFive">
-                                        <label class="form-check-label" for="autoSyncFive">Auto sync 5 menit</label>
-                                    </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="useScheduleSync" checked>
+                                    <label class="form-check-label" for="useScheduleSync">Pakai jadwal</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="autoSyncFive">
+                                    <label class="form-check-label" for="autoSyncFive">Auto sync 5 menit</label>
                                 </div>
                             </div>
                         </form>
                     <?php }else if(in_array($this->role, ['admin-branch', 'supervisor'])){ ?>
-                        <div class="presence-sync-options mb-3">
-                            <div>
+                        <div class="presence-sync-toolbar mb-3">
+                            <div class="sync-daterange-group">
                                 <label>Sync tanggal</label>
-                                <div class="sync-daterange-row" style="display:flex; gap:4px; align-items:center;">
-                                    <select class="form-control" id="syncMode" style="max-width:120px;">
+                                <div class="sync-daterange-row">
+                                    <select class="form-control" id="syncMode">
                                         <option value="from">Mulai tgl</option>
                                         <option value="single">Tgl tunggal</option>
                                         <option value="range">Rentang</option>
