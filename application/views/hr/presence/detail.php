@@ -1266,6 +1266,38 @@ td.attendance { position: relative; }
 </div>
 
 <script type="text/javascript">
+    // Filter karyawan di blok <script> TERPISAH — supaya tetap hidup walau ada
+    // error JS apa pun di blok script besar di bawah (mis. localStorage diblokir).
+    function EmployeeFilter(keyword, subdivision, position, location){
+        $('#listPresence tr').each(function(){
+            var searchKeyword     = $(this).text().search(new RegExp(keyword, "i"));
+            var searchSubdivision = ($(this).data('subdivision') == subdivision || subdivision == 'all');
+            var searchPosition    = ($(this).data('position') == position || position == 'all');
+            var searchLocation    = (typeof location === 'undefined' || location == 'all' || $(this).data('location') == location);
+
+            if(searchKeyword < 0 || !searchSubdivision || !searchPosition || !searchLocation){
+              $(this).hide();
+            }else{
+              $(this).show();
+            }
+        });
+    }
+
+    function runEmployeeFilter(){
+        EmployeeFilter(
+            $('#autocomplete').val(),
+            $('#subdivision').val(),
+            $('#positionFilter').val(),
+            $('#locationFilter').val()
+        );
+    }
+
+    $(document).on('keyup', '#autocomplete', function(){ runEmployeeFilter(); });
+    $(document).on('change', '#subdivision', function(){ runEmployeeFilter(); });
+    $(document).on('change', '#positionFilter', function(){ runEmployeeFilter(); });
+    $(document).on('change', '#locationFilter', function(){ runEmployeeFilter(); });
+</script>
+<script type="text/javascript">
     var branch_id = "<?= $this->input->get('branch_id') ? '?branch_id='.(int)$this->input->get('branch_id') : '' ?>";
     $(document).on('click', '#btnModalUpload', function(){
         $('#modalUpload').modal('show');
@@ -1968,6 +2000,16 @@ td.attendance { position: relative; }
             promptSyncPassword(function(pass){ doImportSyncPreview(selected, pass); });
         });
 
+        // Akses localStorage bisa melempar SecurityError bila browser memblokir
+        // site data (setting privasi/incognito) — bungkus try-catch supaya
+        // preferensi sync sekadar tidak tersimpan, bukan mematikan script.
+        function storeGet(key){
+            try { return localStorage.getItem(key); } catch(e){ return null; }
+        }
+        function storeSet(key, val){
+            try { localStorage.setItem(key, val); } catch(e){}
+        }
+
         var autoSyncTimer = null;
         var autoSyncRunning = false;
         var autoSyncPassword = '';
@@ -2006,7 +2048,7 @@ td.attendance { position: relative; }
 
         function disableAutoSync(){
             $('#autoSyncFive').prop('checked', false);
-            localStorage.setItem(autoSyncStorageKey, '0');
+            storeSet(autoSyncStorageKey, '0');
             clearInterval(autoSyncTimer);
             autoSyncTimer = null;
             autoSyncRunning = false;
@@ -2061,7 +2103,7 @@ td.attendance { position: relative; }
                 // Minta password sekali; auto sync memakainya untuk tiap siklus.
                 promptSyncPassword(function(pass){
                     autoSyncPassword = pass;
-                    localStorage.setItem(autoSyncStorageKey, '1');
+                    storeSet(autoSyncStorageKey, '1');
                     startAutoSync(true);
                 }, function(){
                     $('#autoSyncFive').prop('checked', false);
@@ -2072,15 +2114,15 @@ td.attendance { position: relative; }
         });
 
         $(document).on('change', '#useScheduleSync', function(){
-            localStorage.setItem(useScheduleStorageKey, $(this).is(':checked') ? '1' : '0');
+            storeSet(useScheduleStorageKey, $(this).is(':checked') ? '1' : '0');
         });
 
         $(document).on('change', '#syncFromDate', function(){
-            localStorage.setItem(syncFromStorageKey, $(this).val());
+            storeSet(syncFromStorageKey, $(this).val());
         });
 
         $(document).on('change', '#syncToDate', function(){
-            localStorage.setItem(syncToStorageKey, $(this).val());
+            storeSet(syncToStorageKey, $(this).val());
         });
 
         function applySyncMode(){
@@ -2093,29 +2135,29 @@ td.attendance { position: relative; }
         }
 
         $(document).on('change', '#syncMode', function(){
-            localStorage.setItem(syncModeStorageKey, $(this).val());
+            storeSet(syncModeStorageKey, $(this).val());
             applySyncMode();
         });
 
-        if(localStorage.getItem(syncFromStorageKey)){
-            $('#syncFromDate').val(localStorage.getItem(syncFromStorageKey));
+        if(storeGet(syncFromStorageKey)){
+            $('#syncFromDate').val(storeGet(syncFromStorageKey));
         }
 
-        if(localStorage.getItem(syncToStorageKey)){
-            $('#syncToDate').val(localStorage.getItem(syncToStorageKey));
+        if(storeGet(syncToStorageKey)){
+            $('#syncToDate').val(storeGet(syncToStorageKey));
         }
 
-        if(localStorage.getItem(syncModeStorageKey)){
-            $('#syncMode').val(localStorage.getItem(syncModeStorageKey));
+        if(storeGet(syncModeStorageKey)){
+            $('#syncMode').val(storeGet(syncModeStorageKey));
         }
 
         applySyncMode();
 
-        if(localStorage.getItem(useScheduleStorageKey) !== '0'){
+        if(storeGet(useScheduleStorageKey) !== '0'){
             $('#useScheduleSync').prop('checked', true);
         }
 
-        if(localStorage.getItem(autoSyncStorageKey) == '1'){
+        if(storeGet(autoSyncStorageKey) == '1'){
             $('#autoSyncFive').prop('checked', true);
             // Password tidak disimpan lintas reload — minta ulang untuk melanjutkan auto sync.
             promptSyncPassword(function(pass){
@@ -2255,33 +2297,7 @@ td.attendance { position: relative; }
         $('#rest_time_out').val(a.attr('data-restend'));
     })
 
-    $(document).on('keyup', '#autocomplete', function(){ runEmployeeFilter(); });
-    $(document).on('change', '#subdivision', function(){ runEmployeeFilter(); });
-    $(document).on('change', '#positionFilter', function(){ runEmployeeFilter(); });
-    $(document).on('change', '#locationFilter', function(){ runEmployeeFilter(); });
-
-    function runEmployeeFilter(){
-        EmployeeFilter(
-            $('#autocomplete').val(),
-            $('#subdivision').val(),
-            $('#positionFilter').val(),
-            $('#locationFilter').val()
-        );
-    }
-
-    function EmployeeFilter(keyword, subdivision, position, location){
-        $('#listPresence tr').each(function(){
-            var searchKeyword     = $(this).text().search(new RegExp(keyword, "i"));
-            var searchSubdivision = ($(this).data('subdivision') == subdivision || subdivision == 'all');
-            var searchPosition    = ($(this).data('position') == position || position == 'all');
-            var searchLocation    = (typeof location === 'undefined' || location == 'all' || $(this).data('location') == location);
-
-            if(searchKeyword < 0 || !searchSubdivision || !searchPosition || !searchLocation){
-              $(this).hide();
-            }else{
-              $(this).show();
-            }
-        });
-    }
+    // Handler filter karyawan dipindah ke blok <script> terpisah di atas
+    // (anti-mati bila blok ini error di tengah).
 </script>
 <?php if($role === 'admin'): $this->load->view('audit/_history_modal'); endif; ?>
