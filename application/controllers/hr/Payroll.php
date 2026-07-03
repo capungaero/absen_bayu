@@ -213,7 +213,12 @@ class Payroll extends CI_Controller{
 				// Tulis komisi otomatis (disiplin/transport/beras/soskes/sholat) ke payroll_insentif
 				// sebelum hitung detail — supaya nilai auto masuk ke salary_in_insentive di DB.
 				require_once APPPATH.'controllers/PayrollSim.php';
-				$sim = new PayrollSim();
+				// Bypass CI_Controller constructor (double-init Template autoload bermasalah di CI 3,
+				// sama seperti recalc_auto_insentif() — lihat komentar di sana).
+				$sim = (new ReflectionClass('PayrollSim'))->newInstanceWithoutConstructor();
+				$sim->db    = $this->db;
+				$sim->input = $this->input;
+				$sim->load  = $this->load;
 				$sim->apply_auto_to_payroll($branch_id, $month, $year);
 				$profile('apply_auto_to_payroll selesai');
 
