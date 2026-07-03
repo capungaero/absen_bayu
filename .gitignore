@@ -23,6 +23,7 @@ ftp.txt
 /tools/sholat_recap/*.html
 application/config/email.local.php
 application/config/database.local.php
+application/config/sync_gate.local.php
 /resume.md
 /code_review.md
 /ascii_diagram.md

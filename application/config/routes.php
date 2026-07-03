@@ -55,6 +55,24 @@ $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
 // API JSON untuk PWA karyawan (stateless, token bearer; CSRF dikecualikan di config)
+// Audit Log — riwayat & rollback perubahan data absensi (admin only)
+$route['audit_log']                = 'AuditLog/index';
+$route['audit_log/history/(:num)'] = 'AuditLog/history/$1';
+$route['audit_log/rollback']               = 'AuditLog/rollback';
+$route['audit_log/mass_rollback']          = 'AuditLog/mass_rollback';
+$route['audit_log/mass_rollback_simulate'] = 'AuditLog/mass_rollback_simulate';
+$route['audit_log/mass_rollback_execute']  = 'AuditLog/mass_rollback_execute';
+
+// Laporan ketidakcocokan data dari karyawan via PWA
+$route['report']               = 'Report/index';
+$route['report/mark_read']     = 'Report/mark_read';
+$route['report/mark_all_read'] = 'Report/mark_all_read';
+$route['report/acc']           = 'Report/acc';
+$route['report/edit']          = 'Report/edit';
+$route['report/delete']        = 'Report/delete';
+$route['api/submit_report']      = 'Api/submit_report';
+$route['api/get_report_credits'] = 'Api/get_report_credits';
+
 $route['api/demo_login']      = 'Api/demo_login';
 $route['api/login']           = 'Api/login';
 $route['api/profile']         = 'Api/profile';
@@ -63,6 +81,8 @@ $route['api/payroll']         = 'Api/payroll';
 $route['api/requests']        = 'Api/requests';
 $route['api/submit_leave']    = 'Api/submit_leave';
 $route['api/submit_overtime'] = 'Api/submit_overtime';
+$route['api/bpjs']            = 'Api/bpjs';
+$route['api/submit_bpjs']     = 'Api/submit_bpjs';
 
 $route['authentication/login']  = 'Auth';
 $route['do_login']				= 'Auth/do_login';
@@ -256,6 +276,30 @@ $route['payroll_sim/salary']     = 'PayrollSim/salary';
 $route['payroll_sim/insentif']   = 'PayrollSim/insentif';
 $route['payroll_sim/deduction']  = 'PayrollSim/deduction';
 $route['payroll_sim/branches']   = 'PayrollSim/branches';
+
+// Payroll Importer (impor komisi/potongan dari Excel, auth via CI3 session)
+$route['payroll_import/branches'] = 'PayrollImporter/branches';
+$route['payroll_import/targets']  = 'PayrollImporter/targets';
+$route['payroll_import/parse']    = 'PayrollImporter/parse';
+$route['payroll_import/commit']   = 'PayrollImporter/commit';
+
+// DAT Reader (baca .dat mesin → mirror+work editable → dorong ke presence, auth via CI3 session)
+$route['dat_reader/branches']    = 'DatReader/branches';
+$route['dat_reader/period']      = 'DatReader/period';
+$route['dat_reader/sync_upload'] = 'DatReader/sync_upload';
+$route['dat_reader/sync_cloud']  = 'DatReader/sync_cloud';
+$route['dat_reader/data']        = 'DatReader/data';
+$route['dat_reader/save']        = 'DatReader/save';
+$route['dat_reader/push']        = 'DatReader/push';
+
+// ============ BPJS ================
+$route['bpjs']                = 'Bpjs/index';
+$route['bpjs/config']         = 'Bpjs/config';
+$route['bpjs/save_config']    = 'Bpjs/save_config';
+$route['bpjs/list']           = 'Bpjs/list_payment';
+$route['bpjs/toggle_office']  = 'Bpjs/toggle_office';
+$route['bpjs/acc']            = 'Bpjs/acc';
+$route['bpjs/sync']           = 'Bpjs/sync_period';
 
 $route['panel/master_data/user'] 	= 'User';
 $route['insert_user']		   		= 'User/insert';

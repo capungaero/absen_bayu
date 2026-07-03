@@ -1,5 +1,5 @@
-var CACHE = 'tiffany-emp-v8';
-var ASSETS = ['./','index.html','style.css?v=8','app.js?v=8','manifest.json','icons/icon-192.png','icons/icon-512.png'];
+var CACHE = 'tiffany-emp-v11';
+var ASSETS = ['./','index.html','style.css?v=15','app.js?v=17','manifest.json','icons/icon-192.png','icons/icon-512.png'];
 
 self.addEventListener('install', function(e){
   e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(ASSETS); }).then(function(){ return self.skipWaiting(); }));

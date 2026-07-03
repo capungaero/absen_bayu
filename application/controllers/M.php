@@ -507,6 +507,15 @@ class M extends CI_Controller {
         $leave = $tr->row_array();
         $now   = date('Y-m-d H:i:s');
 
+        // Lock penggajian: tolak approve izin bila tanggalnya masuk periode yang sudah di-payroll.
+        if ($status == 'approve') {
+            $locked = payroll_locked_dates(payroll_user_branch($leave['user_id']),
+                        get_daterange_list($leave['leave_start'], $leave['leave_end']));
+            if (!empty($locked)) {
+                return $this->_json(['status' => false, 'message' => 'Tidak bisa menyetujui izin: tanggal masuk periode penggajian terkunci ('.implode(', ', $locked).'). Rollback penggajian periode tersebut dulu.']);
+            }
+        }
+
         $this->db->trans_begin();
 
         // Potongan: pakai request bila ada, jika tidak default. Berlaku untuk semua

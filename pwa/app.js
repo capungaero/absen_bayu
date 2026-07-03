@@ -8,6 +8,7 @@ var state = { tab:'schedule', user:null, schedMonth:(new Date()).getMonth()+1, s
 function $(s){ return document.querySelector(s); }
 function el(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
 function rp(n){ return 'Rp ' + (Number(n)||0).toLocaleString('id-ID'); }
+function minuteText(m){ m=Number(m)||0; return m>0 ? m+' menit' : ''; }
 function loader(on){ $('#loader').classList.toggle('hidden', !on); }
 function token(){ return localStorage.getItem(TKEY); }
 
@@ -76,6 +77,7 @@ async function render(){
   try{
     if(state.tab==='schedule') await renderSchedule(c);
     else if(state.tab==='payroll') await renderPayroll(c);
+    else if(state.tab==='bpjs') await renderBpjs(c);
     else if(state.tab==='requests') await renderRequests(c);
     else await renderProfile(c);
   }catch(err){ c.innerHTML='<div class="empty">'+(err.message||'Terjadi kesalahan')+'</div>'; }
@@ -98,13 +100,20 @@ async function renderSchedule(c){
     var warns = [];
     var hasEntry = !!x.entry, hasOut = !!x.out;
     if((hasEntry && !hasOut) || (!hasEntry && hasOut)) warns.push('absen tdk lengkap');
+    if(x.entry_late > 0) warns.push('masuk telat '+minuteText(x.entry_late));
+    if(x.out_late > 0) warns.push('pulang telat '+minuteText(x.out_late));
+    if(x.out_early > 0) warns.push('pulang cepat '+minuteText(x.out_early));
     var rest = x.rest || {};
     if((rest.keluar && !rest.masuk) || (!rest.keluar && rest.masuk)) warns.push('istirahat tdk lengkap');
+    if(rest.late > 0) warns.push('istirahat telat '+minuteText(rest.late));
     var prayIncomplete = false;
+    var prayLate = 0;
     (x.pray && x.pray.items || []).forEach(function(p){
       if((p.in && !p.out) || (!p.in && p.out)) prayIncomplete = true;
+      if(p.late > 0) prayLate += p.late;
     });
     if(prayIncomplete) warns.push('sholat tdk lengkap');
+    if(prayLate > 0) warns.push('sholat telat '+minuteText(prayLate));
     var warnHtml = warns.length ? '<div class="day-warn">'+warns.join(' · ')+'</div>' : '';
     html += '<div class="day-row '+(x.status==='off'?'day-off':'')+'" data-idx="'+i+'">'
       + '<div class="day-date"><div class="d">'+dd+'</div><div class="w">'+x.day.slice(0,3)+'</div></div>'
@@ -128,6 +137,8 @@ function openDayDetail(idx){
   if(x.entry || x.out){
     var entryVal = (x.entry||'—')+lateTag(x.entry_late);
     var outVal = x.out||'—';
+    if(x.out_late > 0) outVal += ' <span class="late-tag">telat '+x.out_late+'m</span>';
+    if(x.out_early > 0) outVal += ' <span class="late-tag">pulang cepat '+x.out_early+'m</span>';
     if(x.entry && !x.out) outVal = '— '+tl;
     if(!x.entry && x.out) entryVal = '— '+tl;
     work = '<div class="kv"><span>Jam Masuk</span><span class="v">'+entryVal+'</span></div>'
@@ -468,6 +479,61 @@ async function renderProfile(c){
   $('#btnLogout').onclick=function(){ if(confirm('Keluar dari aplikasi?')) logout(); };
 }
 
+/* ---------- BPJS ---------- */
+async function renderBpjs(c){
+  var d = await api('/bpjs');
+  if(!d.status){ c.innerHTML='<div class="empty">'+(d.message||'Gagal memuat data BPJS')+'</div>'; return; }
+  state.bpjsInsentif = d.mandiri_insentif || 0;
+
+  var html = '<div class="req-actions"><button class="req-btn req-ot" id="btnKirimBpjs">＋ Kirim Bukti Bayar BPJS</button></div>';
+  html += '<div class="section-title">Riwayat Pembayaran BPJS</div>';
+
+  if(!d.history.length){
+    html += '<div class="empty" style="padding:14px">Belum ada riwayat pembayaran BPJS.</div>';
+  } else {
+    d.history.forEach(function(b){
+      var st, sub;
+      if(b.pay_mode === 'kantor'){
+        st = ['s-ok','Dibayar Kantor'];
+        var parts = [];
+        if(b.kesehatan) parts.push('Kesehatan '+rp(b.kesehatan));
+        if(b.ketenagakerjaan) parts.push('Ketenagakerjaan '+rp(b.ketenagakerjaan));
+        sub = parts.length ? 'Potongan: '+parts.join(' · ') : 'Ditanggung perusahaan';
+      } else if(b.status === 'approved'){
+        st = ['s-ok','Mandiri · Disetujui'];
+        sub = 'Insentif: '+rp(b.insentif);
+      } else {
+        st = ['s-pending','Menunggu ACC'];
+        sub = 'Bukti terkirim, menunggu persetujuan admin';
+      }
+      html += '<div class="req-card"><div class="req-row"><div><b>'+b.month_name+' '+b.year+'</b>'
+        + '<div class="req-sub">'+sub+'</div></div><span class="sbadge '+st[0]+'">'+st[1]+'</span></div>'
+        + (b.proof?'<a class="req-proof" href="'+b.proof+'" target="_blank">📎 Lihat bukti</a>':'')+'</div>';
+    });
+  }
+  c.innerHTML = html;
+  $('#btnKirimBpjs').onclick = openBpjsForm;
+}
+
+function openBpjsForm(){
+  var now = new Date(), curM = now.getMonth()+1, curY = now.getFullYear();
+  var monthOpts = '';
+  for(var m=1;m<=12;m++){ monthOpts += '<option value="'+m+'"'+(m===curM?' selected':'')+'>'+MONTH_NAMES[m]+'</option>'; }
+  var yearOpts = '';
+  for(var y=curY;y>=curY-2;y--){ yearOpts += '<option value="'+y+'">'+y+'</option>'; }
+  var sheet=makeSheet('<div class="sheet-title">Kirim Bukti Bayar BPJS</div><form id="bpjsForm" class="reqform">'
+    + '<p class="muted" style="margin:0 0 8px">Untuk peserta bayar mandiri. Bukti akan diverifikasi admin; setelah disetujui Anda menerima insentif '+rp(state.bpjsInsentif||0)+'.</p>'
+    + '<div class="form2"><div><label>Bulan</label><select name="month">'+monthOpts+'</select></div>'
+    + '<div><label>Tahun</label><select name="year">'+yearOpts+'</select></div></div>'
+    + '<label>Foto Bukti Pembayaran <span class="muted">(wajib)</span></label>'
+    + '<input type="file" name="bpjs_proof" id="bpjsFile" accept="image/*" capture="environment" required><div id="bpjsPrev" class="filePrev"></div>'
+    + '<p class="msg" id="bpjsMsg"></p><button class="btn-primary" id="bpjsSubmit" type="submit">Kirim Bukti</button>'
+    + '<button class="btn-sheet-close" type="button" id="bpjsCancel">Batal</button></form>');
+  $('#bpjsCancel').onclick=function(){ sheet.remove(); };
+  $('#bpjsFile').onchange=function(){ previewFile(this,'#bpjsPrev'); };
+  $('#bpjsForm').onsubmit=function(e){ e.preventDefault(); submitForm('/submit_bpjs', this, '#bpjsSubmit', '#bpjsMsg', function(){ sheet.remove(); }); };
+}
+
 /* ---------- PENGAJUAN ---------- */
 function fdate(s){ if(!s) return '-'; var p=s.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
 function cap(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
@@ -570,6 +636,69 @@ async function boot(){
 }
 
 if(token()) boot(); else $('#loginView').classList.remove('hidden');
+
+/* ---------- LAPORAN KETIDAKCOCOKAN DATA ---------- */
+document.getElementById('btnReport').addEventListener('click', openReportForm);
+
+async function openReportForm(){
+  var credits = {used:0, max:5, remaining:5};
+  try { credits = await api('/get_report_credits'); } catch(e){}
+  var used      = credits.used      || 0;
+  var max       = credits.max       || 5;
+  var remaining = credits.remaining !== undefined ? credits.remaining : (max - used);
+  var exhausted = remaining <= 0;
+
+  var creditColor = remaining > 2 ? '#22c55e' : remaining > 0 ? '#f59e0b' : '#ef4444';
+  var creditHtml  =
+    '<div class="rpt-credit-bar">'
+    + '<span>📊 Kredit <b>Salah Input Data</b>:</span>'
+    + '<span style="color:'+creditColor+';font-weight:700">'+remaining+' tersisa</span>'
+    + '<span style="color:#9ca3af;font-size:11px">('+used+'/'+max+' terpakai)</span>'
+    + '</div>';
+
+  var sheet = makeSheet(
+    '<div class="sheet-title">🚩 Laporkan Masalah Data</div>'
+    + '<p class="rpt-hint">Temukan data yang tidak sesuai? Ceritakan masalahnya dan lampirkan screenshot atau foto sebagai bukti.</p>'
+    + '<form id="rptForm" class="reqform">'
+    + '<label>Kategori Masalah <span class="muted">(wajib)</span></label>'
+    + '<div class="rpt-cat-box">'
+    + '<label class="rpt-cat-opt'+(exhausted?' rpt-cat-disabled':'')+'" id="rptCatSalah">'
+    + '<input type="radio" name="category" value="salah_input"'+(exhausted?' disabled':'')+' required>'
+    + ' Salah Input Data</label>'
+    + '<label class="rpt-cat-opt" id="rptCatError">'
+    + '<input type="radio" name="category" value="error_aplikasi" required>'
+    + ' Error Aplikasi</label>'
+    + '</div>'
+    + creditHtml
+    + '<label>Deskripsi Masalah <span class="muted">(wajib)</span></label>'
+    + '<textarea name="description" rows="4" required placeholder="Contoh: Jam masuk saya 07:30 tapi di sistem tertulis 08:15 pada tanggal 20 Juni 2026..."></textarea>'
+    + '<label>Lampiran Bukti <span class="muted">(opsional · foto atau screenshot)</span></label>'
+    + '<input type="file" name="report_file" id="rptFile" accept="image/*,application/pdf">'
+    + '<div id="rptPrev" class="filePrev"></div>'
+    + '<p class="msg" id="rptMsg"></p>'
+    + '<button class="btn-primary" id="rptSubmit" type="submit">Kirim Laporan</button>'
+    + '<button class="btn-sheet-close" type="button" id="rptCancel">Batal</button>'
+    + '</form>'
+  );
+  document.getElementById('rptCancel').onclick = function(){ sheet.remove(); };
+  document.getElementById('rptFile').onchange   = function(){ previewFile(this,'#rptPrev'); };
+  // highlight selected category
+  sheet.querySelectorAll('input[name="category"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      sheet.querySelectorAll('.rpt-cat-opt').forEach(function(o){ o.classList.remove('rpt-cat-selected'); });
+      this.closest('.rpt-cat-opt').classList.add('rpt-cat-selected');
+    });
+  });
+  // if salah_input exhausted, auto-select error_aplikasi
+  if(exhausted){
+    var errRadio = sheet.querySelector('input[value="error_aplikasi"]');
+    if(errRadio){ errRadio.checked = true; errRadio.closest('.rpt-cat-opt').classList.add('rpt-cat-selected'); }
+  }
+  document.getElementById('rptForm').onsubmit = function(e){
+    e.preventDefault();
+    submitForm('/submit_report', this, '#rptSubmit', '#rptMsg', function(){ sheet.remove(); });
+  };
+}
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });

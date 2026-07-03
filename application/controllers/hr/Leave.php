@@ -339,6 +339,15 @@ class leave extends CI_Controller{
 					// Potongan mengikuti yang di-approve (acc_potongan) apa adanya untuk
 					// semua jenis izin termasuk sakit. (Aturan "sakit selalu penuh" dihapus.)
 					$range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
+
+						// Lock penggajian: tolak approve bila tanggalnya masuk periode yang sudah di-payroll.
+						$locked = payroll_locked_dates(payroll_user_branch($leave['user_id']), $range);
+						if(!empty($locked)){
+							$this->db->trans_rollback();
+							echo json_encode(['status'=>false, 'message'=>'Tidak bisa menyetujui izin: tanggal masuk periode penggajian terkunci ('.implode(', ', $locked).'). Rollback penggajian periode tersebut dulu.']);
+							return;
+						}
+
 					$this->db->where('user_id', $leave['user_id'])
 							 ->where_in('flow_date', $range)
 							 ->delete('presence');
@@ -487,6 +496,14 @@ class leave extends CI_Controller{
 				$potongan = (int)$acc_potongan;
 				$old_range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
 				$all = array_values(array_unique(array_merge($old_range, $range)));
+
+					// Lock penggajian: tolak ubah izin bila tanggal (lama/baru) masuk periode yang sudah di-payroll.
+					$locked = payroll_locked_dates(payroll_user_branch($leave['user_id']), $all);
+					if(!empty($locked)){
+						$this->db->trans_rollback();
+						echo json_encode(['status'=>false, 'message'=>'Tidak bisa mengubah izin: tanggal masuk periode penggajian terkunci ('.implode(', ', $locked).'). Rollback penggajian periode tersebut dulu.']);
+						return;
+					}
 
 				$this->db->where('user_id', $leave['user_id'])
 						 ->where_in('flow_date', $all)

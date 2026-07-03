@@ -595,6 +595,11 @@ class Wa extends CI_Controller {
     }
 
     private function _upsert_today_presence($row) {
+        // Lock penggajian: jangan tulis presensi bila periode tanggal ini sudah di-payroll.
+        if (payroll_locked_for_user_date($row['user_id'], $row['flow_date'])) {
+            return 'skipped';
+        }
+
         $existing = $this->db->where([
             'user_id' => $row['user_id'],
             'flow_date' => $row['flow_date'],

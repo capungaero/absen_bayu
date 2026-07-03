@@ -473,6 +473,8 @@ $config['csrf_exclude_uris'] = array(
     'wa/cron/(.*)',      // Cron endpoint dipanggil tanpa session, dilindungi token sendiri
     'api/(.*)',          // API untuk PWA karyawan: stateless, dilindungi token bearer sendiri
     'payroll_sim/(.*)', // Payroll simulator: read-only, auth via session ion_auth
+    'payroll_import/(.*)', // Payroll importer: SPA same-origin, auth via session ion_auth + role check
+    'dat_reader/(.*)',  // DAT reader: SPA same-origin, auth via session ion_auth + role check
 );
 
 /*

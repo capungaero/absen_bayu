@@ -126,7 +126,7 @@ class Api extends CI_Controller {
         $smap = []; foreach($rows as $r){ $smap[$r['d']] = $r; }
 
         $pres = $this->db->select('flow_date, entry_time, out_time, entry_time_late, presence_type,
-                rest_time_out, rest_time_in, rest_time_late,
+                rest_time_out, rest_time_in, rest_time_late, early_leave_short_minutes,
                 subuh_time_in, subuh_time_out, subuh_time_late, dzuhur_time_in, dzuhur_time_out, dzuhur_time_late,
                 ashar_time_in, ashar_time_out, ashar_time_late, maghrib_time_in, maghrib_time_out, maghrib_time_late,
                 isha_time_in, isha_time_out, isha_time_late, friday_time_in, friday_time_out, friday_time_late')
@@ -160,6 +160,22 @@ class Api extends CI_Controller {
                 $prayItems[] = ['label'=>$pd[1], 'in'=>$pin, 'out'=>$pout, 'late'=>$pr ? (int)$pr[$k.'_time_late'] : 0];
             }
 
+            $out_late = 0;
+            $out_early = 0;
+            if($pr && !empty($pr['out_time']) && $is_work && !empty($s['end_time'])){
+                $out_ts = strtotime($pr['out_time']);
+                $end_ts = strtotime($d.' '.$s['end_time']);
+                if($out_ts && $end_ts){
+                    if($out_ts > $end_ts){
+                        $out_late = (int) floor(($out_ts - $end_ts) / 60);
+                    }else if(!empty($pr['early_leave_short_minutes'])){
+                        $out_early = (int) $pr['early_leave_short_minutes'];
+                    }else if($out_ts < $end_ts){
+                        $out_early = (int) floor(($end_ts - $out_ts) / 60);
+                    }
+                }
+            }
+
             $days[] = [
                 'date'   => $d,
                 'day'    => get_dayname($d),
@@ -170,6 +186,8 @@ class Api extends CI_Controller {
                 'entry'      => $pr && $pr['entry_time'] ? substr($pr['entry_time'],11,5) : null,
                 'out'        => $pr && $pr['out_time'] ? substr($pr['out_time'],11,5) : null,
                 'entry_late' => $pr ? (int)$pr['entry_time_late'] : 0,
+                'out_late'   => $out_late,
+                'out_early'  => $out_early,
                 // istirahat: rest_time_in = mulai istirahat (keluar), rest_time_out = kembali kerja (masuk)
                 'rest'   => [
                     'keluar' => $pr && !empty($pr['rest_time_in'])  ? substr($pr['rest_time_in'],11,5)  : null,
@@ -225,10 +243,14 @@ class Api extends CI_Controller {
                 ->where('pi.insentif_amount >', 0)->order_by('pi.insentif_amount','DESC')->get()->result_array();
             $insItems = []; foreach($insentif as $b){ $insItems[] = ['label'=>trim($b['nm']) ?: 'Insentif', 'value'=>(int)$b['amt']]; }
 
-            // Lembur detail per tanggal
+            // Lembur detail per tanggal — gunakan rentang periode payroll, bukan MONTH/YEAR kalender.
+            $ot_prev_mo = $mo - 1; $ot_prev_yr = $year;
+            if($ot_prev_mo < 1){ $ot_prev_mo = 12; $ot_prev_yr--; }
+            $ot_from = sprintf('%04d-%02d-%02d', $ot_prev_yr, $ot_prev_mo, START_PAYROLL_DATE);
+            $ot_to   = sprintf('%04d-%02d-25', $year, $mo);
             $otRows = $this->db->select('overtime_date, overtime_hour')
                 ->where('user_id', $uid)->where('overtime_status', 'approve')
-                ->where('MONTH(overtime_date)', $mo)->where('YEAR(overtime_date)', $year)
+                ->where('overtime_date >=', $ot_from)->where('overtime_date <=', $ot_to)
                 ->order_by('overtime_date','DESC')->get('overtime')->result_array();
             $otItems = [];
             $otRate = (int)($this->user['overtime_hour_rate'] ?: 0);
@@ -254,9 +276,9 @@ class Api extends CI_Controller {
                 ->where('pd.user_id', $uid)
                 ->where('pd.deduction_month', $mo)->where('pd.deduction_year', $year)
                 ->where('pd.deduction_amount >', 0)->order_by('pd.deduction_amount','DESC')->get()->result_array();
-            // Early-leave presence detail for this month
+            // Early-leave detail — gunakan rentang periode payroll yang sama dengan lembur.
             $earlyRows = $this->db->select('flow_date, entry_time, out_time, early_leave_short_minutes')
-                ->where('user_id', $uid)->where('MONTH(flow_date)', $mo)->where('YEAR(flow_date)', $year)
+                ->where('user_id', $uid)->where('flow_date >=', $ot_from)->where('flow_date <=', $ot_to)
                 ->where('is_early_leave', 1)->where('presence_status', 'approved')
                 ->order_by('flow_date','ASC')->get('presence')->result_array();
             $earlyDays = [];
@@ -461,5 +483,156 @@ class Api extends CI_Controller {
             'overtime_proof'=>$upl['file_name'], 'overtime_status'=>'pending', 'created_at'=>date('Y-m-d H:i:s'),
         ]);
         $this->_json($ok ? ['status'=>true,'message'=>'Pengajuan lembur berhasil dikirim'] : ['status'=>false,'message'=>'Gagal menyimpan pengajuan']);
+    }
+
+    // GET api/bpjs — riwayat pembayaran BPJS karyawan + nominal insentif mandiri
+    public function bpjs(){
+        if(!$this->_auth()) return;
+        $uid = $this->user['id'];
+        $cfg = $this->db->order_by('id','ASC')->limit(1)->get('bpjs_config')->row_array();
+        $rows = $this->db->where('user_id', $uid)
+            ->order_by('year','DESC')->order_by('month','DESC')->limit(36)
+            ->get('bpjs_payment')->result_array();
+        $hist = array_map(function($r){
+            return [
+                'month'           => (int)$r['month'],
+                'year'            => (int)$r['year'],
+                'month_name'      => get_monthname($r['month']),
+                'pay_mode'        => $r['pay_mode'],
+                'status'          => $r['status'],
+                'kesehatan'       => (int)$r['kesehatan_amount'],
+                'ketenagakerjaan' => (int)$r['ketenagakerjaan_amount'],
+                'insentif'        => (int)$r['mandiri_insentif_amount'],
+                'proof'           => $r['proof_path'] ? base_url($r['proof_path']) : null,
+                'acc_at'          => $r['acc_at'],
+            ];
+        }, $rows);
+        $this->_json([
+            'status'           => true,
+            'mandiri_insentif' => (int)($cfg['mandiri_insentif'] ?? 0),
+            'history'          => $hist,
+        ]);
+    }
+
+    // POST api/submit_bpjs (multipart: month, year, bpjs_proof[file]) — kirim bukti bayar mandiri
+    public function submit_bpjs(){
+        if(!$this->_auth()) return;
+        $uid = $this->user['id'];
+        $p = $this->input->post();
+        $month = (int)($p['month'] ?? 0);
+        $year  = (int)($p['year'] ?? 0);
+        if($month < 1 || $month > 12 || $year < 2000){
+            $this->_json(['status'=>false,'message'=>'Bulan/tahun tidak valid']); return;
+        }
+
+        $ex = $this->db->get_where('bpjs_payment', ['user_id'=>$uid,'month'=>$month,'year'=>$year])->row_array();
+        if($ex){
+            if($ex['pay_mode'] === 'kantor'){
+                $this->_json(['status'=>false,'message'=>'BPJS bulan ini dibayar kantor, tidak perlu kirim bukti.']); return;
+            }
+            if($ex['status'] === 'approved'){
+                $this->_json(['status'=>false,'message'=>'Bukti pembayaran bulan ini sudah disetujui admin.']); return;
+            }
+        }
+        if(empty($_FILES['bpjs_proof']['name'])){
+            $this->_json(['status'=>false,'message'=>'Foto bukti pembayaran wajib diunggah.']); return;
+        }
+
+        $config = ['upload_path'=>'./assets/images/bpjs/','allowed_types'=>'png|jpeg|jpg',
+            'file_name'=>'bpjs_'.$uid.'_'.generateRandom(5).'_'.time(),
+            'max_size'=>8192,            // batas unggah 8 MB (foto HP normal di bawah ini)
+            'max_width'=>12000, 'max_height'=>12000];
+        $this->load->library('upload', $config);
+        if(!$this->upload->do_upload('bpjs_proof')){ $this->_json(['status'=>false,'message'=>strip_tags($this->upload->display_errors())]); return; }
+        $upl = $this->upload->data();
+        // Kompres + batasi dimensi: muat dalam kotak 1000x1000 (master_dim auto → struk tinggi pun
+        // tetap terbatas tinggi & lebarnya), kualitas 80%. File asli ditimpa hasil kompres.
+        $this->load->library('image_lib', ['image_library'=>'gd2','source_image'=>$upl['full_path'],
+            'quality'=>'80%','maintain_ratio'=>TRUE,'master_dim'=>'auto','width'=>1000,'height'=>1000]);
+        if(!$this->image_lib->resize()){ log_message('error', 'BPJS image resize gagal: '.$this->image_lib->display_errors('','')); }
+        $this->image_lib->clear();
+
+        $now  = date('Y-m-d H:i:s');
+        $path = 'assets/images/bpjs/'.$upl['file_name'];
+        if($ex){
+            $this->db->where('id', $ex['id'])->update('bpjs_payment', [
+                'pay_mode'=>'mandiri', 'proof_path'=>$path, 'status'=>'pending',
+                'acc_by'=>null, 'acc_at'=>null, 'updated_at'=>$now,
+            ]);
+        } else {
+            $this->db->insert('bpjs_payment', [
+                'user_id'=>$uid, 'month'=>$month, 'year'=>$year, 'pay_mode'=>'mandiri',
+                'proof_path'=>$path, 'status'=>'pending', 'created_at'=>$now,
+            ]);
+        }
+        $this->_json(['status'=>true,'message'=>'Bukti pembayaran BPJS terkirim, menunggu persetujuan admin']);
+    }
+
+    // GET api/get_report_credits
+    public function get_report_credits(){
+        if(!$this->_auth()) return;
+        $uid  = $this->user['id'];
+        $max  = 5;
+        $used = $this->db->where('user_id',$uid)->where('category','salah_input')->count_all_results('user_reports');
+        $this->_json(['status'=>true,'used'=>(int)$used,'max'=>$max,'remaining'=>max(0,$max-(int)$used)]);
+    }
+
+    // POST api/submit_report (multipart: description, category, report_file[optional])
+    public function submit_report(){
+        if(!$this->_auth()) return;
+        $uid      = $this->user['id'];
+        $desc     = trim($this->input->post('description') ?: '');
+        $category = trim($this->input->post('category') ?: '');
+        if(strlen($desc) < 5){
+            $this->_json(['status'=>false,'message'=>'Deskripsi masalah minimal 5 karakter.']); return;
+        }
+        if(!in_array($category, ['salah_input','error_aplikasi'])){
+            $this->_json(['status'=>false,'message'=>'Pilih kategori laporan.']); return;
+        }
+        if($category === 'salah_input'){
+            $used = $this->db->where('user_id',$uid)->where('category','salah_input')->count_all_results('user_reports');
+            if($used >= 5){
+                $this->_json(['status'=>false,'message'=>'Kredit "Salah Input Data" sudah habis (maks. 5 kali).']); return;
+            }
+        }
+
+        $file_path = '';
+        if(!empty($_FILES['report_file']['name'])){
+            $dir = FCPATH.'assets/images/reports/';
+            if(!is_dir($dir)){ mkdir($dir, 0755, true); }
+            $config = [
+                'upload_path'   => $dir,
+                'allowed_types' => 'png|jpeg|jpg|gif|pdf',
+                'file_name'     => 'report_'.$uid.'_'.time(),
+                'max_size'      => 10240,
+                'max_width'     => 12000,
+                'max_height'    => 12000,
+            ];
+            $this->load->library('upload', $config);
+            if(!$this->upload->do_upload('report_file')){
+                $this->_json(['status'=>false,'message'=>strip_tags($this->upload->display_errors())]); return;
+            }
+            $upl = $this->upload->data();
+            if(in_array(strtolower($upl['file_ext']), ['.jpg','.jpeg','.png'])){
+                $this->load->library('image_lib', [
+                    'image_library'=>'gd2','source_image'=>$upl['full_path'],
+                    'quality'=>'80%','maintain_ratio'=>TRUE,'master_dim'=>'auto','width'=>1200,'height'=>1200,
+                ]);
+                if(!$this->image_lib->resize()){ log_message('error','report image resize fail'); }
+                $this->image_lib->clear();
+            }
+            $file_path = 'assets/images/reports/'.$upl['file_name'];
+        }
+
+        $this->db->insert('user_reports', [
+            'user_id'     => $uid,
+            'description' => $desc,
+            'category'    => $category,
+            'file_path'   => $file_path,
+            'status'      => 'new',
+            'created_at'  => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->_json(['status'=>true,'message'=>'Laporan berhasil dikirim. Admin akan segera menindaklanjuti.']);
     }
 }

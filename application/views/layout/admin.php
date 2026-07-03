@@ -331,6 +331,9 @@
                                         <div class="dropdown-menu" aria-labelledby="topnav-sync">
                                             <a href="<?= site_url('sync') ?>" class="dropdown-item"><i class="mdi mdi-server"></i> Mesin Absensi</a>
                                             <a href="<?= site_url('attendance') ?>" class="dropdown-item"><i class="mdi mdi-account-check"></i> Data Kehadiran</a>
+                                            <?php if($role === 'admin'): ?>
+                                            <a href="<?= site_url('audit_log') ?>" class="dropdown-item"><i class="mdi mdi-history"></i> Log Perubahan</a>
+                                            <?php endif; ?>
                                             <a href="<?= site_url('attendance/daily_report') ?>" class="dropdown-item"><i class="mdi mdi-calendar-check"></i> Rekap Absensi Harian</a>
                                             <a href="<?= site_url('attendance/machine_report') ?>" class="dropdown-item"><i class="mdi mdi-fingerprint"></i> Report Absen Mesin</a>
                                             <a href="<?= site_url('attendance/early_leave_report') ?>" class="dropdown-item"><i class="mdi mdi-clock-alert-outline"></i> Rekap Izin Pulang Cepat</a>
@@ -351,6 +354,39 @@
                                         </a>
                                         <div class="dropdown-menu" aria-labelledby="topnav-report">
                                             <a href="<?= $absen_report_url ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Report Performance Absen</a>
+                                            <a href="<?= site_url('report') ?>" class="dropdown-item">
+                                              <i class="mdi mdi-flag-outline"></i> Laporan Karyawan
+                                              <?php $rpt_unread=(int)$this->db->where('status','new')->count_all_results('user_reports'); if($rpt_unread>0): ?>
+                                              <span class="badge bg-danger ms-1"><?= $rpt_unread ?></span>
+                                              <?php endif; ?>
+                                            </a>
+                                        </div>
+                                    </li>
+                                <?php } ?>
+
+                                <?php if(in_array($role, ['admin', 'admin-branch', 'hr'])){ ?>
+                                    <li class="nav-item dropdown">
+                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-tools" role="button">
+                                            <i class="mdi mdi-tools me-2"></i>Tools<div class="arrow-down"></div>
+                                        </a>
+                                        <div class="dropdown-menu" aria-labelledby="topnav-tools">
+                                            <a href="<?= base_url('tools/payroll_sim/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-calculator-variant"></i> Payroll Simulator</a>
+                                            <a href="<?= base_url('tools/payroll_importer/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-import"></i> Payroll Importer</a>
+                                            <a href="<?= base_url('tools/dat_reader/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-clock-check-outline"></i> DAT Reader</a>
+                                        </div>
+                                    </li>
+                                <?php } ?>
+
+                                <?php if(in_array($role, ['admin', 'admin-branch'])){ ?>
+                                    <li class="nav-item dropdown">
+                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-bpjs" role="button">
+                                            <i class="mdi mdi-shield-account me-2"></i>BPJS<div class="arrow-down"></div>
+                                        </a>
+                                        <div class="dropdown-menu" aria-labelledby="topnav-bpjs">
+                                            <?php if($role == 'admin'){ ?>
+                                                <a href="<?= site_url('bpjs/config') ?>" class="dropdown-item"><i class="mdi mdi-cog"></i> Konfigurasi</a>
+                                            <?php } ?>
+                                            <a href="<?= site_url('bpjs/list') ?>" class="dropdown-item"><i class="mdi mdi-clipboard-list"></i> List Pembayaran BPJS</a>
                                         </div>
                                     </li>
                                 <?php } ?>
