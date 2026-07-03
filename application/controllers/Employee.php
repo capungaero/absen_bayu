@@ -991,7 +991,7 @@ class Employee extends CI_Controller{
 
 			$sheet->setCellValue('M'.$start_from, $status_work);
 			$sheet->setCellValue('N'.$start_from, $row['status_work_expiration']);
-			$sheet->setCellValue('O'.$start_from, $row['account_number']);
+			$sheet->setCellValueExplicit('O'.$start_from, trim((string)$row['account_number']), DataType::TYPE_STRING);
 			$sheet->setCellValue('P'.$start_from, $row['account_bank']);
 			$sheet->setCellValue('Q'.$start_from, $row['account_name']);
 			$sheet->setCellValue('R'.$start_from, $access);
@@ -1001,6 +1001,7 @@ class Employee extends CI_Controller{
 
 		$last_data_row = max(4, $start_from - 1);
 		$sheet->getStyle('B4:B'.$last_data_row)->getNumberFormat()->setFormatCode('@');
+		$sheet->getStyle('O4:O'.$last_data_row)->getNumberFormat()->setFormatCode('@');
 		$sheet->getStyle('A3:S'.$last_data_row)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
 
 		$title_scope = $branch_id === '' ? 'Semua CV' : $branch_detail['branch_name'].' - Kota '.$branch_detail['city'];

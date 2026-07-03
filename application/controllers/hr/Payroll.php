@@ -5,6 +5,7 @@ require_once FCPATH.'application/libraries/dompdf/autoload.inc.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Csv;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -1543,7 +1544,8 @@ class Payroll extends CI_Controller{
                         $salary_thp += $row['salary_thp'];
 
                         $sheet->setCellValue('A'.$start, $row['first_name']);
-                        $sheet->setCellValue('B'.$start, $row['contract_number']);
+                        $sheet->setCellValueExplicit('B'.$start, trim((string)$row['contract_number']), DataType::TYPE_STRING);
+                        $sheet->getStyle('B'.$start)->getNumberFormat()->setFormatCode('@');
                         $sheet->setCellValue('C'.$start, $row['position_name']);
                         $sheet->setCellValue('D'.$start, $row['presence_count']." / ".$row['presence_max']);
                         $sheet->setCellValue('E'.$start, $row['total_overtime_hour']);
@@ -1592,8 +1594,8 @@ class Payroll extends CI_Controller{
                         $sheet->setCellValue(EXCEL_COLUMN[$endDynamicDeductionIndex].$start, format_rp($row['salary_thp']));
                         $sheet->setCellValue(EXCEL_COLUMN[$endDynamicDeductionIndex+1].$start, $row['account_name']);
                         $sheet->setCellValue(EXCEL_COLUMN[$endDynamicDeductionIndex+2].$start, $row['account_bank']);
-                        $sheet->setCellValue(EXCEL_COLUMN[$endDynamicDeductionIndex+3].$start, $row['account_number']);
-                        $sheet->getStyle('P'.$start)->getNumberFormat()->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_NUMBER);
+                        $sheet->setCellValueExplicit(EXCEL_COLUMN[$endDynamicDeductionIndex+3].$start, trim((string)$row['account_number']), DataType::TYPE_STRING);
+                        $sheet->getStyle(EXCEL_COLUMN[$endDynamicDeductionIndex+3].$start)->getNumberFormat()->setFormatCode('@');
 
                         $sheet->getStyle('F'.$start.':'.EXCEL_COLUMN[$thpIndex].$start)->applyFromArray([
 							'alignment' => [
