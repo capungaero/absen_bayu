@@ -101,7 +101,6 @@ async function renderSchedule(c){
     var hasEntry = !!x.entry, hasOut = !!x.out;
     if((hasEntry && !hasOut) || (!hasEntry && hasOut)) warns.push('absen tdk lengkap');
     if(x.entry_late > 0) warns.push('masuk telat '+minuteText(x.entry_late));
-    if(x.out_late > 0) warns.push('pulang telat '+minuteText(x.out_late));
     if(x.out_early > 0) warns.push('pulang cepat '+minuteText(x.out_early));
     var rest = x.rest || {};
     if((rest.keluar && !rest.masuk) || (!rest.keluar && rest.masuk)) warns.push('istirahat tdk lengkap');
@@ -137,7 +136,6 @@ function openDayDetail(idx){
   if(x.entry || x.out){
     var entryVal = (x.entry||'—')+lateTag(x.entry_late);
     var outVal = x.out||'—';
-    if(x.out_late > 0) outVal += ' <span class="late-tag">telat '+x.out_late+'m</span>';
     if(x.out_early > 0) outVal += ' <span class="late-tag">pulang cepat '+x.out_early+'m</span>';
     if(x.entry && !x.out) outVal = '— '+tl;
     if(!x.entry && x.out) entryVal = '— '+tl;
