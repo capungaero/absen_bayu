@@ -688,12 +688,16 @@ class PayrollSim extends CI_Controller {
                 WHERE user_id = ? AND leave_status = 'approve'
                   AND leave_start <= ? AND leave_end >= ?
             ", [$eid, $period['to'], $period['from']])->result_array();
-        $sakit_invalid = 0; $izin_cnt = 0;
+        $sakit_days = 0; $sakit_no_proof = 0; $izin_cnt = 0;
         foreach ($leaves as $l) {
             if ($l['leave_type'] === 'sakit') {
-                if (!((int)$l['leave_range'] <= 2 && (int)$l['has_proof'] === 1)) $sakit_invalid++;
+                $sakit_days += (int)$l['leave_range'];
+                if ((int)$l['has_proof'] !== 1) $sakit_no_proof++;
             } elseif ($l['leave_type'] === 'izin') { $izin_cnt++; }
         }
+        // Total hari sakit dlm periode (bukan per pengajuan) yg dinilai — cegah lolos
+        // dengan memecah sakit jadi beberapa pengajuan ≤2 hari yg masing2 valid.
+        $sakit_invalid = ($sakit_days > 2 || $sakit_no_proof > 0) ? 1 : 0;
 
         // 2. Rekap sholat per jenis dari finger — kecualikan tanggal berjadwal NO-SC,
         // sama seperti perhitungan denda & hadir (tap saat NO-SC tak boleh ikut hitung).
@@ -739,7 +743,7 @@ class PayrollSim extends CI_Controller {
         $dis_cond = [
             ['label'=>'Akumulasi denda telat (hadir+istirahat+sholat) + pulang awal ≤ Rp50.000', 'value'=>'aktual '.$this->_rp($denda_tp), 'ok'=>$denda_tp <= 50000],
             ['label'=>'Tidak ada alfa', 'value'=>$alfa_days.' hari alfa', 'ok'=>$alfa_days === 0],
-            ['label'=>'Sakit terdokumentasi (maksimal 2 hari, wajib disertai surat ijin)', 'value'=>$sakit_invalid ? $sakit_invalid.' sakit tak valid' : 'OK', 'ok'=>$sakit_invalid === 0],
+            ['label'=>'Sakit terdokumentasi (maksimal 2 hari, wajib disertai surat ijin)', 'value'=>$sakit_invalid ? ($sakit_days.' hari sakit'.($sakit_no_proof ? ' (ada tanpa surat)' : '')) : 'OK', 'ok'=>$sakit_invalid === 0],
             ['label'=>'Tidak ada izin (no-schedule)', 'value'=>$izin_cnt ? $izin_cnt.' izin' : 'OK', 'ok'=>$izin_cnt === 0],
             ['label'=>'Tidak ada NO-SC', 'value'=>$nosc_days ? $nosc_days.' hari NO-SC' : 'OK', 'ok'=>$nosc_days === 0],
         ];

@@ -480,9 +480,13 @@ async function buildAutoCommissions(db, ctx) {
        AND leave_start <= ? AND leave_end >= ?`,
     [employeeId, period.to, period.from]
   );
-  // Sakit ditoleransi hanya bila maksimal 2 hari + ada bukti. Selain itu menggugurkan.
-  const sakitInvalid = leaveRows.filter(l =>
-    l.leave_type === 'sakit' && !(Number(l.leave_range) <= 2 && Number(l.has_proof) === 1));
+  // Sakit ditoleransi hanya bila TOTAL hari sakit dlm periode maksimal 2 hari + semua
+  // ada bukti — dihitung agregat, bukan per pengajuan (cegah lolos dgn memecah sakit
+  // jadi beberapa pengajuan ≤2 hari yg masing2 valid).
+  const sakitRows = leaveRows.filter(l => l.leave_type === 'sakit');
+  const sakitDays = sakitRows.reduce((sum, l) => sum + Number(l.leave_range), 0);
+  const sakitNoProof = sakitRows.some(l => Number(l.has_proof) !== 1);
+  const sakitInvalid = (sakitDays > 2 || sakitNoProof) ? sakitRows : [];
   const izinRows = leaveRows.filter(l => l.leave_type === 'izin');
 
   // 2. Rekap sholat per jenis dari finger — kecualikan tanggal berjadwal NO-SC,
@@ -516,7 +520,7 @@ async function buildAutoCommissions(db, ctx) {
   const disCond = [
     { label: `Akumulasi denda telat (hadir+istirahat+sholat) + pulang awal ≤ Rp50.000`, value: `aktual ${rp(dendaTelatPulang)}`, ok: dendaTelatPulang <= 50000 },
     { label: `Tidak ada alfa`, value: `${alfaDays} hari alfa`, ok: alfaDays === 0 },
-    { label: `Sakit terdokumentasi (maksimal 2 hari, wajib disertai surat ijin)`, value: sakitInvalid.length ? `${sakitInvalid.length} sakit tak valid` : 'OK', ok: sakitInvalid.length === 0 },
+    { label: `Sakit terdokumentasi (maksimal 2 hari, wajib disertai surat ijin)`, value: sakitInvalid.length ? `${sakitDays} hari sakit${sakitNoProof ? ' (ada tanpa surat)' : ''}` : 'OK', ok: sakitInvalid.length === 0 },
     { label: `Tidak ada izin (no-schedule)`, value: izinRows.length ? `${izinRows.length} izin` : 'OK', ok: izinRows.length === 0 },
     { label: `Tidak ada NO-SC`, value: noscDays ? `${noscDays} hari NO-SC` : 'OK', ok: noscDays === 0 },
   ];
