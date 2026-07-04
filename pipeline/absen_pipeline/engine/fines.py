@@ -66,6 +66,7 @@ def get_fine(emp, schedule, presences, branch, double_dates, month, year, today=
         "amount_in_weekdays": 0.0, "amount_early_leave": 0,
         "leave_amount": 0.0, "rest_amount": 0.0, "pray_amount": 0.0,
         "early_leave_minutes": 0, "alfa_weekday_days": 0, "alfa_weekend_days": 0,
+        "alfa_special_days": 0,
         "trace": [],
     }
 
@@ -160,6 +161,7 @@ def get_fine(emp, schedule, presences, branch, double_dates, month, year, today=
             dbl = salary_per_day_alpha * 2
             if is_special:
                 out["amount_in_special_double"] += dbl
+                out["alfa_special_days"] += 1
             else:
                 out["alfa_weekend_days"] += 1
             out["amount_in_weekend"] += dbl  # gabungan (lihat catatan :1128-1131)
