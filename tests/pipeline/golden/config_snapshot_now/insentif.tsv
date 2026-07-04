@@ -1,0 +1,45 @@
+id	branch_id	insentif_name	formula	nominal	is_active	created_at	updated_at	deleted_at
+5	1	Komisi Beras	none	0	1	2021-09-09 17:30:17	2026-06-27 05:34:08	NULL
+7	1	Komisi Jabatan	none	0	1	2021-09-09 17:36:49	2023-08-09 18:19:43	NULL
+8	1	Kompensasi	none	0	1	2021-09-30 18:23:00	NULL	NULL
+9	1	Komisi Sholat	none	0	1	2021-10-02 21:16:19	2023-08-09 18:14:34	NULL
+10	1	Komisi Kinerja	none	0	1	2021-10-02 21:17:01	2023-08-29 12:04:19	NULL
+11	1	Komisi Kasir	none	0	1	2021-10-02 21:17:11	2023-08-09 18:14:02	NULL
+12	1	Komisi Disiplin Kehadiran	none	0	1	2021-10-02 21:18:17	2026-06-27 05:34:08	NULL
+14	1	Komisi Seragam	none	0	1	2021-12-26 15:00:21	2023-08-09 18:13:08	NULL
+15	1	Rapel Fee/Komisi Bulan sebelumnya	none	0	1	2021-12-26 15:57:57	2023-08-09 18:12:53	NULL
+18	2	Komisi Disiplin Kehadiran	none	0	1	2022-02-06 08:46:59	2026-06-27 05:34:08	NULL
+19	2	Komis! Kasir	none	0	1	2022-02-06 08:47:06	2023-08-09 18:17:54	NULL
+20	2	Komis! Kinerja	none	0	1	2022-02-06 08:47:16	2023-08-09 18:17:46	NULL
+21	2	Komisi Sholat	none	0	1	2022-02-06 08:47:24	2026-06-27 05:34:08	NULL
+22	2	Kompensasi	none	0	1	2022-02-06 08:47:31	NULL	NULL
+23	2	Komis! Jabatan	none	0	1	2022-02-06 08:47:39	2023-08-09 18:17:16	NULL
+24	2	Komisi Beras	none	0	1	2022-02-06 08:47:47	2024-09-29 21:49:50	NULL
+27	2	Komisi Transport	none	0	1	2022-10-03 12:12:52	2026-06-27 05:34:08	NULL
+28	1	Komisi Transport	none	0	1	2022-10-03 12:13:16	2026-06-27 05:34:08	NULL
+29	1	Komisi Soskes	none	0	1	2023-06-04 08:54:36	2026-06-27 05:34:08	NULL
+30	2	Komis! Kunci	none	0	1	2023-06-18 17:13:59	2023-08-09 18:16:49	NULL
+32	2	Rapel Fee/Komisi Bulan sebelumnya	none	0	1	2023-08-09 18:15:42	NULL	NULL
+33	2	Komisi Soskes	none	0	1	2023-08-09 18:18:20	2026-06-27 05:34:08	NULL
+39	1	Komisi Member Diamond	none	0	1	2024-07-02 14:29:11	2024-10-01 15:59:21	NULL
+41	2	Komisi Capai Target Omset 	none	0	1	2024-07-03 15:32:37	2025-01-02 19:39:04	NULL
+43	2	Komisi Member Diamon	none	0	1	2024-07-04 17:58:08	2024-10-01 16:01:36	NULL
+44	1	Komisi Muat/Antar Barang	none	0	1	2024-10-01 15:59:50	2024-10-01 16:32:37	NULL
+45	1	Komisi Jual Barang	none	0	1	2024-10-01 16:00:57	2025-04-05 16:55:07	NULL
+46	2	Komisi Antar/Muat Barang	none	0	1	2024-10-01 16:01:59	NULL	NULL
+47	2	Komisi Sale Barang 	none	0	1	2024-10-01 16:02:20	2025-04-05 16:56:01	NULL
+50	1	Komisi Kanvas	none	0	1	2025-04-05 16:55:22	NULL	NULL
+51	2	Komisi Kanvas	none	0	1	2025-04-05 16:56:09	NULL	NULL
+53	1	Fee Sisa Hari Kerja	none	0	1	2025-04-08 19:58:41	2025-05-04 13:21:58	NULL
+54	2	Lembur Double 26 Maret - 3 April	none	0	1	2025-04-08 20:54:19	NULL	NULL
+55	2	Fee Terakhir Hari Kerja	none	0	1	2025-04-08 20:54:48	2025-05-04 13:23:07	NULL
+56	1	Komisi Khusus	none	0	1	2025-07-01 14:11:00	NULL	NULL
+57	1	Bonus Capai Target Omset	none	0	1	2025-07-01 19:55:32	NULL	NULL
+58	1	Reward Salesman	none	0	1	2025-07-02 12:41:40	NULL	NULL
+59	1	Reward Best Mitra	none	0	1	2025-07-02 12:41:52	NULL	NULL
+60	1	Subsidi Sekolah Anak	none	0	0	2025-07-05 11:34:55	2026-05-31 11:47:36	NULL
+61	2	Subsidi Sekolah Anak	none	0	1	2025-07-05 11:35:19	NULL	NULL
+63	2	Dispensasi Komisi Kinerja 35% (Case DAP Juni '25)	none	0	1	2025-07-29 21:59:25	2025-07-30 21:11:23	NULL
+64	1	Cuti / OFF Tidak diambil	none	0	1	2025-11-30 15:20:08	2026-03-29 17:45:33	NULL
+65	1	Komisi Penambahan Rak	none	0	1	2025-12-31 10:56:32	2025-12-31 11:00:18	NULL
+67	1	BPJS Mandiri	none	NULL	1	2026-06-28 17:32:09	NULL	NULL
