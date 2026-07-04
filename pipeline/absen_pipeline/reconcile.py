@@ -72,10 +72,17 @@ def run(period):
             for name, fa, fp in fields:
                 va, vp = fa(a), fp(p)
                 if va != vp:
+                    if manual:
+                        klas = "MANUAL_EDIT"
+                    elif vp in (None, "None", 0) and va not in (None, "None", 0):
+                        # .dat pipeline lebih segar dari sync hourly app
+                        klas = "SYNC_LAG"
+                    else:
+                        klas = "UNCLASSIFIED"
                     diffs.append({
                         "period": period, "level": "L1", "user_id": key[0], "tanggal": key[1],
                         "field": name, "nilai_ai": str(va), "nilai_app": str(vp),
-                        "klasifikasi": "MANUAL_EDIT" if manual else "UNCLASSIFIED",
+                        "klasifikasi": klas,
                         "keterangan": f"input_by={p.get('input_by')}",
                         "run_at": now,
                     })
@@ -114,6 +121,7 @@ def run(period):
             "diffs": len(diffs),
             "unclassified": sum(1 for d in diffs if d["klasifikasi"] == "UNCLASSIFIED"),
             "manual_edit": sum(1 for d in diffs if d["klasifikasi"] == "MANUAL_EDIT"),
+            "sync_lag": sum(1 for d in diffs if d["klasifikasi"] == "SYNC_LAG"),
             "only_ai": len(only_ai), "only_prod": len(only_prod),
         }
         finish("ok", summary)

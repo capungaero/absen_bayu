@@ -236,16 +236,21 @@ def run(period):
         # mesin kerja & sholat diproses jalur terpisah (sync_presence_cloud vs
         # sync_pray_cloud). Dzuhur ~12:00 akan salah tangkap sbg rest_in/out.
         sholat_sn = env("CLOUD_MACHINE_SHOLAT", "")
+        machine_order = [sn for sn, _pw in __import__("absen_pipeline.config", fromlist=["cloud_machines"]).cloud_machines() if sn != sholat_sn]
         with ai.cursor() as cur:
             cur.execute(
-                "SELECT t.finger_id, t.tap_date, t.tap_time FROM raw_taps t "
+                "SELECT t.finger_id, t.tap_date, t.tap_time, f.file_path FROM raw_taps t "
                 "LEFT JOIN raw_files f ON f.id = t.raw_file_id "
                 "WHERE t.period=%s AND (f.file_path IS NULL OR f.file_path NOT LIKE %s) "
                 "ORDER BY t.finger_id, t.tap_date, t.tap_time",
                 (period, f"%attlog_{sholat_sn}_%" if sholat_sn else "%__NEVER__%"))
-            taps_by = {}
+            taps_by = {}   # (finger, date) -> {sn: [times]}
             for r in cur.fetchall():
-                taps_by.setdefault((r["finger_id"], r["tap_date"]), []).append(_t(r["tap_time"]))
+                sn = "unknown"
+                fp = r.get("file_path") or ""
+                if "attlog_" in fp:
+                    sn = fp.rsplit("attlog_", 1)[1].split("_")[0]
+                taps_by.setdefault((r["finger_id"], r["tap_date"]), {}).setdefault(sn, []).append(_t(r["tap_time"]))
 
         leave_by_user_date = {}
         for l in leaves:
@@ -260,7 +265,17 @@ def run(period):
         rekap, unmatched_fingers = [], set()
         matched = 0
         payloads = {}
-        for (finger, d), times in taps_by.items():
+        def merge_preserve(base, new):
+            # Port presence_merge_preserve_existing (presence_helper.php:157-177)
+            for f in ("entry_time", "out_time", "rest_in", "rest_out"):
+                if not base.get(f) and new.get(f):
+                    base[f] = new[f]
+            for f in ("entry_late", "rest_late"):
+                if not base.get(f) and new.get(f):
+                    base[f] = new[f]
+            return base
+
+        for (finger, d), by_machine in taps_by.items():
             uid = code_to_user.get(finger)
             if uid is None:
                 unmatched_fingers.add(finger)
@@ -269,7 +284,14 @@ def run(period):
             sched = schedule.get((uid, d))
             if not sched:
                 continue  # tap tanpa jadwal -> tak diklasifikasi (paralel no_schedule stat PHP)
-            payloads[(uid, d)] = classify_day(times, sched[1])
+            merged = None
+            order = [sn for sn in machine_order if sn in by_machine] +                     [sn for sn in by_machine if sn not in machine_order]
+            for sn in order:
+                pay = classify_day(sorted(by_machine[sn]), sched[1])
+                merged = pay if merged is None else merge_preserve(merged, pay)
+            if merged:
+                merged["multi_machine"] = len(by_machine) > 1
+                payloads[(uid, d)] = merged
 
         for (uid, d), (srow, _sj) in schedule.items():
             e = emp_by_id.get(uid)
