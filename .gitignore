@@ -64,6 +64,8 @@ error_log
 backups/
 *.dump
 *.sql
+# Kecuali DDL skema pipeline (bukan dump data)
+!pipeline/schema/*.sql
 *.db
 *.db-shm
 *.db-wal
