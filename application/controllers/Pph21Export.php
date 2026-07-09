@@ -25,14 +25,20 @@ class Pph21Export extends CI_Controller {
     public function __construct() {
         parent::__construct();
         if (!$this->ion_auth->logged_in()) {
-            $this->_json(['error' => 'Unauthorized'], 401); exit;
+            $this->_die(['error' => 'Unauthorized'], 401);
         }
         $this->role = $this->ion_auth->get_users_groups()->row()->name;
         if (!in_array($this->role, ['admin', 'admin-branch', 'hr'])) {
-            $this->_json(['error' => 'Forbidden'], 403); exit;
+            $this->_die(['error' => 'Forbidden'], 403);
         }
         $this->config->load('pph21_export');
         $this->load->library('pph21_workbook');
+    }
+
+    private function _die($data, $code) {
+        $this->output->set_status_header($code);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($data); exit;
     }
 
     private function _json($data, $code = 200) {
