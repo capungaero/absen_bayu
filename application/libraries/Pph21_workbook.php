@@ -99,6 +99,10 @@ class Pph21_workbook {
             '(3 tahap, kolom bantu U-W tersembunyi). Kolom "Cek" dan "Cek Tarif GU" harus 0.',
             'Bila PTKP kosong di database, baris memakai TK/0 — lengkapi users.ptkp_status.',
             '',
+            'URUTAN KARYAWAN: mengikuti roster tahunan (kertas kerja Mei 2026) dan TETAP sampai Desember.',
+            'Karyawan resign/tidak aktif tetap tampil dengan nilai nihil (aturan pajak); karyawan baru',
+            'otomatis ditambahkan di urutan paling bawah dan permanen untuk bulan-bulan berikutnya.',
+            '',
             'Setelah final: salin Total Penghasilan Bruto + Tarif TER ke file impor Coretax.',
             'NPWP pemotong: '.($meta['npwp'] !== '' ? $meta['npwp'] : 'BELUM DIISI (lihat config pph21_export.php)').
                 ' | ID TKU: '.($meta['npwp'] !== '' ? $meta['npwp'].'000000' : '-'),

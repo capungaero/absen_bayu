@@ -91,7 +91,7 @@ async function loadCvs() {
     $('#tbody').innerHTML = d.cvs.map(c => `
       <tr>
         <td>${c.subdivision_name}</td>
-        <td>${c.n}</td>
+        <td>${c.n} aktif${c.roster ? ` <span class="muted">/ roster ${c.roster}</span>` : ''}</td>
         <td>${c.npwp ? c.npwp : '<span class="npwp-missing">belum diisi (config)</span>'}</td>
         <td><a class="btn gray" href="${API}/export?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ Excel</a></td>
       </tr>`).join('');

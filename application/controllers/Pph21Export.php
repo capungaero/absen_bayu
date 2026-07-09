@@ -68,9 +68,24 @@ class Pph21Export extends CI_Controller {
             ->where('pd.payroll_id', $pid)
             ->group_by('s.id, s.subdivision_name')->order_by('s.subdivision_name')
             ->get()->result();
+        $roster_n = [];
+        foreach ($this->db->select('subdivision_id, COUNT(*) AS n')->from('pph21_roster')
+                 ->where('year', (int)$p->year)->group_by('subdivision_id')->get()->result() as $r) {
+            $roster_n[$r->subdivision_id] = (int)$r->n;
+        }
+        $seen = [];
         foreach ($rows as $r) {
             $r->subdivision_name = trim((string)$r->subdivision_name) !== '' ? trim($r->subdivision_name) : '(TANPA SUBDIVISI)';
             $r->npwp = isset($npwp[$r->id]) ? $npwp[$r->id] : '';
+            $r->roster = isset($roster_n[$r->id]) ? $roster_n[$r->id] : 0;
+            $seen[(int)$r->id] = true;
+        }
+        // CV yang hanya ada di roster (semua karyawannya sudah tidak aktif) tetap dilaporkan
+        foreach ($roster_n as $sid2 => $n2) {
+            if (isset($seen[$sid2])) continue;
+            $s = $this->db->select('subdivision_name')->from('subdivision')->where('id', $sid2)->get()->row();
+            $rows[] = (object)['id' => $sid2, 'subdivision_name' => $s ? trim($s->subdivision_name) : '(?)',
+                'n' => 0, 'npwp' => isset($npwp[$sid2]) ? $npwp[$sid2] : '', 'roster' => $n2];
         }
         $this->_json(['payroll' => $p, 'cvs' => $rows]);
     }
@@ -97,9 +112,11 @@ class Pph21Export extends CI_Controller {
         $pid = (int)$this->input->get('payroll_id');
         $p = $this->_payroll($pid);
         if (!$p) { $this->_json(['error' => 'Payroll tidak ditemukan'], 404); return; }
-        $sids = $this->db->select('DISTINCT(u.subdivision_id) AS sid', false)
-            ->from('payroll_detail pd')->join('users u', 'u.id = pd.user_id')
-            ->where('pd.payroll_id', $pid)->get()->result();
+        $sids = $this->db->query(
+            'SELECT DISTINCT sid FROM ('
+            .'SELECT COALESCE(u.subdivision_id, 0) AS sid FROM payroll_detail pd JOIN users u ON u.id = pd.user_id WHERE pd.payroll_id = '.(int)$pid
+            .' UNION SELECT subdivision_id AS sid FROM pph21_roster WHERE year = '.(int)$p->year
+            .') x')->result();
         $tmp = tempnam(sys_get_temp_dir(), 'pph21');
         $zip = new ZipArchive();
         $zip->open($tmp, ZipArchive::OVERWRITE);
@@ -134,7 +151,12 @@ class Pph21Export extends CI_Controller {
             ->where('p.id', $pid)->get()->row();
     }
 
-    /** Data karyawan satu CV: identitas + THP + cashbon/kanvas + penanda BPJS. */
+    /**
+     * Data karyawan satu CV, URUT SESUAI ROSTER TAHUNAN (pph21_roster).
+     * Aturan pajak: susunan karyawan mengikuti kertas kerja awal tahun (Mei utk 2026)
+     * sampai Desember — karyawan resign tetap tampil dengan nilai nihil; karyawan
+     * baru ditambahkan di urutan paling bawah (sekali, lalu urutannya permanen).
+     */
     private function _cv_rows($pid, $p, $sid) {
         $emps = $this->db->select("pd.user_id, TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS name,
                 COALESCE(pos.position_name, '') AS position, COALESCE(u.npwp_number, '') AS nik,
@@ -146,16 +168,24 @@ class Pph21Export extends CI_Controller {
             ->where('pd.payroll_id', $pid)
             ->where($sid ? 'u.subdivision_id = '.$sid : '(u.subdivision_id IS NULL OR u.subdivision_id = 0)')
             ->order_by('name')->get()->result_array();
-        if (!$emps) return ['meta' => [], 'rows' => []];
+
+        $roster = $this->db->from('pph21_roster')
+            ->where('year', (int)$p->year)->where('subdivision_id', $sid)
+            ->order_by('sort_order')->get()->result_array();
+        if (!$emps && !$roster) return ['meta' => [], 'rows' => []];
 
         $uids = array_column($emps, 'user_id');
         $addback = $this->_ded_sums($p, $uids, $this->config->item('pph21_addback_deductions'));
         $bpjs    = $this->_ded_sums($p, $uids, $this->config->item('pph21_bpjs_markers'));
 
-        $rows = [];
-        foreach ($emps as $e) {
+        $by_uid = $by_key = [];
+        foreach ($emps as $i => $e) {
+            $by_uid[$e['user_id']] = $i;
+            $by_key[$this->_norm($e['name'])] = $i;
+        }
+        $mkrow = function ($e) use ($addback, $bpjs) {
             $uid = $e['user_id'];
-            $rows[] = [
+            return [
                 'name'     => $e['name'],
                 'position' => $e['position'],
                 'nik'      => preg_replace('/\D/', '', $e['nik']),
@@ -164,10 +194,53 @@ class Pph21Export extends CI_Controller {
                 'cashbon'  => isset($addback[$uid]) ? (float)$addback[$uid] : 0.0,
                 'bpjs'     => !empty($bpjs[$uid]),
             ];
+        };
+
+        $rows = [];
+        $used = [];
+        if (!$roster) {
+            // bootstrap tahun baru: roster = payroll bulan ini (urut abjad)
+            foreach ($emps as $i => $e) {
+                $rows[] = $mkrow($e);
+                $this->_roster_insert($p, $sid, $e, $i + 1);
+                $used[$i] = true;
+            }
+        } else {
+            foreach ($roster as $rr) {
+                $i = null;
+                if ($rr['user_id'] !== null && isset($by_uid[$rr['user_id']])) $i = $by_uid[$rr['user_id']];
+                elseif (isset($by_key[$rr['name_key']])) $i = $by_key[$rr['name_key']];
+                if ($i !== null) {
+                    $rows[] = $mkrow($emps[$i]);
+                    $used[$i] = true;
+                } else {
+                    // resign / tidak ada di payroll bulan ini → baris nihil (tetap dilaporkan)
+                    $rows[] = [
+                        'name' => $rr['name'], 'position' => $rr['position'],
+                        'nik' => preg_replace('/\D/', '', $rr['nik']),
+                        'ptkp' => '', 'thp' => 0.0, 'cashbon' => 0.0, 'bpjs' => false,
+                    ];
+                }
+            }
+            // karyawan baru (belum ada di roster) → tambah di bawah, simpan permanen
+            $next = count($roster);
+            foreach ($emps as $i => $e) {
+                if (isset($used[$i])) continue;
+                $next++;
+                $rows[] = $mkrow($e);
+                $this->_roster_insert($p, $sid, $e, $next);
+            }
+        }
+
+        $cv_name = '';
+        foreach ($emps as $e) { $cv_name = trim($e['cv']); break; }
+        if ($cv_name === '' && $sid) {
+            $s = $this->db->select('subdivision_name')->from('subdivision')->where('id', $sid)->get()->row();
+            $cv_name = $s ? trim($s->subdivision_name) : '';
         }
         $npwp_map = $this->config->item('pph21_npwp');
         $meta = [
-            'cv'     => trim($emps[0]['cv']) !== '' ? trim($emps[0]['cv']) : 'TANPA SUBDIVISI',
+            'cv'     => $cv_name !== '' ? $cv_name : 'TANPA SUBDIVISI',
             'npwp'   => isset($npwp_map[$sid]) ? $npwp_map[$sid] : '',
             'branch' => $p->branch_name,
             'month'  => (int)$p->month,
@@ -175,6 +248,20 @@ class Pph21Export extends CI_Controller {
             'premi'  => $this->config->item('pph21_premi'),
         ];
         return ['meta' => $meta, 'rows' => $rows];
+    }
+
+    private function _norm($s) {
+        return preg_replace('/[^A-Z]/', '', strtoupper((string)$s));
+    }
+
+    private function _roster_insert($p, $sid, $e, $order) {
+        $this->db->insert('pph21_roster', [
+            'year' => (int)$p->year, 'subdivision_id' => $sid,
+            'user_id' => $e['user_id'], 'nik' => preg_replace('/\D/', '', $e['nik']),
+            'name' => $e['name'], 'name_key' => $this->_norm($e['name']),
+            'position' => $e['position'], 'sort_order' => $order,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
     }
 
     /** SUM potongan bernama tertentu per user utk bulan payroll (keyed month/year). */
