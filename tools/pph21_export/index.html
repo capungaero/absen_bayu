@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Export PPh 21 — Tiffany Houseware</title>
+<style>
+  :root { --b:#2c7be5; --bg:#f5f7fa; --card:#fff; --tx:#1e2a3a; --mut:#6b7a90; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--tx); }
+  .wrap { max-width:860px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:20px; }
+  .card { background:var(--card); border-radius:10px; padding:20px; box-shadow:0 1px 4px rgba(20,40,80,.08); margin-bottom:16px; }
+  label { font-size:12px; font-weight:600; color:var(--mut); display:block; margin-bottom:4px; }
+  select { width:100%; padding:9px 10px; border:1px solid #d5dce6; border-radius:8px; font-size:14px; background:#fff; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; }
+  .row > div { flex:1 1 240px; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:14px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #eef1f6; }
+  th { font-size:12px; color:var(--mut); text-transform:uppercase; letter-spacing:.03em; }
+  .btn { display:inline-block; padding:8px 14px; border-radius:8px; border:0; cursor:pointer;
+         background:var(--b); color:#fff; font-size:13px; font-weight:600; text-decoration:none; }
+  .btn.gray { background:#e6ebf2; color:var(--tx); }
+  .npwp-missing { color:#c0392b; font-size:12px; }
+  .muted { color:var(--mut); }
+  #status { font-size:13px; color:var(--mut); margin-top:8px; }
+  .note { font-size:12.5px; color:var(--mut); line-height:1.55; }
+  .note b { color:var(--tx); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Export PPh 21 (kertas kerja per CV)</h1>
+  <div class="sub">Mengisi otomatis kolom yang datanya ada di database; kolom data luar absensi dibiarkan kosong untuk diisi manual — semua rumus TER &amp; gross-up sudah terpasang.</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Periode Payroll</label>
+        <select id="period"></select>
+      </div>
+      <div style="flex:0 0 auto; align-self:end;">
+        <a class="btn" id="zipBtn" href="#">⬇ Download Semua CV (ZIP)</a>
+      </div>
+    </div>
+    <div id="status">Memuat periode…</div>
+    <table id="tbl" style="display:none;">
+      <thead><tr><th>CV / Badan Usaha</th><th>Karyawan</th><th>NPWP Pemotong</th><th></th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card note">
+    <b>Kolom terisi dari database:</b> nama, jabatan, NIK, PTKP, Gaji Pokok (THP), Tunjangan/Cash Bon
+    (potongan CASHBON + PIUTANG KANVAS), premi JKK/JKM/BPJS Kes perusahaan (peserta terdeteksi dari potongan BPJS bulan tsb).<br>
+    <b>Kolom diisi manual:</b> uang jalan kanvas (tambahkan ke Tunjangan/Cash Bon), uang konsumsi
+    (Insentif/Tunjangan Lain), subsidi/lembur, bonus/THR. Tarif TER &amp; gross-up (termasuk iterasi SOP)
+    menghitung ulang otomatis; pastikan kolom <b>Cek</b> dan <b>Cek Tarif GU</b> = 0.<br>
+    Nilai premi BPJS &amp; NPWP per CV diatur di <code>application/config/pph21_export.php</code>.
+  </div>
+</div>
+<script>
+const API = '../../pph21_export';
+const $ = (s) => document.querySelector(s);
+
+async function jget(url) {
+  const r = await fetch(url, { credentials: 'same-origin' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || ('HTTP ' + r.status));
+  return r.json();
+}
+
+async function loadPeriods() {
+  try {
+    const d = await jget(API + '/periods');
+    const sel = $('#period');
+    sel.innerHTML = d.periods.map(p =>
+      `<option value="${p.id}">${String(p.month).padStart(2,'0')}/${p.year} — ${p.branch_name}</option>`).join('');
+    sel.onchange = loadCvs;
+    if (d.periods.length) loadCvs(); else $('#status').textContent = 'Belum ada payroll.';
+  } catch (e) { $('#status').textContent = 'Gagal memuat: ' + e.message; }
+}
+
+async function loadCvs() {
+  const pid = $('#period').value;
+  $('#status').textContent = 'Memuat daftar CV…';
+  $('#tbl').style.display = 'none';
+  $('#zipBtn').href = `${API}/export_all?payroll_id=${pid}`;
+  try {
+    const d = await jget(`${API}/cvs?payroll_id=${pid}`);
+    $('#tbody').innerHTML = d.cvs.map(c => `
+      <tr>
+        <td>${c.subdivision_name}</td>
+        <td>${c.n}</td>
+        <td>${c.npwp ? c.npwp : '<span class="npwp-missing">belum diisi (config)</span>'}</td>
+        <td><a class="btn gray" href="${API}/export?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ Excel</a></td>
+      </tr>`).join('');
+    $('#tbl').style.display = '';
+    $('#status').textContent = `${d.cvs.length} CV pada periode ini.`;
+  } catch (e) { $('#status').textContent = 'Gagal memuat: ' + e.message; }
+}
+loadPeriods();
+</script>
+</body>
+</html>

@@ -373,6 +373,7 @@
                                             <a href="<?= base_url('tools/payroll_sim/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-calculator-variant"></i> Payroll Simulator</a>
                                             <a href="<?= base_url('tools/payroll_importer/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-import"></i> Payroll Importer</a>
                                             <a href="<?= base_url('tools/dat_reader/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-clock-check-outline"></i> DAT Reader</a>
+                                            <a href="<?= base_url('tools/pph21_export/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Export PPh21</a>
                                         </div>
                                     </li>
                                 <?php } ?>

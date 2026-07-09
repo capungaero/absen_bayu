@@ -292,6 +292,12 @@ $route['dat_reader/data']        = 'DatReader/data';
 $route['dat_reader/save']        = 'DatReader/save';
 $route['dat_reader/push']        = 'DatReader/push';
 
+// Export PPh21 (kertas kerja per CV dari payroll, auth via CI3 session)
+$route['pph21_export/periods']    = 'Pph21Export/periods';
+$route['pph21_export/cvs']        = 'Pph21Export/cvs';
+$route['pph21_export/export']     = 'Pph21Export/export';
+$route['pph21_export/export_all'] = 'Pph21Export/export_all';
+
 // ============ BPJS ================
 $route['bpjs']                = 'Bpjs/index';
 $route['bpjs/config']         = 'Bpjs/config';
