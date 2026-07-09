@@ -174,7 +174,7 @@ class Pph21_workbook {
             $dr = $r - 4; // baris DATA UMUM terkait
             $ws->setCellValue($this->xy(1, $r), $i + 1);
             $ws->setCellValue($this->xy(2, $r), "='DATA UMUM'!B{$dr}");
-            $ws->setCellValue($this->xy(3, $r), "='DATA UMUM'!E{$dr}");
+            $ws->setCellValue($this->xy(3, $r), "='DATA UMUM'!D{$dr}"); // NIK/NPWP 16 digit (bukan flag)
             $ws->setCellValue($this->xy(4, $r), "='DATA UMUM'!F{$dr}");
             $ws->setCellValue($this->xy(5, $r), "='DATA UMUM'!I{$dr}");
             $ws->setCellValue($this->xy(6, $r), round($e['thp'], 2));
@@ -207,7 +207,7 @@ class Pph21_workbook {
         $ws->getStyle("F{$r0}:N{$rt}")->getNumberFormat()->setFormatCode($money);
         $ws->getStyle("Q{$r0}:S{$rt}")->getNumberFormat()->setFormatCode($money);
         $ws->getStyle("A8:W{$rt}")->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
-        foreach (['A'=>5,'B'=>30,'C'=>7,'D'=>7,'E'=>6,'F'=>14,'G'=>14,'H'=>13,'I'=>11,'J'=>10,
+        foreach (['A'=>5,'B'=>30,'C'=>19,'D'=>7,'E'=>6,'F'=>14,'G'=>14,'H'=>13,'I'=>11,'J'=>10,
                   'K'=>10,'L'=>10,'M'=>11,'N'=>16,'O'=>8,'P'=>9,'Q'=>16,'R'=>13,'S'=>8,'T'=>9] as $col => $w) {
             $ws->getColumnDimension($col)->setWidth($w);
         }
