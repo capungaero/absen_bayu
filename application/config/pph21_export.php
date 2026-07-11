@@ -22,6 +22,12 @@ $config['pph21_addback_deductions'] = ['CASHBON', 'PIUTANG KANVAS'];
 // Nama potongan penanda kepesertaan BPJS (bila salah satu > 0 → premi perusahaan diisi).
 $config['pph21_bpjs_markers'] = ['BPJS KESEHATAN', 'BPJS KETENAGAKERJAAN'];
 
+// Kode penempatan per branch (kolom PENEMPATAN pada export gabungan Semua CV).
+$config['pph21_penempatan'] = [
+    1 => 'HW-SDR',  // TIFFANY HOUSEWARE SDR
+    2 => 'HW-GBR',  // TIFFANY HOUSEWARE GBR
+];
+
 // NPWP pemotong per subdivision (CV). ID TKU = NPWP + "000000".
 // Sumber: npwp.xlsx (8 Jul 2026). Key = subdivision_id.
 $config['pph21_npwp'] = [

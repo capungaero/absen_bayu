@@ -143,6 +143,41 @@ class Pph21Export extends CI_Controller {
         exit;
     }
 
+    /** Download 1 file gabungan semua CV (kolom tambahan CV & PENEMPATAN). */
+    public function export_combined() {
+        $pid = (int)$this->input->get('payroll_id');
+        $p = $this->_payroll($pid);
+        if (!$p) { $this->_json(['error' => 'Payroll tidak ditemukan'], 404); return; }
+        $sids = $this->db->query(
+            'SELECT DISTINCT sid FROM ('
+            .'SELECT COALESCE(u.subdivision_id, 0) AS sid FROM payroll_detail pd JOIN users u ON u.id = pd.user_id WHERE pd.payroll_id = '.(int)$pid
+            .' UNION SELECT subdivision_id AS sid FROM pph21_roster WHERE year = '.(int)$p->year
+            .') x')->result();
+        $groups = [];
+        foreach ($sids as $s) {
+            $data = $this->_cv_rows($pid, $p, (int)$s->sid);
+            if (!$data['rows']) continue;
+            $groups[] = ['cv' => $data['meta']['cv'], 'rows' => $data['rows']];
+        }
+        if (!$groups) { $this->_json(['error' => 'Tidak ada data'], 404); return; }
+        usort($groups, function ($a, $b) { return strcmp($a['cv'], $b['cv']); });
+        $pen_map = $this->config->item('pph21_penempatan');
+        $meta = [
+            'branch'     => $p->branch_name,
+            'penempatan' => isset($pen_map[$p->branch_id]) ? $pen_map[$p->branch_id] : $p->branch_name,
+            'month'      => (int)$p->month,
+            'year'       => (int)$p->year,
+            'premi'      => $this->config->item('pph21_premi'),
+        ];
+        $ss = $this->pph21_workbook->build_combined($meta, $groups);
+        $fname = sprintf('%02d %s PPh21 - Semua CV (%s).xlsx', $p->month, $this->_month_name($p->month), $meta['penempatan']);
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="'.str_replace('"', '', $fname).'"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($ss))->save('php://output');
+        exit;
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private function _payroll($pid) {

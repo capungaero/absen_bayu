@@ -42,6 +42,7 @@
       </div>
       <div style="flex:0 0 auto; align-self:end;">
         <a class="btn" id="zipBtn" href="#">⬇ Download Semua CV (ZIP)</a>
+        <a class="btn" id="combBtn" href="#" style="background:#1e9e63;">⬇ Semua CV (1 File Excel)</a>
       </div>
     </div>
     <div id="status">Memuat periode…</div>
@@ -86,6 +87,7 @@ async function loadCvs() {
   $('#status').textContent = 'Memuat daftar CV…';
   $('#tbl').style.display = 'none';
   $('#zipBtn').href = `${API}/export_all?payroll_id=${pid}`;
+  $('#combBtn').href = `${API}/export_combined?payroll_id=${pid}`;
   try {
     const d = await jget(`${API}/cvs?payroll_id=${pid}`);
     $('#tbody').innerHTML = d.cvs.map(c => `

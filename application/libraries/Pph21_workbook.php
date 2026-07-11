@@ -215,15 +215,100 @@ class Pph21_workbook {
         $ws->freezePane('A'.$r0);
     }
 
-    /** Formula tarif TER utk ekspresi nilai $val, PTKP di kolom D baris $r. */
-    private function ter_formula($val, $r) {
+    /** Formula tarif TER utk ekspresi nilai $val, PTKP di kolom $pcol baris $r. */
+    private function ter_formula($val, $r, $pcol = 'D') {
         $nA = count(self::$TER_A) + 3; // data TER mulai baris 4
         $nB = count(self::$TER_B) + 3;
         $nC = count(self::$TER_C) + 3;
-        return "IF(OR(\$D{$r}=\"TK/0\",\$D{$r}=\"TK/1\",\$D{$r}=\"K/0\"),"
+        return "IF(OR(\${$pcol}{$r}=\"TK/0\",\${$pcol}{$r}=\"TK/1\",\${$pcol}{$r}=\"K/0\"),"
              ."VLOOKUP({$val},TER!\$A\$4:\$B\${$nA},2,TRUE),"
-             ."IF(\$D{$r}=\"K/3\",VLOOKUP({$val},TER!\$G\$4:\$H\${$nC},2,TRUE),"
+             ."IF(\${$pcol}{$r}=\"K/3\",VLOOKUP({$val},TER!\$G\$4:\$H\${$nC},2,TRUE),"
              ."VLOOKUP({$val},TER!\$D\$4:\$E\${$nB},2,TRUE)))";
+    }
+
+    /**
+     * Workbook GABUNGAN semua CV dalam 1 sheet, dgn kolom tambahan CV & PENEMPATAN.
+     *
+     * @param array $meta   ['branch','penempatan','month','year','premi']
+     * @param array $groups per CV: ['cv'=>nama, 'rows'=>rows (spt build())]
+     * @return Spreadsheet
+     */
+    public function build_combined($meta, $groups) {
+        $ss = new Spreadsheet();
+        $ss->getDefaultStyle()->getFont()->setName('Arial')->setSize(10);
+        $ws = $ss->getActiveSheet();
+        $ws->setTitle('SEMUA CV');
+        $ws->setCellValue('A1', 'PERHITUNGAN PPh PASAL 21 PEGAWAI TETAP - TER BULANAN (GROSS UP) — SEMUA CV');
+        $ws->setCellValue('A2', $meta['branch'].' ('.$meta['penempatan'].')');
+        $ws->setCellValue('A3', 'Masa Pajak: '.$meta['month'].'/'.$meta['year'].' | Urutan & baris nihil mengikuti roster tahunan per CV');
+        $ws->getStyle('A1:A3')->getFont()->setBold(true);
+
+        $hdr = ['NO.','NAMA PEGAWAI','CV','PENEMPATAN','NPWP','PTKP','MASA',
+                'Gaji Pokok (THP)','Tunjangan/Cash Bon','Insentif/ Tunjangan Lain','Subsidi Pajak / Lembur','Bonus/ THR',
+                'JKK','JKM','BPJS KES','Total Penghasilan Bruto','Tarif TER','Tarif TER/100',
+                'Total Penghasilan Bruto Gross Up','PPh 21 Gross Up','Cek','Cek Tarif GU (harus 0)',
+                'tarif tahap1','tarif tahap2','tarif tahap3'];
+        $hrow = 5;
+        foreach ($hdr as $c => $t) $ws->setCellValue($this->xy($c + 1, $hrow), $t);
+        $ws->getStyle('A5:Y5')->getFont()->setBold(true);
+        $ws->getStyle('A5:Y5')->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_CENTER);
+        $ws->getStyle('A5:Y5')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('D9E1F2');
+        $ws->getStyle('I5:L5')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FCE4D6');
+
+        $premi = $meta['premi'];
+        $r = $hrow + 1;
+        $r0 = $r;
+        foreach ($groups as $g) {
+            foreach ($g['rows'] as $i => $e) {
+                $ws->setCellValue($this->xy(1, $r), $i + 1); // nomor roster per CV
+                $ws->setCellValue($this->xy(2, $r), $e['name']);
+                $ws->setCellValue($this->xy(3, $r), $g['cv']);
+                $ws->setCellValue($this->xy(4, $r), $meta['penempatan']);
+                $ws->setCellValueExplicit($this->xy(5, $r), (string)$e['nik'], DataType::TYPE_STRING);
+                $ws->setCellValue($this->xy(6, $r), $e['ptkp'] !== '' ? $e['ptkp'] : 'TK/0');
+                $ws->setCellValue($this->xy(7, $r), 12);
+                $ws->setCellValue($this->xy(8, $r), round($e['thp'], 2));
+                if ($e['cashbon'] > 0) $ws->setCellValue($this->xy(9, $r), round($e['cashbon'], 2));
+                if (!empty($e['bpjs'])) {
+                    $ws->setCellValue($this->xy(13, $r), $premi['jkk']);
+                    $ws->setCellValue($this->xy(14, $r), $premi['jkm']);
+                    $ws->setCellValue($this->xy(15, $r), $premi['kes']);
+                }
+                $ws->setCellValue($this->xy(16, $r), "=+H{$r}+I{$r}+J{$r}+K{$r}+L{$r}+M{$r}+N{$r}+O{$r}");
+                $ws->setCellValue($this->xy(17, $r), "=Y{$r}");
+                $ws->setCellValue($this->xy(18, $r), "=Q{$r}/100");
+                $ws->setCellValue($this->xy(19, $r), "=P{$r}/(1-R{$r})");
+                $ws->setCellValue($this->xy(20, $r), "=R{$r}*S{$r}");
+                $ws->setCellValue($this->xy(21, $r), "=S{$r}-T{$r}-P{$r}");
+                $ws->setCellValue($this->xy(22, $r), '='.$this->ter_formula("S{$r}", $r, 'F')."-Q{$r}");
+                $ws->setCellValue($this->xy(23, $r), '='.$this->ter_formula("P{$r}", $r, 'F'));
+                $ws->setCellValue($this->xy(24, $r), '='.$this->ter_formula("P{$r}/(1-W{$r}/100)", $r, 'F'));
+                $ws->setCellValue($this->xy(25, $r), '='.$this->ter_formula("P{$r}/(1-X{$r}/100)", $r, 'F'));
+                $r++;
+            }
+        }
+        $rt = $r;
+        $ws->setCellValue($this->xy(2, $rt), 'TOTAL');
+        foreach (['H','I','J','K','L','M','N','O','P','S','T'] as $col) {
+            $ws->setCellValue($col.$rt, "=SUM({$col}{$r0}:{$col}".($rt - 1).')');
+        }
+        $ws->getStyle("A{$rt}:Y{$rt}")->getFont()->setBold(true);
+
+        $money = '#,##0.00;(#,##0.00);"-"';
+        $ws->getStyle("H{$r0}:P{$rt}")->getNumberFormat()->setFormatCode($money);
+        $ws->getStyle("S{$r0}:U{$rt}")->getNumberFormat()->setFormatCode($money);
+        $ws->getStyle("A{$hrow}:Y{$rt}")->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
+        foreach (['A'=>5,'B'=>30,'C'=>30,'D'=>12,'E'=>19,'F'=>7,'G'=>6,'H'=>14,'I'=>14,'J'=>13,'K'=>11,'L'=>10,
+                  'M'=>10,'N'=>10,'O'=>11,'P'=>16,'Q'=>8,'R'=>9,'S'=>16,'T'=>13,'U'=>8,'V'=>9] as $col => $w) {
+            $ws->getColumnDimension($col)->setWidth($w);
+        }
+        foreach (['W', 'X', 'Y'] as $col) $ws->getColumnDimension($col)->setVisible(false);
+        $ws->setAutoFilter("A{$hrow}:V".($rt - 1));
+        $ws->freezePane('A'.$r0);
+
+        $this->sheet_ter($ss->createSheet());
+        $ss->setActiveSheetIndexByName('SEMUA CV');
+        return $ss;
     }
 
     // ---------------------------------------------------------------------- TER

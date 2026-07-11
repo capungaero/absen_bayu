@@ -297,6 +297,7 @@ $route['pph21_export/periods']    = 'Pph21Export/periods';
 $route['pph21_export/cvs']        = 'Pph21Export/cvs';
 $route['pph21_export/export']     = 'Pph21Export/export';
 $route['pph21_export/export_all'] = 'Pph21Export/export_all';
+$route['pph21_export/export_combined'] = 'Pph21Export/export_combined';
 
 // ============ BPJS ================
 $route['bpjs']                = 'Bpjs/index';
