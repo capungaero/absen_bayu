@@ -89,7 +89,7 @@ $autoload['drivers'] = array();
 |
 |	$autoload['helper'] = array('url', 'file');
 */
-$autoload['helper'] = array('file', 'url', 'form','text','html','formatrp','monthname','generic','late','schedule','attlog','presence');
+$autoload['helper'] = array('file', 'url', 'form','text','html','formatrp','monthname','generic','payroll_lock','late','schedule','attlog','presence');
 
 /*
 | -------------------------------------------------------------------

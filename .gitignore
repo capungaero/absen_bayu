@@ -11,6 +11,9 @@ __MACOSX/
 share.env
 rahasia.env
 
+# Artefak analisis lokal (graphify)
+/graphify-out/
+
 # Kredensial & artefak kerja (jangan pernah di-commit)
 ftp.txt
 /setup_pc/

@@ -86,7 +86,6 @@ defined('EXIT__AUTO_MAX')      OR define('EXIT__AUTO_MAX', 125); // highest auto
 
 define('ASSETS_URL', 'http://127.0.0.1/n2o/admin/');
 define('FRONTEND_URL', 'http://127.0.0.1/n2o/frontend/');
-define('MIDTRANS_KEY', 'SB-Mid-server-T4-vXWLBjgjPbq8ELzXdYobM');
 define('START_ACCESS_PAYROLL', 5);
 define('END_ACCESS_PAYROLL', 7);
 define('START_PAYROLL_DATE', 26);
