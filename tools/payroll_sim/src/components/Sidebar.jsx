@@ -206,7 +206,7 @@ export default function Sidebar({ result, customItems, showAll, onCustomItemAdd,
     else setShowDeductForm(false);
   };
 
-  const empty = <div style={{ padding: '16px 14px', color: '#475569', fontSize: 12 }}>Hitung gaji untuk melihat daftar</div>;
+  const empty = <div style={{ padding: '16px 14px', color: '#475569', fontSize: 12 }}>Hitung fee untuk melihat daftar</div>;
 
   return (
     <div className="sidebar">

@@ -200,7 +200,7 @@ export default function App() {
         <div className="tb-group">
           <span className="tb-label">Rentang</span>
           <div className="seg">
-            {[['period', 'Periode Gaji'], ['range', 'Rentang Tgl'], ['date', 'Per Tanggal']].map(([v, l]) => (
+            {[['period', 'Periode Fee'], ['range', 'Rentang Tgl'], ['date', 'Per Tanggal']].map(([v, l]) => (
               <button key={v} className={`seg-btn ${mode === v ? 'active' : ''}`} onClick={() => setMode(v)}>{l}</button>
             ))}
           </div>

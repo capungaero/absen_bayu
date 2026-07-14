@@ -21,10 +21,10 @@ export function SalaryNode({ data }) {
   return (
     <div className="node-base node-salary">
       <Handle type="target" position={Position.Top} style={{ background: '#16a34a' }} />
-      <div className="node-header">💰 Gaji Pokok</div>
+      <div className="node-header">💰 Fee Pokok</div>
       <div className="node-body">
         <div className="node-row">
-          <span className="label">Gaji dasar</span>
+          <span className="label">Fee dasar</span>
           <span className="val" style={{ color: 'var(--pos)' }}>{fmt(data.salary)}</span>
         </div>
         {data.salaryMin > 0 && (

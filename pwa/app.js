@@ -221,20 +221,20 @@ function payNav(delta){
 async function renderPayroll(c){
   var yr = state.payYear, mo = state.payMonth;
   var map = await fetchPayYear(yr);
-  if(!map){ c.innerHTML='<div class="empty">Gagal memuat data gaji</div>'; return; }
+  if(!map){ c.innerHTML='<div class="empty">Gagal memuat data fee</div>'; return; }
   var s = map[mo] || null;
 
   var html = '<div class="period-nav"><button id="yPrev">‹</button><div class="label">'+MONTH_NAMES[mo]+' '+yr+'</div><button id="yNext">›</button></div>';
 
   if(!s){
-    html += '<div class="empty">Belum ada slip gaji final untuk bulan ini.</div>';
+    html += '<div class="empty">Belum ada slip pembagian fee final untuk bulan ini.</div>';
   } else {
     state.slips = [s];
     var si = 0;
     html += '<div class="card">';
     html += '<div class="slip-thp"><div class="lbl">Take Home Pay</div><div class="amt">'+rp(s.thp)+'</div><div class="mo">'+s.month_name+' '+s.year+'</div></div>';
     html += '<div class="sub-head">Pendapatan</div>';
-    html += '<div class="kv pos kv-click" id="gajiPokokRow" style="cursor:pointer"><span>Gaji Pokok <span class="kv-chev">›</span></span><span class="v">'+rp(s.gaji_pokok)+'</span></div>';
+    html += '<div class="kv pos kv-click" id="gajiPokokRow" style="cursor:pointer"><span>Fee Pokok <span class="kv-chev">›</span></span><span class="v">'+rp(s.gaji_pokok)+'</span></div>';
     (s.bonus||[]).forEach(function(b, bi){
       var clickable = b.items && b.items.length > 0;
       html += payRow('pos', b.label, '+ '+rp(b.value), 'bonus', si, bi, clickable);
@@ -322,16 +322,16 @@ function openPayDetail(item, isBonus){
 function openGajiDetail(gd, gajiPokok, period){
   if(!gd){ return; }
   var html = '<div class="sheet-handle"></div>'
-    + '<div class="sheet-title">Gaji Pokok</div>'
+    + '<div class="sheet-title">Fee Pokok</div>'
     + '<div class="sheet-sub">'+period+'</div>';
-  html += '<div class="fd-total-box"><div class="fd-total-label">Gaji Pokok Diterima</div><div class="fd-total-val" style="color:var(--green)">'+rp(gajiPokok)+'</div></div>';
+  html += '<div class="fd-total-box"><div class="fd-total-label">Fee Pokok Diterima</div><div class="fd-total-val" style="color:var(--green)">'+rp(gajiPokok)+'</div></div>';
   html += '<div class="sub-head">Perhitungan</div>';
-  html += '<div class="kv"><span>Gaji Full</span><span class="v">'+rp(gd.gaji_full)+'</span></div>';
+  html += '<div class="kv"><span>Fee Full</span><span class="v">'+rp(gd.gaji_full)+'</span></div>';
   var potAlpha = gd.pot_alpha || 0;
   var potOff = gd.pot_off || 0;
   if(potAlpha > 0) html += '<div class="kv neg"><span>Pot. Alpha</span><span class="v">- '+rp(potAlpha)+'</span></div>';
   if(potOff > 0) html += '<div class="kv neg"><span>Pot. Tidak Masuk</span><span class="v">- '+rp(potOff)+'</span></div>';
-  html += '<div class="kv total"><span>Gaji Pokok</span><span class="v" style="color:var(--green)">'+rp(gajiPokok)+'</span></div>';
+  html += '<div class="kv total"><span>Fee Pokok</span><span class="v" style="color:var(--green)">'+rp(gajiPokok)+'</span></div>';
   html += '<div class="sub-head">Rekap Kehadiran</div>';
   html += '<div class="kv"><span>Hadir</span><span class="v">'+gd.hadir+' / '+gd.max_hadir+' hari</span></div>';
   html += '<div class="kv"><span>Tepat Waktu</span><span class="v" style="color:var(--green)">'+gd.tepat_waktu+' hari</span></div>';

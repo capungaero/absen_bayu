@@ -171,7 +171,7 @@ export default function App() {
       {locked && (
         <div className="banner banner-warn">
           🔒 Periode <b>{String(month).padStart(2, '0')}/{year}</b> sudah dikunci (payroll telah dibuat).
-          Impor dinonaktifkan. Rollback penggajian periode ini dulu untuk impor ulang.
+          Impor dinonaktifkan. Rollback pembagian fee periode ini dulu untuk impor ulang.
         </div>
       )}
 
