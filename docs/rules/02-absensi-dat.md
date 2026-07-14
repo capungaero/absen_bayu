@@ -68,6 +68,31 @@ menentukan angka di `presence` → payroll (target paritas). Metode B tetap
 didokumentasikan karena tabel `raw_taps` menyimpan SEMUA tap mentah sehingga
 keduanya bisa direkonstruksi.
 
+## Semantik merge sync: PROVENANCE-AWARE (8 Jul 2026)
+
+Saat sync menemukan baris `presence` yang SUDAH ada utk (user, tanggal),
+perlakuannya ditentukan **penulis terakhir baris** (`presence.input_by`):
+
+| `input_by` existing | Perlakuan sync | Alasan |
+|---|---|---|
+| `system` (tulisan sync/mesin) | **Latest scan wins** — tap terbaru menimpa per kolom | Jadwal sering di-upload telat → data fallback salah klasifikasi WAJIB bisa diperbaiki dgn sync ulang |
+| `manual` (pernah diedit manusia) | **Hanya isi kolom kosong** (`presence_merge_preserve_existing`, presence_helper.php:157-177) | Koreksi manual (mesin error dll) tidak boleh tertimbah mesin |
+
+Berlaku SERAGAM di 4 jalur: PHP sync kerja (`hr/Presence::_import_presence_sheet`),
+PHP sync sholat (`_import_pray_sheet` — baris manual: per-sholat isi hanya bila
+`X_time_in` kosong; baris system: tetap clear-then-set authoritative),
+Python cron kerja (`absen_sync.py::upsert_presence`) dan Python cron sholat.
+
+Penanda `input_by='manual'` DIJAMIN di-set oleh semua endpoint edit manusia:
+`update_presence`, `update_workhour`, `update_workpray`, setting-shift-recalc,
+approve izin (Leave.php/M.php), dan DAT Reader `push()`. Endpoint baru yang
+menulis presence atas nama manusia WAJIB ikut men-set penanda ini.
+
+**Lock gaji di cron Python** (8 Jul 2026): `absen_sync.py` kini melewati
+cabang yang payroll periodenya sudah dikunci (`get_locked_branches` — paralel
+`_payroll_locked` PHP), termasuk pada `recalc_period_lateness`. Sebelumnya
+pengecekan ini hanya ada di jalur PHP.
+
 ## Aturan keterlambatan (floor)
 
 `late_minutes($limit, $time)` — Source of truth:

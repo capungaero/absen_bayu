@@ -747,10 +747,18 @@ class Presence extends CI_Controller{
 				if($pray_check){
 					$this->db->trans_begin();
 
+					// Tandai baris sebagai hasil edit manusia — sync provenance-aware
+					// tidak akan menimpa baris manual (lihat _import_presence_sheet).
+					$p['input_by']         = 'manual';
+					$p['input_by_user_id'] = $this->userdata->id;
+
 					$this->db->where([
 						'user_id'   => $user_id,
 						'flow_date' => $date
 					])->update('presence', $p);
+
+					// Jangan ikut diformat/dikirim balik ke UI
+					unset($p['input_by'], $p['input_by_user_id']);
 
 					foreach ($p as $key => $value){
 						if(!is_integer($value)){
@@ -1351,7 +1359,7 @@ class Presence extends CI_Controller{
 			$existing_map = [];
 			if(!empty($data_user_ids) && !empty($data_dates)){
 				$existing_rows = $this->db
-					->select('id, user_id, flow_date, entry_time, out_time, rest_time_in, rest_time_out, entry_time_late, rest_time_late')
+					->select('id, user_id, flow_date, entry_time, out_time, rest_time_in, rest_time_out, entry_time_late, rest_time_late, input_by')
 					->where_in('user_id', $data_user_ids)
 					->where_in('flow_date', $data_dates)
 					->get('presence')->result_array();
@@ -1372,9 +1380,27 @@ class Presence extends CI_Controller{
 					continue;
 				}
 
-				// Latest scan wins — samakan dengan Python absen_sync.py (data mesin
-				// fingerprint selalu menimpa). Mencegah record kosong lama memblokir
-				// update & menjaga 2 jalur sync (PHP manual + Python cron) konsisten.
+				// Sync PROVENANCE-AWARE (8 Jul 2026, keputusan user — konsisten dgn
+				// Python absen_sync.py):
+				// - Baris tulisan sync/mesin (input_by='system') → latest scan wins:
+				//   tap terbaru MENIMPA, supaya sync ulang setelah jadwal telat
+				//   di-upload tetap bisa mereklasifikasi data fallback yang salah.
+				// - Baris hasil edit manusia (input_by='manual' dkk) → HANYA mengisi
+				//   kolom kosong (presence_merge_preserve_existing) — koreksi manual
+				//   tidak pernah tertimpa mesin.
+				$is_manual = !in_array((string)$existing['input_by'], ['system', 'machine', ''], true);
+
+				if($is_manual){
+					$update = presence_merge_preserve_existing($row, $existing);
+					if(!empty($update)){
+						$update_rows[] = ['id' => $existing['id']] + $update;
+						$updated_rows++;
+					}else{
+						$skipped_rows++;
+					}
+					continue;
+				}
+
 				$merged = [
 					'id' => $existing['id'],
 					'entry_time' => !empty($row['entry_time']) ? $row['entry_time'] : $existing['entry_time'],
@@ -2670,21 +2696,37 @@ class Presence extends CI_Controller{
 					continue;
 				}
 
-				// Authoritative per row (clear-then-set): scan ini menentukan SEMUA kolom
-				// sholat untuk row ini. Sholat yang tidak punya tap di window saat ini
-				// dikosongkan (NULL), sehingga perubahan window jam sholat otomatis
-				// tercermin pada sync berikutnya tanpa perlu recompute manual.
-				// Flag di-set saat inisialisasi (ada tap dari mesin), bukan hanya saat
-				// tap cocok window — sehingga orphan dari window lama ikut ter-clear.
+				// Sync PROVENANCE-AWARE (8 Jul 2026, konsisten dgn sync kerja):
+				// - Baris 'system' → authoritative clear-then-set: scan ini menentukan
+				//   SEMUA kolom sholat row ini; sholat tanpa tap di window di-NULL-kan,
+				//   sehingga perubahan window otomatis tercermin di sync berikutnya.
+				// - Baris 'manual' (pernah diedit manusia, mis. via update_workpray) →
+				//   HANYA mengisi sholat yang kolom in-nya masih kosong; nilai manual
+				//   tidak pernah ditimpa/di-clear mesin.
+				$is_manual = !in_array((string)$existing['input_by'], ['system', 'machine', ''], true);
 				$update = [];
 				foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'] as $pray){
 					$p_in  = $pray_data[$pray.'_time_in'];
 					$p_out = $pray_data[$pray.'_time_out'];
 					$p_late = isset($pray_data[$pray.'_time_late']) ? (int)$pray_data[$pray.'_time_late'] : 0;
 
+					if($is_manual){
+						if(empty($existing[$pray.'_time_in']) && !empty($p_in)){
+							$update[$pray.'_time_in']   = $p_in;
+							$update[$pray.'_time_out']  = !empty($p_out) ? $p_out : null;
+							$update[$pray.'_time_late'] = $p_late;
+						}
+						continue;
+					}
+
 					$update[$pray.'_time_in']   = !empty($p_in)  ? $p_in  : null;
 					$update[$pray.'_time_out']  = !empty($p_out) ? $p_out : null;
 					$update[$pray.'_time_late'] = !empty($p_in)  ? $p_late : 0;
+				}
+
+				if($is_manual && empty($update)){
+					$skipped_rows++;
+					continue;
 				}
 
 				$this->db->where([

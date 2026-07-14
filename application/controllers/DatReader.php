@@ -411,6 +411,10 @@ class DatReader extends CI_Controller {
     private function _presence_payload($uid, $date, $r, $shift, $created_at) {
         $p = attlog_payload();
         $p['user_id'] = $uid; $p['flow_date'] = $date; $p['created_at'] = $created_at;
+        // Data hasil kurasi admin di DAT Reader = edit manusia — tandai manual
+        // supaya sync provenance-aware tidak menimpanya.
+        $p['input_by'] = 'manual';
+        if (isset($this->userdata->id)) { $p['input_by_user_id'] = $this->userdata->id; }
         if (!empty($r['datang']))  $p['entry_time']    = $date.' '.$this->_hms($r['datang']);
         if (!empty($r['pulang']))  $p['out_time']      = $date.' '.$this->_hms($r['pulang']);
         if (!empty($r['out_ist'])) $p['rest_time_in']  = $date.' '.$this->_hms($r['out_ist']);
