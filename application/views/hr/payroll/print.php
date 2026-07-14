@@ -32,14 +32,14 @@
     <hr>
 
     <center style="margin-top: 15px; margin-bottom: 15px">
-        <span style="font-size: 16px"><b>LAPORAN PENGGAJIAN</b></span>
+        <span style="font-size: 16px"><b>LAPORAN PEMBAGIAN FEE</b></span>
     </center>
 
     <table style="width: 100%;" border="0">
         <tr>
-            <td><span style="color:#444; font-size: 12px">Kode Penggajian</span> <br>#<?= $payroll['payroll_code'] ?></td>
+            <td><span style="color:#444; font-size: 12px">Kode Pembagian Fee</span> <br>#<?= $payroll['payroll_code'] ?></td>
             <td>
-                <span style="color:#444; font-size: 12px">Periode Penggajian</span><br>
+                <span style="color:#444; font-size: 12px">Periode Pembagian Fee</span><br>
                 <?= get_monthname($month)." ".$year ?>
             </td>
             <td>
@@ -47,7 +47,7 @@
                 <?= indonesian_date($payroll['created_at'], true) ?>
             </td>
             <td>
-                <span style="color:#444; font-size: 12px">Total Penggajian</span><br>
+                <span style="color:#444; font-size: 12px">Total Fee</span><br>
                 <?= format_rp($payroll['total_salary_thp'], '') ?>
             </td>
         </tr>
@@ -66,7 +66,7 @@
             <th rowspan="3" class="align-middle" style="width: 9%">JABATAN</th>
             <th rowspan="3" class="text-center align-middle" style="width:7%">KEHADIRAN</th>
             <th rowspan="3" class="text-center align-middle" style="width:7%">SHOLAT</th>
-            <th colspan="3" class="text-center" style="background-color:#eee">URAIAN GAJI</th>
+            <th colspan="3" class="text-center" style="background-color:#eee">URAIAN FEE</th>
             <th colspan="4" class="text-center" style="background-color:#eee">PENGURANG</th>
             <th rowspan="3" class="text-center align-middle" style="width: 11%">THP</th>
         </tr>

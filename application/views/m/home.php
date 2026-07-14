@@ -117,7 +117,7 @@ $photo = !empty($emp['photo']) && $emp['photo'] != 'default-photo.jpg';
         <i class="material-icons">calendar_month</i><span>Jadwal</span>
     </a>
     <a href="<?= site_url('m/payroll') ?>" class="quick-menu-item">
-        <i class="material-icons">account_balance_wallet</i><span>Slip Gaji</span>
+        <i class="material-icons">account_balance_wallet</i><span>Slip Pembagian Fee</span>
     </a>
 </div>
 

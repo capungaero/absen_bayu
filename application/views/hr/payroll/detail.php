@@ -2,12 +2,12 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="dripicons-experiments"></i> Penggajian</h4>
+            <h4 class="mb-0"><i class="dripicons-experiments"></i> Pembagian Fee</h4>
 
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
-                    <li class="breadcrumb-item"><a href="javascript:void(0);">Penggajian</a></li>
-                    <li class="breadcrumb-item"><a href="<?= site_url('hr/payroll') ?>">Daftar Penggajian</a></li>
+                    <li class="breadcrumb-item"><a href="javascript:void(0);">Pembagian Fee</a></li>
+                    <li class="breadcrumb-item"><a href="<?= site_url('hr/payroll') ?>">Daftar Pembagian Fee</a></li>
                     <li class="breadcrumb-item active">Detail</li>
                 </ol>
             </div>
@@ -21,7 +21,7 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">Detail Penggajian</h6>
+                <h6 class="card-title">Detail Pembagian Fee</h6>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -107,7 +107,7 @@
                         <div class="col-md-1"></div>
 
                         <div class="col-md-2">
-                            Total Penggajian
+                            Total Fee
                             <h6><?= !empty($payroll) ? format_rp($payroll['total_salary_thp']) : '-' ?></h6>
                         </div>
 
@@ -121,8 +121,8 @@
                                             <i class="fa fa-print"></i> Cetak <i class="fa fa-chevron-down"></i>
                                         </button> &nbsp;
                                         <div class="dropdown-menu" aria-labelledby="btnGroupVerticalDrop1">
-                                            <a class="dropdown-item" target="_blank" href="<?= site_url('hr/payroll/'.$payroll['month'].'/'.$payroll['year'].'/print?branch_id='.$branch_id) ?>"><i class="fa fa-file"></i> Rangkuman Gaji</a>
-                                            <a id="btnShowPayrollSlip" class="dropdown-item" href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportPayrollSlip"><i class="fa fa-file-pdf"></i> Export Slip Gaji</a>
+                                            <a class="dropdown-item" target="_blank" href="<?= site_url('hr/payroll/'.$payroll['month'].'/'.$payroll['year'].'/print?branch_id='.$branch_id) ?>"><i class="fa fa-file"></i> Rangkuman Fee</a>
+                                            <a id="btnShowPayrollSlip" class="dropdown-item" href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportPayrollSlip"><i class="fa fa-file-pdf"></i> Export Slip Pembagian Fee</a>
                                         </div>
                                     </div>
 
@@ -202,15 +202,15 @@
                                         <a class="dropdown-item" href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalImportOvertime"><i class="fa fa-upload"></i> Upload File</a>
                                     </div>
                                 </div>
-                                <button class="btn btn-warning" id="btnGenerate"><i class="fa fa-lock"></i> Lock Gaji</button>
+                                <button class="btn btn-warning" id="btnGenerate"><i class="fa fa-lock"></i> Lock Fee</button>
                         <?php }else if(!empty($payroll) && ($role == 'admin' || $role == 'admin-branch')){
                                     if($payroll['is_final'] == '0'){ ?>
                                         <button class="btn btn-outline-primary" id="btnRecalcAuto" title="Hitung ulang Komisi Disiplin/Transport/Beras/Soskes/Sholat dari data presensi terkini"><i class="fa fa-calculator"></i> Hitung Ulang Komisi Otomatis</button> &emsp;
-                                        <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRollback"><i class="fa fa-refresh"></i> Rollback Gaji Ke Tahap Awal</button> &emsp;
-                                        <button class="btn btn-success" id="btnSaveGaji"><i class="fa fa-check-circle"></i> Simpan Gaji</button>
+                                        <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalRollback"><i class="fa fa-refresh"></i> Rollback Fee Ke Tahap Awal</button> &emsp;
+                                        <button class="btn btn-success" id="btnSaveGaji"><i class="fa fa-check-circle"></i> Simpan Fee</button>
 
                         <?php       }else{ ?>
-                                        <button class="btn btn-outline-danger" id="btnRollbackLock"><i class="fa fa-refresh"></i> Rollback Gaji Ke Tahap Lock</button>
+                                        <button class="btn btn-outline-danger" id="btnRollbackLock"><i class="fa fa-refresh"></i> Rollback Fee Ke Tahap Lock</button>
                         <?php       }?>
                                 
                         <?php } ?>
@@ -257,7 +257,7 @@
                 </div>
                 <div class="modal-body">
                     <input type="file" name="excel_file" class="form-control" accept=".xlsx,.xls" required>
-                    <small class="text-muted d-block mt-2">Isi ID Fingerprint, Tanggal Lembur, dan Jam Lembur. Data akan masuk sebagai lembur approved dan ikut dihitung saat Lock Gaji.</small>
+                    <small class="text-muted d-block mt-2">Isi ID Fingerprint, Tanggal Lembur, dan Jam Lembur. Data akan masuk sebagai lembur approved dan ikut dihitung saat Lock Fee.</small>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-info" id="btnImportOvertime"><i class="fa fa-upload"></i> Import</button>
@@ -277,7 +277,7 @@
         <div class="modal-dialog modal-dialog-centered" role="document">
             <div class="modal-content">
                 <div class="modal-header bg-danger">
-                    <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">ROLLBACK GAJI TAHAP AWAL</h5>
+                    <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">ROLLBACK FEE TAHAP AWAL</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                     </button>
                 </div>
@@ -287,13 +287,13 @@
                             <img src="<?= base_url('assets/images/icon/megaphone.png') ?>" style="width: 50px">
                         </div>
                         <div class="col-md-9">
-                            <h6><b>Rollback Tahap Awal / Batalkan Penggajian Periode Ini ?</b></h6>
-                            <div id="modal-info-msg">Rollback Tahap Awal merupakan pembatalan penggajian bulan ini yang mengakibatkan data gaji yang sudah diinput saat ini hilang. <br><br><b class="text-danger">Pastikan anda mempunyai Copy / PDF / Salinan dari hasil penggajian saat ini !</b></div>
+                            <h6><b>Rollback Tahap Awal / Batalkan Pembagian Fee Periode Ini ?</b></h6>
+                            <div id="modal-info-msg">Rollback Tahap Awal merupakan pembatalan pembagian fee bulan ini yang mengakibatkan data fee yang sudah diinput saat ini hilang. <br><br><b class="text-danger">Pastikan anda mempunyai Copy / PDF / Salinan dari hasil pembagian fee saat ini !</b></div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-danger" id="btnRollback">Batalkan Penggajian</button>
+                    <button class="btn btn-danger" id="btnRollback">Batalkan Pembagian Fee</button>
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
                 </div>
             </div>
@@ -305,7 +305,7 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header bg-primary">
-                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">EXPORT PDF SLIP GAJI KARYAWAN</h5>
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">EXPORT PDF SLIP PEMBAGIAN FEE KARYAWAN</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -377,7 +377,7 @@
 
                         }else{
                             alert(res.message);
-                            btn.html('Batalkan Penggajian').removeAttr('disabled');
+                            btn.html('Batalkan Pembagian Fee').removeAttr('disabled');
                         }
                     }
                 })
@@ -386,7 +386,7 @@
             });
 
             $(document).on('click', '#btnSaveGaji', function(){
-                var r = confirm('Apakah anda yakin menyimpan gaji periode ini ?')
+                var r = confirm('Apakah anda yakin menyimpan fee periode ini ?')
                 if(r){
                     var btn = $('#btnSaveGaji')
                     $.ajax({
@@ -405,7 +405,7 @@
 
                             }else{
                                 alert(res.message);
-                                btn.html('<i class="fa fa-check-circle"></i> Simpan Gaji').removeAttr('disabled');
+                                btn.html('<i class="fa fa-check-circle"></i> Simpan Fee').removeAttr('disabled');
                             }
                         }
                     })
@@ -416,7 +416,7 @@
     <?php }else{ ?>
 
             $(document).on('click', '#btnRollbackLock', function(){
-                var r = confirm('Apakah anda yakin mengembalikan proses gaji ke tahap lock ?')
+                var r = confirm('Apakah anda yakin mengembalikan proses fee ke tahap lock ?')
                 if(r){
                     var btn = $('#btnRollbackLock')
                     $.ajax({
@@ -438,7 +438,7 @@
                             }
                         },
                         complete : function(){
-                            btn.html('<i class="fa fa-check-circle"></i> Simpan Gaji').removeAttr('disabled');
+                            btn.html('<i class="fa fa-check-circle"></i> Simpan Fee').removeAttr('disabled');
                         }
                     })
 
@@ -548,7 +548,7 @@
         var lockGatePass = '';
         function promptLockPassword(onOk){
             Swal.fire({
-                title: 'Password Lock Gaji',
+                title: 'Password Lock Fee',
                 input: 'password',
                 inputLabel: 'Masukkan password untuk melanjutkan',
                 inputPlaceholder: 'Password',
@@ -563,7 +563,7 @@
         }
 
         $(document).on('click', '#btnGenerate', function(){
-            r = confirm('Apakah anda yakin melakukan LOCK penggajian bulan ini ?');
+            r = confirm('Apakah anda yakin melakukan LOCK pembagian fee bulan ini ?');
             if(r){
                 promptLockPassword(function(pass){
                     lockGatePass = pass;
@@ -590,11 +590,11 @@
                         ? 'Proses terlalu lama (lebih dari 3 menit) dan dihentikan browser. Muat ulang halaman untuk cek apakah lock sudah tersimpan sebelum coba lagi.'
                         : 'Terjadi kesalahan jaringan/server (' + (jqXHR.status || '?') + '). Muat ulang halaman untuk cek status sebelum coba lagi.';
                     alert(msg);
-                    btn.html('<i class="fa fa-check-circle"></i> Generate Gaji').removeAttr('disabled');
+                    btn.html('<i class="fa fa-check-circle"></i> Generate Fee').removeAttr('disabled');
                 },
                 success : function(res){
                     if(res.need_password){
-                        btn.html('<i class="fa fa-lock"></i> Lock Gaji').removeAttr('disabled');
+                        btn.html('<i class="fa fa-lock"></i> Lock Fee').removeAttr('disabled');
                         Swal.fire({ icon:'error', title:'Password salah', text: res.message }).then(function(){
                             promptLockPassword(function(pass){
                                 lockGatePass = pass;
@@ -608,7 +608,7 @@
 
                     }else{
                         alert(res.message);
-                        btn.html('<i class="fa fa-check-circle"></i> Generate Gaji').removeAttr('disabled');
+                        btn.html('<i class="fa fa-check-circle"></i> Generate Fee').removeAttr('disabled');
                     }
                 }
             })

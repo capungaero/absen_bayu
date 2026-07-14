@@ -87,7 +87,7 @@
                             <label class="form-label" for="formrow-password-input">Formula Perhitungan</label>
                             <select class="form-control" name="formula" id="formula">
                                 <option value="none">Tidak Ada</option>
-                                <option value="per_payroll">Diberikan saat penggajian</option>
+                                <option value="per_payroll">Diberikan saat pembagian fee</option>
                                 <option value="per_presence">Diberikan setiap kali hadir</option>
                             </select>
                         </div>
@@ -149,7 +149,7 @@
                             <label class="form-label" for="formrow-password-input">Formula Perhitungan</label>
                             <select class="form-control" name="formula" id="e_formula">
                                 <option value="none">Tidak Ada</option>
-                                <option value="per_payroll">Diberikan saat penggajian</option>
+                                <option value="per_payroll">Diberikan saat pembagian fee</option>
                                 <option value="per_presence">Diberikan setiap kali hadir</option>
                             </select>
                         </div>

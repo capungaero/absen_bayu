@@ -18,12 +18,12 @@
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h6 class="card-title mb-0">Riwayat Pembayaran BPJS Karyawan</h6>
-                <button id="btnSyncGaji" class="btn btn-sm btn-success"><i class="mdi mdi-sync"></i> Sinkron ke Gaji</button>
+                <button id="btnSyncGaji" class="btn btn-sm btn-success"><i class="mdi mdi-sync"></i> Sinkron ke Fee</button>
             </div>
             <div class="card-body">
 
                 <div class="alert alert-info py-2 mb-3" style="font-size:13px">
-                    <i class="mdi mdi-information"></i> Karyawan <b>"Dibayar Kantor"</b> otomatis masuk potongan BPJS di gaji; karyawan <b>mandiri yang sudah di-ACC</b> otomatis masuk insentif. Tombol <b>Sinkron ke Gaji</b> menerapkan ulang semua data periode ini (mis. setelah ubah konfigurasi). Tidak berlaku bila penggajian periode sudah final.
+                    <i class="mdi mdi-information"></i> Karyawan <b>"Dibayar Kantor"</b> otomatis masuk potongan BPJS di fee; karyawan <b>mandiri yang sudah di-ACC</b> otomatis masuk insentif. Tombol <b>Sinkron ke Fee</b> menerapkan ulang semua data periode ini (mis. setelah ubah konfigurasi). Tidak berlaku bila pembagian fee periode sudah final.
                 </div>
 
 
@@ -173,7 +173,7 @@
         $b.attr('disabled','disabled').html('<i class="mdi mdi-sync mdi-spin"></i> Menyinkron...');
         $.post("<?= site_url('bpjs/sync') ?>", { myToken: TOKEN, month: MONTH, year: YEAR }, null, 'json')
         .done(function(res){ show_modal(res.status ? 'success' : 'info', res.message); })
-        .always(function(){ $b.removeAttr('disabled').html('<i class="mdi mdi-sync"></i> Sinkron ke Gaji'); });
+        .always(function(){ $b.removeAttr('disabled').html('<i class="mdi mdi-sync"></i> Sinkron ke Fee'); });
     });
 
     $(document).on('click', '.btn-acc', function(){

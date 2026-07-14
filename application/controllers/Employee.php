@@ -85,7 +85,7 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_data($p);
 
 			if($p['salary_minimum'] != ''){
-				$this->form_validation->set_rules('salary', 'Gaji', 'required|numeric|greater_than[0]|less_than['.$p['salary'].']');
+				$this->form_validation->set_rules('salary', 'Fee', 'required|numeric|greater_than[0]|less_than['.$p['salary'].']');
 			}
 
 			if($p['status_work'] != 'permanent'){
@@ -106,7 +106,7 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_rules('position_id', 'Jabatan', 'required');
 			$this->form_validation->set_rules('subdivision_id', 'Subdivisi', 'required');
 			$this->form_validation->set_rules('branch_id', 'Cabang', 'required');
-			$this->form_validation->set_rules('salary', 'Gaji', 'required|numeric|greater_than[0]');
+			$this->form_validation->set_rules('salary', 'Fee', 'required|numeric|greater_than[0]');
 			$this->form_validation->set_rules('status_work', 'Status Kerja', 'required');
 			$this->form_validation->set_rules('overtime_hour_rate', 'Upah Lembur Per Jam', 'required|numeric|greater_than[-1]');
 			$this->form_validation->set_rules('account_number', 'Nomor Rekening', 'required|numeric');
@@ -245,7 +245,7 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_data($p);
 
 			if($p['salary_minimum'] != ''){
-				$this->form_validation->set_rules('salary', 'Gaji', 'required|numeric|greater_than[0]|less_than['.$p['salary'].']');
+				$this->form_validation->set_rules('salary', 'Fee', 'required|numeric|greater_than[0]|less_than['.$p['salary'].']');
 			}
 
 			if($p['status_work'] != 'permanent'){
@@ -258,7 +258,7 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_rules('employee_code', 'Kode karyawan', 'required');
 			$this->form_validation->set_rules('phone', 'Kontak', 'required');
 			$this->form_validation->set_rules('email', 'Email', 'required');
-			$this->form_validation->set_rules('salary', 'Gaji', 'required|numeric|greater_than[0]');
+			$this->form_validation->set_rules('salary', 'Fee', 'required|numeric|greater_than[0]');
 
 			if(!empty($p['password'])){
 				$this->form_validation->set_rules('password', 'Password', 'required|min_length[6]');
@@ -606,8 +606,8 @@ class Employee extends CI_Controller{
 			    	$data[] = $data_raw;
 			    	$this->form_validation->set_data($data_raw);
 			    	$this->form_validation->set_rules('employee_code', 'ID Fingerprint', 'required|numeric|greater_than[0]');
-			    	$this->form_validation->set_rules('salary', 'Gaji Pokok', 'required|numeric|greater_than[0]');
-			    	$this->form_validation->set_rules('salary_minimum', 'Gaji Minimal', 'required|numeric|greater_than[-1]');
+			    	$this->form_validation->set_rules('salary', 'Fee Pokok', 'required|numeric|greater_than[0]');
+			    	$this->form_validation->set_rules('salary_minimum', 'Fee Minimal', 'required|numeric|greater_than[-1]');
 			    	$this->form_validation->set_rules('overtime_hour_rate', 'Upah Lembur Per Jam', 'required|greater_than[-1]');
 			    	$this->form_validation->set_rules('password', 'Password', 'required|min_length[8]|max_length[30]');
 			    	$this->form_validation->set_rules('position_id', 'Posisi', 'required');
@@ -919,8 +919,8 @@ class Employee extends CI_Controller{
 		$sheet->setCellValue('D3', 'TANGGAL MULAI KERJA');
 		$sheet->setCellValue('E3', 'KODE JABATAN');
 		$sheet->setCellValue('F3', 'KODE SUBDIVISI');
-		$sheet->setCellValue('G3', 'GAJI POKOK');
-		$sheet->setCellValue('H3', 'GAJI MINIMUM');
+		$sheet->setCellValue('G3', 'FEE POKOK');
+		$sheet->setCellValue('H3', 'FEE MINIMUM');
 		$sheet->setCellValue('I3', 'UPAH LEMBUR PER JAM');
 		$sheet->setCellValue('J3', 'NO. HP');
 		$sheet->setCellValue('K3', 'EMAIL');

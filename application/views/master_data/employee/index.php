@@ -173,14 +173,14 @@
 
                     <div class="col-md-4">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">Gaji Pokok</label>
+                            <label class="form-label" for="formrow-password-input">Fee Pokok</label>
                             <input type="text" required="" name="salary" autocomplete="off" placeholder="Rp. 0" class="form-control rupiah">
                         </div>
                     </div>
 
                     <div class="col-md-4">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">Gaji Minimum</label>
+                            <label class="form-label" for="formrow-password-input">Fee Minimum</label>
                             <input type="text" required="" name="salary_minimum" autocomplete="off" placeholder="Rp. 0" class="form-control rupiah">
                             <small>*Isi 0 jika tidak ada</small>
                         </div>
@@ -385,14 +385,14 @@
 
                     <div class="col-md-4">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">Gaji Pokok</label>
+                            <label class="form-label" for="formrow-password-input">Fee Pokok</label>
                             <input type="text" required="" id="salary" name="salary" autocomplete="off" placeholder="Rp. 0" class="form-control rupiah">
                         </div>
                     </div>
 
                     <div class="col-md-4">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">Gaji Minimum</label>
+                            <label class="form-label" for="formrow-password-input">Fee Minimum</label>
                             <input type="text" required="" id="salary_minimum" name="salary_minimum" autocomplete="off" placeholder="Rp. 0" class="form-control rupiah">
                             <small>*Isi 0 jika tidak ada</small>
                         </div>

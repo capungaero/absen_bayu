@@ -9,7 +9,7 @@
 </div>
 
 <?php if (empty($slips)): ?>
-    <div class="m-card"><div class="empty-state"><i class="material-icons">account_balance_wallet</i><p>Belum ada slip gaji final di tahun ini</p></div></div>
+    <div class="m-card"><div class="empty-state"><i class="material-icons">account_balance_wallet</i><p>Belum ada slip pembagian fee final di tahun ini</p></div></div>
 <?php else: foreach ($slips as $i => $s):
     $deduction = (int)$s['salary_out_fine'] + (int)$s['salary_out_deduction'] + (int)$s['salary_out_health']
                + (int)$s['salary_out_work'] + (int)$s['salary_out_together'];
@@ -28,7 +28,7 @@
         </button>
 
         <div class="slip-body" id="slip-<?= $i ?>">
-            <div class="payslip-row"><span class="ps-label">Gaji Pokok</span><span class="ps-value"><?= format_rp($s['salary_in_basic']) ?></span></div>
+            <div class="payslip-row"><span class="ps-label">Fee Pokok</span><span class="ps-value"><?= format_rp($s['salary_in_basic']) ?></span></div>
             <div class="payslip-row"><span class="ps-label">Lembur (<?= rtrim(rtrim((string)$s['total_overtime_hour'],'0'),'.') ?: 0 ?> jam)</span><span class="ps-value"><?= format_rp($s['salary_in_overtime']) ?></span></div>
             <div class="payslip-row"><span class="ps-label">Insentif</span><span class="ps-value"><?= format_rp($s['salary_in_insentive']) ?></span></div>
             <?php if ((int)$s['salary_out_fine'] > 0): ?>

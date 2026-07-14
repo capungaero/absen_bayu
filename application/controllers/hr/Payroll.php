@@ -396,10 +396,10 @@ class Payroll extends CI_Controller{
 	            if($this->db->trans_status()){
 	            	$this->db->trans_commit();
 	            	$profile('TOTAL selesai (commit)');
-	            	$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Penggajian berhasil digenerate', 'success'));
+	            	$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Pembagian Fee berhasil digenerate', 'success'));
 	            	$res = [
 	            		'status'  => true,
-	            		'message' => 'Penggajian berhasil digenerate'
+	            		'message' => 'Pembagian Fee berhasil digenerate'
 	            	];
 
 	            }else{
@@ -413,7 +413,7 @@ class Payroll extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'Gaji sudah pernah digenerate'
+					'message' => 'Fee sudah pernah digenerate'
 				];
 			}
 
@@ -1077,7 +1077,7 @@ class Payroll extends CI_Controller{
 
 				if($this->db->trans_status()){
 					$this->db->trans_commit();
-					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Penggajian berhasil dirollback', 'success'));
+					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Pembagian Fee berhasil dirollback', 'success'));
 					$res = [
 						'status'  => true,
 						'message' => 'Payroll berhasil dirollback'
@@ -1126,10 +1126,10 @@ class Payroll extends CI_Controller{
 				$this->db->where($find)->update('payroll', $data);
 
 				if($this->db->affected_rows() > 0){
-					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Penggajian berhasil dirollback', 'success'));
+					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Pembagian Fee berhasil dirollback', 'success'));
 					$res = [
 						'status'  => true,
-						'message' => 'Penggajian berhasil dikembalikan ke tahap lock'
+						'message' => 'Pembagian Fee berhasil dikembalikan ke tahap lock'
 					];
 
 				}else{
@@ -1238,7 +1238,7 @@ class Payroll extends CI_Controller{
 			'updated' => $updated,
 			'phase'   => $payroll ? 'lock' : 'pre',
 			'message' => 'Komisi otomatis berhasil dihitung ulang ('.$updated.' baris insentif diperbarui).'
-			            . ($payroll ? '' : ' Klik "Lock Gaji" untuk lanjut rekap.'),
+			            . ($payroll ? '' : ' Klik "Lock Fee" untuk lanjut rekap.'),
 		]);
 	}
 
@@ -1293,10 +1293,10 @@ class Payroll extends CI_Controller{
 				$this->db->where($find)->update('payroll', $data);
 
 				if($this->db->affected_rows() > 0){
-					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Data penggajian periode ini berhasil disimpan', 'success'));
+					$this->session->set_flashdata('alert_message', show_alert('<i class="fa fa-check-circle"></i> Data pembagian fee periode ini berhasil disimpan', 'success'));
 					$res = [
 						'status'  => true,
-						'message' => 'Data penggajian periode ini berhasil disimpan'
+						'message' => 'Data pembagian fee periode ini berhasil disimpan'
 					];
 
 				}else{
@@ -1357,7 +1357,7 @@ class Payroll extends CI_Controller{
 				$spreadsheet = new Spreadsheet();
 				$sheet = $spreadsheet->getActiveSheet();
 				$sheet->mergeCells('A1:E1');
-				$sheet->setCellValue('A1', 'DAFTAR PENGGAJIAN');
+				$sheet->setCellValue('A1', 'DAFTAR PEMBAGIAN FEE');
 				$sheet->getStyle('A1')->applyFromArray([
 					'font' => [
 						'bold' => true,
@@ -1401,7 +1401,7 @@ class Payroll extends CI_Controller{
 
 				//Income
 				$sheet->mergeCells('F4:G4');
-				$sheet->setCellValue('F4', 'URAIAN GAJI');
+				$sheet->setCellValue('F4', 'URAIAN FEE');
 				$sheet->setCellValue('F5', 'Pokok');
 				$sheet->setCellValue('G5', 'Lembur');
 
@@ -1696,7 +1696,7 @@ class Payroll extends CI_Controller{
 					]
 		        ]);
 
-				$title = "Daftar Penggajian Periode ".get_monthname($month)." ".$year." ".$branch_detail['branch_name']." - Kota ".$branch_detail['city'];
+				$title = "Daftar Pembagian Fee Periode ".get_monthname($month)." ".$year." ".$branch_detail['branch_name']." - Kota ".$branch_detail['city'];
 				$writer = new Xlsx($spreadsheet);
 				$fileName = $title.'.xlsx';
 
@@ -1736,7 +1736,7 @@ class Payroll extends CI_Controller{
 			}else{
 				echo json_encode([
 					'status' => true,
-					'message' => 'Data penggajian ini belum digenerate',
+					'message' => 'Data pembagian fee ini belum digenerate',
 					'data'   => $employeeIDs
 				]);
 			}
@@ -1800,7 +1800,7 @@ class Payroll extends CI_Controller{
     			file_put_contents($payrollSlipPath.$fileTitle, $output);
 			}
 
-			$zipName = 'Slip Gaji - '.$data['branch_detail']['branch_name'].' - '.get_monthname($data['payroll']['month']).' '.$data['payroll']['year'].'.zip';
+			$zipName = 'Slip Pembagian Fee - '.$data['branch_detail']['branch_name'].' - '.get_monthname($data['payroll']['month']).' '.$data['payroll']['year'].'.zip';
 			$this->load->library('zip');
 			$this->zip->read_dir($payrollSlipPath);
 			$this->zip->archive($payrollSlipPath.$zipName);

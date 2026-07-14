@@ -66,7 +66,7 @@
                         <td style="padding-top: 10px"><?= get_monthname($month)." ".$year ?></td>
                     </tr>
                     <tr style="text-align: left">
-                        <th style="text-align:left">Total Gaji</th>
+                        <th style="text-align:left">Total Fee</th>
                         <td><?= format_rp($detail['salary_thp']) ?></td>
                     </tr>
                     <tr style="text-align: left">

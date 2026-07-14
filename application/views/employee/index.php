@@ -56,7 +56,7 @@
                 <div class="card-body">
                     <div class="text-center">
                         <img style="width: 60px" src="<?= base_url('assets/images/icon/income.png') ?>" class="img-fluid">
-                        <p class="mb-0 mt-2" style="color:#333">Penggajian</p>
+                        <p class="mb-0 mt-2" style="color:#333">Pembagian Fee</p>
                     </div>
                 </div>
             </div>

@@ -23,7 +23,7 @@ if ($is_approver) {
         ['m/presence', 'presence', 'schedule',                'Absensi'],
         ['m/overtime', 'overtime', 'more_time',               'Lembur'],
         ['m/leave',    'leave',    'event_busy',              'Izin'],
-        ['m/payroll',  'payroll',  'account_balance_wallet',  'Gaji'],
+        ['m/payroll',  'payroll',  'account_balance_wallet',  'Fee'],
     ];
 }
 ?>

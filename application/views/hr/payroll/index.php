@@ -2,12 +2,12 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="dripicons-experiments"></i> Penggajian</h4>
+            <h4 class="mb-0"><i class="dripicons-experiments"></i> Pembagian Fee</h4>
 
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
-                    <li class="breadcrumb-item"><a href="javascript:void(0);">Penggajian</a></li>
-                    <li class="breadcrumb-item active"><a href="<?= site_url('hr/payroll') ?>">Daftar Penggajian</a></li>
+                    <li class="breadcrumb-item"><a href="javascript:void(0);">Pembagian Fee</a></li>
+                    <li class="breadcrumb-item active"><a href="<?= site_url('hr/payroll') ?>">Daftar Pembagian Fee</a></li>
                 </ol>
             </div>
 
@@ -20,7 +20,7 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">Daftar Penggajian</h6>
+                <h6 class="card-title">Daftar Pembagian Fee</h6>
             </div>
             <div class="card-body">
                 <?php if( $role != 'admin' && $role != 'admin-branch'){ ?>
@@ -83,7 +83,7 @@
                                     <th rowspan="2">BULAN</th>
                                     <th>KODE</th>
                                     <th class="text-center" style="width: 18%">JUMLAH KARYAWAN</th>
-                                    <th style="width: 20%" class="text-center">TOTAL PENGGAJIAN</th>
+                                    <th style="width: 20%" class="text-center">TOTAL FEE</th>
                                     <th rowspan="2" style="width: 20%" class="text-center">WAKTU GENERATE</th>
                                     <th rowspan="2" style="width: 10%" class="text-center"><i class="fa fa-cog"></i></th>
                                 </tr>
@@ -194,7 +194,7 @@
                                         <th rowspan="2">CABANG</th>
                                         <th>KODE</th>
                                         <th class="text-center" style="width: 13%">JML KARYAWAN</th>
-                                        <th style="width: 18%" class="text-center">TOTAL PENGGAJIAN</th>
+                                        <th style="width: 18%" class="text-center">TOTAL FEE</th>
                                         <th rowspan="2" style="width: 15%" class="text-center">WAKTU GENERATE</th>
                                         <th rowspan="2" style="width: 5%" class="text-center"><i class="fa fa-cog"></i></th>
                                     </tr>

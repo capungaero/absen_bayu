@@ -119,8 +119,8 @@ class Bpjs extends CI_Controller {
             'status'  => true,
             'locked'  => $sync['locked'],
             'message' => $base . ($sync['locked']
-                ? '. CATATAN: penggajian periode ini sudah final — rollback dulu agar BPJS masuk ke gaji.'
-                : ' & disinkron ke gaji.'),
+                ? '. CATATAN: pembagian fee periode ini sudah final — rollback dulu agar BPJS masuk ke fee.'
+                : ' & disinkron ke fee.'),
         ]);
     }
 
@@ -145,8 +145,8 @@ class Bpjs extends CI_Controller {
             'status'  => true,
             'locked'  => $sync['locked'],
             'message' => 'Bukti pembayaran mandiri di-ACC' . ($sync['locked']
-                ? '. CATATAN: penggajian periode ini sudah final — rollback dulu agar insentif masuk ke gaji.'
-                : ' & insentif disinkron ke gaji.'),
+                ? '. CATATAN: pembagian fee periode ini sudah final — rollback dulu agar insentif masuk ke fee.'
+                : ' & insentif disinkron ke fee.'),
         ]);
     }
 
@@ -163,11 +163,11 @@ class Bpjs extends CI_Controller {
 
         if ($res['locked']) {
             return $this->_json(['status' => false,
-                'message' => 'Penggajian periode ini sudah final. Rollback penggajian dulu agar BPJS bisa disinkron ke gaji.']);
+                'message' => 'Pembagian Fee periode ini sudah final. Rollback pembagian fee dulu agar BPJS bisa disinkron ke fee.']);
         }
         $this->_json([
             'status'  => true,
-            'message' => $res['count'].' dari '.$res['total'].' data BPJS disinkron ke gaji untuk periode ini.',
+            'message' => $res['count'].' dari '.$res['total'].' data BPJS disinkron ke fee untuk periode ini.',
         ]);
     }
 }

@@ -305,7 +305,7 @@
 
 	                                            <a href="<?= site_url('hr/presence') ?>" class="dropdown-item"><i class="dripicons-calendar"></i> Presensi</a>
 
-                                            <a href="<?= site_url('hr/payroll') ?>" class="dropdown-item"><i class="dripicons-wallet"></i> Penggajian</a>
+                                            <a href="<?= site_url('hr/payroll') ?>" class="dropdown-item"><i class="dripicons-wallet"></i> Pembagian Fee</a>
                                         </div>
                                     </li>
                                 <?php } ?>

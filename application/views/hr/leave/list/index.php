@@ -141,9 +141,9 @@
 
                     <div class="col-md-12">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">Besar Potongan Gaji Harian</label>
+                            <label class="form-label" for="formrow-password-input">Besar Potongan Fee Harian</label>
                             <input type="text" disabled="" class="form-control" id="taxGaji">
-                            <small class="text-muted">*Besaran gaji harian yang dipotong saat rentang perizinan</small>
+                            <small class="text-muted">*Besaran fee harian yang dipotong saat rentang perizinan</small>
                         </div>
                     </div>
 

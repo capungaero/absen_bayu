@@ -344,7 +344,7 @@ class leave extends CI_Controller{
 						$locked = payroll_locked_dates(payroll_user_branch($leave['user_id']), $range);
 						if(!empty($locked)){
 							$this->db->trans_rollback();
-							echo json_encode(['status'=>false, 'message'=>'Tidak bisa menyetujui izin: tanggal masuk periode penggajian terkunci ('.implode(', ', $locked).'). Rollback penggajian periode tersebut dulu.']);
+							echo json_encode(['status'=>false, 'message'=>'Tidak bisa menyetujui izin: tanggal masuk periode pembagian fee terkunci ('.implode(', ', $locked).'). Rollback pembagian fee periode tersebut dulu.']);
 							return;
 						}
 
@@ -501,7 +501,7 @@ class leave extends CI_Controller{
 					$locked = payroll_locked_dates(payroll_user_branch($leave['user_id']), $all);
 					if(!empty($locked)){
 						$this->db->trans_rollback();
-						echo json_encode(['status'=>false, 'message'=>'Tidak bisa mengubah izin: tanggal masuk periode penggajian terkunci ('.implode(', ', $locked).'). Rollback penggajian periode tersebut dulu.']);
+						echo json_encode(['status'=>false, 'message'=>'Tidak bisa mengubah izin: tanggal masuk periode pembagian fee terkunci ('.implode(', ', $locked).'). Rollback pembagian fee periode tersebut dulu.']);
 						return;
 					}
 

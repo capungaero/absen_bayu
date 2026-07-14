@@ -866,7 +866,7 @@ td.attendance { position: relative; }
                                             <div class="col-md-12 mt-2">
                                                 <input type="checkbox" name="is_early_leave" id="is_early_leave"> Izin Pulang Cepat (PLA) <br>
                                                 <small>*Centang supaya bisa input Jam Selesai sebelum jam pulang shift.<br>
-                                                Kekurangan jam dihitung otomatis dan jadi potongan gaji.
+                                                Kekurangan jam dihitung otomatis dan jadi potongan fee.
                                                 Jika jam kerja efektif &lt; 5 jam, kehadiran ditandai TIDAK HADIR.</small>
                                                 <div class="mt-1" id="early_leave_short_wrap" style="display:none">
                                                     <small><b>Kekurangan jam:</b> <span id="early_leave_short_text">-</span></small>

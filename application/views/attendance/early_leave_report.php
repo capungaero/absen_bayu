@@ -103,7 +103,7 @@ $selected_month = (int) $month;
             <div class="card-body">
                 <small class="text-muted">
                     Rumus per karyawan:
-                    <code>(Gaji Pokok &divide; <?= (int) $days_in_month ?> hari &divide; 10 jam)</code> &times;
+                    <code>(Fee Pokok &divide; <?= (int) $days_in_month ?> hari &divide; 10 jam)</code> &times;
                     <code>(Kekurangan menit &divide; 60)</code>.
                     Hanya hari dengan flag <span class="badge bg-primary">PLA</span> dan status approved yang dihitung.
                     Hari dengan jam kerja efektif &lt; 5 jam ditandai sebagai TIDAK HADIR di sumber data dan tidak masuk perhitungan ini.
@@ -125,7 +125,7 @@ $selected_month = (int) $month;
                                 <th>Cabang / Divisi</th>
                                 <th>Rincian Tanggal PLA</th>
                                 <th class="text-end">Kekurangan</th>
-                                <th class="text-end">Gaji / jam</th>
+                                <th class="text-end">Fee / jam</th>
                                 <th class="text-end">Potongan</th>
                             </tr>
                         </thead>

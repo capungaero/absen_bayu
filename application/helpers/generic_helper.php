@@ -247,7 +247,7 @@
 	function status_formula($status){
 		$txt = 'Tidak Ada';
 		if($status == 'per_payroll'){
-			$txt = 'Diberikan saat penggajian';
+			$txt = 'Diberikan saat pembagian fee';
 		}else if($status == 'per_presence'){
 			$txt = 'Diberikan setiap kali hadir';
 		}

@@ -2,12 +2,12 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="dripicons-experiments"></i> Penggajian</h4>
+            <h4 class="mb-0"><i class="dripicons-experiments"></i> Pembagian Fee</h4>
 
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
-                    <li class="breadcrumb-item"><a href="javascript:void(0);">Penggajian</a></li>
-                    <li class="breadcrumb-item active"><a href="<?= site_url('hr/payroll') ?>">Daftar Penggajian</a></li>
+                    <li class="breadcrumb-item"><a href="javascript:void(0);">Pembagian Fee</a></li>
+                    <li class="breadcrumb-item active"><a href="<?= site_url('hr/payroll') ?>">Daftar Pembagian Fee</a></li>
                 </ol>
             </div>
 
@@ -20,7 +20,7 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">Daftar Penggajian</h6>
+                <h6 class="card-title">Daftar Pembagian Fee</h6>
             </div>
             <div class="card-body">
                 <form>

@@ -512,7 +512,7 @@ class M extends CI_Controller {
             $locked = payroll_locked_dates(payroll_user_branch($leave['user_id']),
                         get_daterange_list($leave['leave_start'], $leave['leave_end']));
             if (!empty($locked)) {
-                return $this->_json(['status' => false, 'message' => 'Tidak bisa menyetujui izin: tanggal masuk periode penggajian terkunci ('.implode(', ', $locked).'). Rollback penggajian periode tersebut dulu.']);
+                return $this->_json(['status' => false, 'message' => 'Tidak bisa menyetujui izin: tanggal masuk periode pembagian fee terkunci ('.implode(', ', $locked).'). Rollback pembagian fee periode tersebut dulu.']);
             }
         }
 
