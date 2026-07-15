@@ -367,7 +367,7 @@ class Payroll extends CI_Controller{
 	                ];
 	            }
 
-	            $profile('loop per-karyawan selesai ('.$n.' karyawan)');
+	            $profile('loop per-mitra kerja selesai ('.$n.' mitra kerja)');
 
 	            $this->db->insert_batch('payroll_detail', $data);
 	            $profile('insert_batch payroll_detail selesai');
@@ -577,7 +577,7 @@ class Payroll extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'Data karyawan tidak diketahui'
+					'message' => 'Data mitra kerja tidak diketahui'
 				];
 			}
 
@@ -661,7 +661,7 @@ class Payroll extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'Data karyawan tidak diketahui'
+					'message' => 'Data mitra kerja tidak diketahui'
 				];
 			}
 
@@ -687,7 +687,7 @@ class Payroll extends CI_Controller{
 			$spreadsheet = new Spreadsheet();
 			$sheet = $spreadsheet->getActiveSheet();
 			$sheet->setTitle('Komisi Potongan');
-			$headers = ['ID Fingerprint', 'Nama Karyawan'];
+			$headers = ['ID Fingerprint', 'Nama Mitra Kerja'];
 			foreach($insentif as $row){ $headers[] = 'INSENTIF #'.$row['id'].' '.$row['insentif_name']; }
 			foreach($deduction as $row){ $headers[] = 'POTONGAN #'.$row['id'].' '.$row['deduction_name']; }
 			$sheet->fromArray($headers, null, 'A1');
@@ -726,7 +726,7 @@ class Payroll extends CI_Controller{
 			$spreadsheet = new Spreadsheet();
 			$sheet = $spreadsheet->getActiveSheet();
 			$sheet->setTitle('Lembur');
-			$sheet->fromArray(['ID Fingerprint', 'Nama Karyawan', 'Tanggal Lembur', 'Jam Lembur'], null, 'A1');
+			$sheet->fromArray(['ID Fingerprint', 'Nama Mitra Kerja', 'Tanggal Lembur', 'Jam Lembur'], null, 'A1');
 			$sheet->fromArray(['Contoh: 257', 'Contoh Nama', '2026-04-01', '2.5'], null, 'A2');
 			$r = 3;
 			foreach($employees as $employee){
@@ -822,7 +822,7 @@ class Payroll extends CI_Controller{
 
 			if($this->db->trans_status()){
 				$this->db->trans_commit();
-				$message = 'Import komisi/potongan selesai. Karyawan diproses: '.$imported.', komisi: '.count($insentif_rows).', potongan: '.count($deduction_rows).', ID tidak cocok: '.$missing.'.';
+				$message = 'Import komisi/potongan selesai. Mitra Kerja diproses: '.$imported.', komisi: '.count($insentif_rows).', potongan: '.count($deduction_rows).', ID tidak cocok: '.$missing.'.';
 				$this->_payroll_import_redirect($month, $year, $branch_id, $message, 'success');
 				return;
 			}
@@ -957,7 +957,7 @@ class Payroll extends CI_Controller{
 					}else{
 						$res = [
 							'status'  => false,
-							'message' => 'Total THP Karyawan tidak boleh kurang dari Rp. 0'
+							'message' => 'Total THP Mitra Kerja tidak boleh kurang dari Rp. 0'
 						];
 					}
 					
@@ -1034,7 +1034,7 @@ class Payroll extends CI_Controller{
 					}else{
 						$res = [
 							'status'  => false,
-							'message' => 'Total THP Karyawan tidak boleh kurang dari Rp. 0'
+							'message' => 'Total THP Mitra Kerja tidak boleh kurang dari Rp. 0'
 						];
 					}
 					
@@ -1389,7 +1389,7 @@ class Payroll extends CI_Controller{
 				$sheet->setCellValue('A3', 'Periode : '.get_monthname($month)." ".$year);
 
 				$sheet->mergeCells('A4:A5');
-				$sheet->setCellValue('A4', 'NAMA KARYAWAN');
+				$sheet->setCellValue('A4', 'NAMA MITRA KERJA');
 				$sheet->mergeCells('B4:B5');
 				$sheet->setCellValue('B4', 'NIK');
 				$sheet->mergeCells('C4:C5');

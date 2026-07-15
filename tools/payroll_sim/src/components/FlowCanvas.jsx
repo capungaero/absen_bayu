@@ -116,7 +116,7 @@ export default function FlowCanvas({ result, customItems, onDrop, onDragOver }) 
       {!result && (
         <div className="empty-state">
           <div className="icon">📊</div>
-          <p>Cari karyawan → pilih periode → klik <strong>Hitung</strong></p>
+          <p>Cari mitra kerja → pilih periode → klik <strong>Hitung</strong></p>
           <p style={{ fontSize: 12, color: '#1e293b' }}>atau drag item bonus/potongan dari sidebar kiri</p>
         </div>
       )}

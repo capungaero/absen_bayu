@@ -94,8 +94,8 @@ class Employee extends CI_Controller{
 				$p['status_work_expiration'] = null;
 			}
 
-			$this->form_validation->set_rules('first_name', 'Nama karyawan', 'required');
-			$this->form_validation->set_rules('employee_code', 'Kode karyawan', 'required');
+			$this->form_validation->set_rules('first_name', 'Nama mitra kerja', 'required');
+			$this->form_validation->set_rules('employee_code', 'Kode mitra kerja', 'required');
 			$this->form_validation->set_rules('phone', 'Kontak', 'required');
 			$this->form_validation->set_rules('ptkp_status', 'Status PTKP', 'required');
 			$this->form_validation->set_rules('email', 'Email', 'required');
@@ -254,8 +254,8 @@ class Employee extends CI_Controller{
 				$p['status_work_expiration'] = null;
 			}
 			
-			$this->form_validation->set_rules('first_name', 'Nama karyawan', 'required');
-			$this->form_validation->set_rules('employee_code', 'Kode karyawan', 'required');
+			$this->form_validation->set_rules('first_name', 'Nama mitra kerja', 'required');
+			$this->form_validation->set_rules('employee_code', 'Kode mitra kerja', 'required');
 			$this->form_validation->set_rules('phone', 'Kontak', 'required');
 			$this->form_validation->set_rules('email', 'Email', 'required');
 			$this->form_validation->set_rules('salary', 'Fee', 'required|numeric|greater_than[0]');
@@ -435,7 +435,7 @@ class Employee extends CI_Controller{
 					if($dup->num_rows() > 0){
 						echo json_encode([
 							'status'  => false,
-							'message' => 'Tidak bisa mengaktifkan: sudah ada karyawan aktif lain dengan Kode/NIK '.$current['employee_code'].'. Nonaktifkan dulu yang itu.'
+							'message' => 'Tidak bisa mengaktifkan: sudah ada mitra kerja aktif lain dengan Kode/NIK '.$current['employee_code'].'. Nonaktifkan dulu yang itu.'
 						]);
 						return;
 					}
@@ -456,7 +456,7 @@ class Employee extends CI_Controller{
 				if($activation){
 					$res = [
 						'status'  => true,
-						'message' => 'Status karyawan berhasil diubah'
+						'message' => 'Status mitra kerja berhasil diubah'
 					];
 
 				}else{
@@ -469,7 +469,7 @@ class Employee extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'ID Karyawan tidak diketahui'
+					'message' => 'ID Mitra Kerja tidak diketahui'
 				];
 			}
 
@@ -616,7 +616,7 @@ class Employee extends CI_Controller{
 			    	$this->form_validation->set_rules('subdivision_id', 'Subdivisi', 'required');
 			    	$this->form_validation->set_rules('contract_number', 'No. Kontrak', 'required');
 			    	$this->form_validation->set_rules('join_date', 'Tanggal Mulai Kerja', 'required');
-			    	$this->form_validation->set_rules('first_name', 'Nama Karyawan', 'required');
+			    	$this->form_validation->set_rules('first_name', 'Nama Mitra Kerja', 'required');
 			    	$this->form_validation->set_rules('phone', 'No. Handphone', 'required|numeric');
 			    	$this->form_validation->set_rules('account_number', 'No Rekening', 'required|numeric');
 			    	$this->form_validation->set_rules('account_bank', 'Nama Bank', 'required');
@@ -673,7 +673,7 @@ class Employee extends CI_Controller{
 			    				'data'  => $code, 
 			    			],
 			    			'contract_number' => [
-			    				'label' => 'KODE KARYAWAN',
+			    				'label' => 'KODE MITRA KERJA',
 			    				'data'  => $contract
 			    			],
 			    			'email' => [
@@ -763,14 +763,14 @@ class Employee extends CI_Controller{
 		    					$this->db->trans_commit();
 		    					$res = [
 						    		'status'  => true,
-						    		'message' => 'Data karyawan berhasil diupload'
+						    		'message' => 'Data mitra kerja berhasil diupload'
 						    	];
 
 		    				}else{
 		    					$this->db->trans_rollback();
 		    					$res = [
 						    		'status'  => true,
-						    		'message' => 'Data karyawan gagal diupload'
+						    		'message' => 'Data mitra kerja gagal diupload'
 						    	];
 		    				}
 
@@ -872,7 +872,7 @@ class Employee extends CI_Controller{
 		$spreadsheet = new Spreadsheet();
 		$sheet = $spreadsheet->getActiveSheet();
 		$sheet->mergeCells('A1:S1');
-		$sheet->setCellValue('A1', 'DAFTAR KARYAWAN');
+		$sheet->setCellValue('A1', 'DAFTAR MITRA KERJA');
 		$sheet->getStyle('A1')->applyFromArray([
 			'font' => [
 				'bold' => true,
@@ -915,7 +915,7 @@ class Employee extends CI_Controller{
 
 		$sheet->setCellValue('A3', 'ID FINGERPRINT');
 		$sheet->setCellValue('B3', 'NIK');
-		$sheet->setCellValue('C3', 'NAMA KARYAWAN');
+		$sheet->setCellValue('C3', 'NAMA MITRA KERJA');
 		$sheet->setCellValue('D3', 'TANGGAL MULAI KERJA');
 		$sheet->setCellValue('E3', 'KODE JABATAN');
 		$sheet->setCellValue('F3', 'KODE SUBDIVISI');
@@ -1005,7 +1005,7 @@ class Employee extends CI_Controller{
 		$sheet->getStyle('A3:S'.$last_data_row)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
 
 		$title_scope = $branch_id === '' ? 'Semua CV' : $branch_detail['branch_name'].' - Kota '.$branch_detail['city'];
-		$title = "Daftar Karyawan ".$title_scope;
+		$title = "Daftar Mitra Kerja ".$title_scope;
 		$writer = new Xlsx($spreadsheet);
 		$fileName = preg_replace('/[^A-Za-z0-9 _.-]/', '', $title.' '.str_replace(':', '', implode(' ', $filter_label))).'.xlsx';
 

@@ -266,7 +266,7 @@ class Deduction extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'Data karyawan tidak ditemukan'
+					'message' => 'Data mitra kerja tidak ditemukan'
 				];
 			}
 			
@@ -304,7 +304,7 @@ class Deduction extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'Data karyawan tidak ditemukan'
+					'message' => 'Data mitra kerja tidak ditemukan'
 				];
 			}
 			

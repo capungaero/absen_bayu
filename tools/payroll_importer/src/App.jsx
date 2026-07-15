@@ -204,7 +204,7 @@ export default function App() {
 
           <footer className="actionbar">
             <div className="status">
-              {hasKey ? <span className="ok">✓ Kunci karyawan dipetakan</span> : <span className="no">✗ Kolom kunci karyawan belum dipetakan</span>}
+              {hasKey ? <span className="ok">✓ Kunci mitra kerja dipetakan</span> : <span className="no">✗ Kolom kunci mitra kerja belum dipetakan</span>}
               <span className="sep">·</span>
               <span>{valueMapped} kolom komisi/potongan dipetakan</span>
             </div>
@@ -221,7 +221,7 @@ export default function App() {
             <div className="modal-icon">✅</div>
             <h2>Impor Selesai</h2>
             <ul className="result-list">
-              <li><b>{result.matched}</b> karyawan cocok</li>
+              <li><b>{result.matched}</b> mitra kerja cocok</li>
               <li><b>{result.insentif_saved}</b> nilai komisi disimpan</li>
               <li><b>{result.deduction_saved}</b> nilai potongan disimpan</li>
               {result.missing > 0 && <li className="warn"><b>{result.missing}</b> baris tidak cocok (dilewati)</li>}

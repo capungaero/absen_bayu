@@ -39,7 +39,7 @@
                             <div class="card-body">
                                 <table class="table">
                                     <tr>
-                                        <td><i class="dripicons-tags"></i> Karyawan<br><b><?= $overtime['first_name'] ?><br><small class="text-muted">Kode : <?= $overtime['employee_code'] ?></small></b></td>
+                                        <td><i class="dripicons-tags"></i> Mitra Kerja<br><b><?= $overtime['first_name'] ?><br><small class="text-muted">Kode : <?= $overtime['employee_code'] ?></small></b></td>
 
                                         <td><i class="dripicons-briefcase"></i> Jabatan<br><b><?= $overtime['position_name'] ?></b></td>
                                     </tr>

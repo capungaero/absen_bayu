@@ -107,7 +107,7 @@ class Bpjs extends CI_Controller {
         $branch_id = $this->_resolve_branch();
 
         if (!$this->bpjs->user_in_branch($user_id, $branch_id)) {
-            return $this->_json(['status' => false, 'message' => 'Karyawan tidak valid']);
+            return $this->_json(['status' => false, 'message' => 'Mitra Kerja tidak valid']);
         }
 
         $cfg = $this->bpjs->get_config();
@@ -134,7 +134,7 @@ class Bpjs extends CI_Controller {
         $branch_id = $this->_resolve_branch();
 
         if (!$this->bpjs->user_in_branch($user_id, $branch_id)) {
-            return $this->_json(['status' => false, 'message' => 'Karyawan tidak valid']);
+            return $this->_json(['status' => false, 'message' => 'Mitra Kerja tidak valid']);
         }
 
         $cfg = $this->bpjs->get_config();

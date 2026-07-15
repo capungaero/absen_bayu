@@ -43,9 +43,9 @@
             </small>
           </div>
           <div class="col-md-4">
-            <label class="form-label font-weight-bold">Filter Karyawan (Opsional)</label>
+            <label class="form-label font-weight-bold">Filter Mitra Kerja (Opsional)</label>
             <select id="filterUser" class="form-select">
-              <option value="">-- Semua Karyawan yang Terdampak --</option>
+              <option value="">-- Semua Mitra Kerja yang Terdampak --</option>
               <?php if (!empty($users)): foreach ($users as $u): ?>
                 <option value="<?= $u['id'] ?>"><?= htmlspecialchars(trim($u['first_name'] . ' ' . ($u['last_name'] ?? ''))) ?> (<?= htmlspecialchars($u['employee_code'] ?? '') ?>)</option>
               <?php endforeach; endif; ?>
@@ -145,7 +145,7 @@
                   </th>
                   <th style="width:70px">ID</th>
                   <th style="width:90px">Aksi</th>
-                  <th>Karyawan</th>
+                  <th>Mitra Kerja</th>
                   <th style="width:120px">Tanggal Absen</th>
                   <th>Keterangan Pemulihan</th>
                   <th style="width:130px" class="text-center">Perbandingan</th>

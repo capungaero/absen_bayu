@@ -161,7 +161,7 @@ class Kirimi_wa {
             $terlambat   = isset($row['terlambat']) ? (int)$row['terlambat'] : 0;
             $hadir_total = (int)$row['hadir'] + $terlambat;
             $msg .= "\n🏢 *{$row['branch_name']}*\n";
-            $msg .= "👥 Total Karyawan : {$row['total_employee']}\n";
+            $msg .= "👥 Total Mitra Kerja : {$row['total_employee']}\n";
             $msg .= "✅ Hadir          : {$hadir_total}";
             if ($terlambat > 0) {
                 $msg .= " _(terlambat: {$terlambat})_";
@@ -189,7 +189,7 @@ class Kirimi_wa {
 
         $msg  = "⚠️ *NOTIFIKASI TIDAK HADIR*\n";
         $msg .= "📅 {$today} | ⏰ {$time}\n";
-        $msg .= "Total: {$count} karyawan\n";
+        $msg .= "Total: {$count} mitra kerja\n";
         $msg .= str_repeat("─", 30) . "\n";
 
         $branch_group = [];
@@ -278,11 +278,11 @@ class Kirimi_wa {
 
         $msg  = "⚠️ *NOTIFIKASI TIDAK HADIR PER SHIFT*\n";
         $msg .= "📅 {$today} | ⏰ {$time}\n";
-        $msg .= "Total: {$count} karyawan\n";
+        $msg .= "Total: {$count} mitra kerja\n";
         $msg .= str_repeat("─", 30) . "\n";
 
         if ($count === 0) {
-            $msg .= "\nSemua karyawan yang bertugas pada shift hari ini sudah memiliki presensi.\n";
+            $msg .= "\nSemua mitra kerja yang bertugas pada shift hari ini sudah memiliki presensi.\n";
         }
 
         foreach ($shift_report as $row) {

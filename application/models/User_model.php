@@ -245,7 +245,7 @@ Class User_model extends CI_Model{
                       </a>
 
                       <div class="dropdown-menu">
-                           <a href="javascript:void(0)" '.$edit.' class="dropdown-item edit"><i class="dripicons-pencil"></i> Ubah Data Karyawan</a>
+                           <a href="javascript:void(0)" '.$edit.' class="dropdown-item edit"><i class="dripicons-pencil"></i> Ubah Data Mitra Kerja</a>
                            '.$schedule.'
                            '.$btnDelete.'
                       </div>

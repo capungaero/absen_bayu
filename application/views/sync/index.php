@@ -613,7 +613,7 @@ function checkFingers(machineSN) {
         html += '</div>';
 
         if (res.matched_count > 0) {
-            html += '<div class="mb-3"><h6>✅ Karyawan Cocok (' + res.matched_count + ')</h6>';
+            html += '<div class="mb-3"><h6>✅ Mitra Kerja Cocok (' + res.matched_count + ')</h6>';
             html += '<div class="table-responsive" style="max-height:300px;overflow-y:auto">';
             html += '<table class="table table-sm table-bordered">';
             html += '<thead class="table-light"><tr><th>Kode</th><th>Nama</th><th>Posisi</th><th>Cabang</th><th>Status</th></tr></thead>';

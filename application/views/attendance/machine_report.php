@@ -108,8 +108,8 @@
                                 <th class="text-center" style="width:45px">#</th>
                                 <th>ID Mesin</th>
                                 <th>Nama Mesin</th>
-                                <th>ID Karyawan</th>
-                                <th>Nama Karyawan</th>
+                                <th>ID Mitra Kerja</th>
+                                <th>Nama Mitra Kerja</th>
                                 <th>Jam Login</th>
                                 <th>Keterangan</th>
                             </tr>

@@ -405,7 +405,7 @@ td.attendance { position: relative; }
 
                         <div class="col-md-2">
                             <small><em class="fa fa-search"></em> Pencarian</small>
-                            <input id="autocomplete" type="text" class="form-control" placeholder="Cari Karyawan...">
+                            <input id="autocomplete" type="text" class="form-control" placeholder="Cari Mitra Kerja...">
                         </div>
                     </div>
 
@@ -743,7 +743,7 @@ td.attendance { position: relative; }
                     <div class="col-md-12">
                         <table class="table">
                             <tr>
-                                <th style="width: 15%; background-color: #eee">Karyawan</th>
+                                <th style="width: 15%; background-color: #eee">Mitra Kerja</th>
                                 <td style="width: 40%" id="d_employee"></td>
                                 <th style="width: 15%; background-color: #eee">Tanggal</th>
                                 <td id="d_date"></td>
@@ -1048,7 +1048,7 @@ td.attendance { position: relative; }
                     </div>
                     <div class="col-md-9">
                         <h6>Apakah anda yakin melakukan reset shift untuk bulan ini ?</h6>
-                        Data penjadwalan kerja atau shift karyawan akan dikembalikan seperti semula sesuai settingan default dari system.
+                        Data penjadwalan kerja atau shift mitra kerja akan dikembalikan seperti semula sesuai settingan default dari system.
                     </div>
                 </div>
             </div>
@@ -1118,7 +1118,7 @@ td.attendance { position: relative; }
                                 <th>Tanggal</th>
                                 <th>Jam</th>
                                 <th>ID Fingerprint</th>
-                                <th>Karyawan</th>
+                                <th>Mitra Kerja</th>
                                 <th>Mesin</th>
                                 <th>Status</th>
                             </tr>
@@ -1879,7 +1879,7 @@ td.attendance { position: relative; }
                 '<b>Periode:</b> ' + escapeHtml(res.from) + ' s/d ' + escapeHtml(res.to) + '<br>' +
                 '<b>Total preview:</b> ' + (summary.total_rows || 0) +
                 ' | <b>Valid default:</b> ' + (summary.selected_rows || 0) +
-                ' | <b>Cocok karyawan:</b> ' + (summary.mapped_rows || 0) +
+                ' | <b>Cocok mitra kerja:</b> ' + (summary.mapped_rows || 0) +
                 ' | <b>Tidak cocok:</b> ' + (summary.missing_rows || 0) + '<br>' +
                 (res.message || '')
             );
@@ -1908,7 +1908,7 @@ td.attendance { position: relative; }
                 var disabled = valid ? '' : ' disabled';
                 var badge = valid
                     ? '<span class="badge bg-success">Valid</span>'
-                    : '<span class="badge bg-warning text-dark">Karyawan tidak ditemukan</span>';
+                    : '<span class="badge bg-warning text-dark">Mitra Kerja tidak ditemukan</span>';
                 html += '<tr data-date="' + escapeHtml(row.date) + '">';
                 html += '<td class="text-center"><input type="checkbox" class="sync-preview-check" value="' + escapeHtml(row.key) + '"' + checked + disabled + '></td>';
                 html += '<td>' + escapeHtml(row.date) + '<br><small class="text-muted">' + escapeHtml(row.weekday) + '</small></td>';

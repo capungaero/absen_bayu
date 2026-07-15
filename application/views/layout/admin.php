@@ -243,7 +243,7 @@
                                                 </div>
                                             </div>
 
-                                            <a href="<?= site_url('master_data/employee') ?>" class="dropdown-item"><i class="dripicons-user"></i> Karyawan</a>
+                                            <a href="<?= site_url('master_data/employee') ?>" class="dropdown-item"><i class="dripicons-user"></i> Mitra Kerja</a>
                                         </div>
                                     </li>
                                 <?php } ?>
@@ -355,7 +355,7 @@
                                         <div class="dropdown-menu" aria-labelledby="topnav-report">
                                             <a href="<?= $absen_report_url ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Report Performance Absen</a>
                                             <a href="<?= site_url('report') ?>" class="dropdown-item">
-                                              <i class="mdi mdi-flag-outline"></i> Laporan Karyawan
+                                              <i class="mdi mdi-flag-outline"></i> Laporan Mitra Kerja
                                               <?php $rpt_unread=(int)$this->db->where('status','new')->count_all_results('user_reports'); if($rpt_unread>0): ?>
                                               <span class="badge bg-danger ms-1"><?= $rpt_unread ?></span>
                                               <?php endif; ?>

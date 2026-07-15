@@ -82,7 +82,7 @@ foreach ($shifts as $row) {
                 <thead class="table-light">
                     <tr>
                         <th>Kode</th>
-                        <th>Nama Karyawan</th>
+                        <th>Nama Mitra Kerja</th>
                         <th>Posisi</th>
                         <th>Cabang</th>
                         <th class="text-center">

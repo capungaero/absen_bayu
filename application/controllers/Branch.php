@@ -87,7 +87,7 @@ class Branch extends CI_Controller{
 										   ->count_all_results();
 				if($employee_count > 0){
 					$status = false;
-					$title = 'Cabang masih berisi karyawan. Pindahkan karyawan sebelum cabang dinonaktifkan.';
+					$title = 'Cabang masih berisi mitra kerja. Pindahkan mitra kerja sebelum cabang dinonaktifkan.';
 				}
 			}
 
@@ -194,7 +194,7 @@ class Branch extends CI_Controller{
 				if($employee_count > 0){
 					echo json_encode([
 						'status'  => false,
-						'message' => 'Cabang masih berisi karyawan. Pindahkan karyawan sebelum cabang dinonaktifkan.'
+						'message' => 'Cabang masih berisi mitra kerja. Pindahkan mitra kerja sebelum cabang dinonaktifkan.'
 					]);
 					return;
 				}

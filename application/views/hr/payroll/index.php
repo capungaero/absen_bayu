@@ -82,7 +82,7 @@
                                     <th rowspan="2" style="width: 5%" class="text-center">NO</th>
                                     <th rowspan="2">BULAN</th>
                                     <th>KODE</th>
-                                    <th class="text-center" style="width: 18%">JUMLAH KARYAWAN</th>
+                                    <th class="text-center" style="width: 18%">JUMLAH MITRA KERJA</th>
                                     <th style="width: 20%" class="text-center">TOTAL FEE</th>
                                     <th rowspan="2" style="width: 20%" class="text-center">WAKTU GENERATE</th>
                                     <th rowspan="2" style="width: 10%" class="text-center"><i class="fa fa-cog"></i></th>
@@ -193,7 +193,7 @@
                                         <th rowspan="2" style="width: 5%" class="text-center">NO</th>
                                         <th rowspan="2">CABANG</th>
                                         <th>KODE</th>
-                                        <th class="text-center" style="width: 13%">JML KARYAWAN</th>
+                                        <th class="text-center" style="width: 13%">JML MITRA KERJA</th>
                                         <th style="width: 18%" class="text-center">TOTAL FEE</th>
                                         <th rowspan="2" style="width: 15%" class="text-center">WAKTU GENERATE</th>
                                         <th rowspan="2" style="width: 5%" class="text-center"><i class="fa fa-cog"></i></th>

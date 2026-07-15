@@ -1595,7 +1595,7 @@ class Presence extends CI_Controller{
 			}else{
 				$res = [
 					'status'  => false,
-					'message' => 'Data karyawan tidak ditemukan'
+					'message' => 'Data mitra kerja tidak ditemukan'
 				];
 			}
 			
@@ -1684,7 +1684,7 @@ class Presence extends CI_Controller{
 
 			$messages = [];
 			$messages[] = 'File DAT tersimpan: '.implode(', ', array_map('basename', $dat_files)).'.';
-			$messages[] = 'Preview periode '.$sync_from_date.' s/d '.$sync_to_date.' ('.$excel['total_rows'].' log, '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
+			$messages[] = 'Preview periode '.$sync_from_date.' s/d '.$sync_to_date.' ('.$excel['total_rows'].' log, '.$excel['mapped_rows'].' cocok mitra kerja, '.$excel['missing_rows'].' tidak cocok).';
 			if(!empty($fresh['note'])){
 				$messages[] = '⚠️ '.$fresh['note'].' Data tetap ditampilkan (mode manual) — periksa apakah mesin online.';
 			}
@@ -1942,7 +1942,7 @@ class Presence extends CI_Controller{
 
 			$messages = [];
 			$messages[] = 'File DAT sholat tersimpan: '.implode(', ', array_map('basename', $dat_files)).'.';
-			$messages[] = 'File Excel sholat otomatis: '.basename($excel['path']).' ('.$excel['total_rows'].' log dari '.$excel['from'].' s/d '.$excel['to'].', '.$excel['mapped_rows'].' cocok karyawan, '.$excel['missing_rows'].' tidak cocok).';
+			$messages[] = 'File Excel sholat otomatis: '.basename($excel['path']).' ('.$excel['total_rows'].' log dari '.$excel['from'].' s/d '.$excel['to'].', '.$excel['mapped_rows'].' cocok mitra kerja, '.$excel['missing_rows'].' tidak cocok).';
 			if(!empty($fresh['note'])){
 				$messages[] = '⚠️ '.$fresh['note'].' Data tetap diproses (mode manual) — periksa apakah mesin online.';
 			}
@@ -2935,7 +2935,7 @@ class Presence extends CI_Controller{
 				    		'data'	  => $sheetData,
 				    		'message' => 'Tidak ada data yang terdeteksi, silahkan isi file excel yang akan diupload dengan format yang benar<br>Perhatikan beberapa inputan dibawah ini : <ol>
 				    				<li>Kode Shift sudah benar</li>
-				    				<li>ID Fingerprint Karyawan</li>
+				    				<li>ID Fingerprint Mitra Kerja</li>
 				    				<li>Template Excel yang diupload sesuai dengan menu bulan jadwal kerja yang dipilih</i>
 				    			  </ol>'
 				    	];
@@ -3217,7 +3217,7 @@ class Presence extends CI_Controller{
  			$spreadsheet = new Spreadsheet();
 			$sheet = $spreadsheet->getActiveSheet();
 			$sheet->mergeCells('A1:E1');
-			$sheet->setCellValue('A1', 'TEMPLATE JADWAL KERJA KARYAWAN');
+			$sheet->setCellValue('A1', 'TEMPLATE JADWAL KERJA MITRA KERJA');
 			$sheet->getStyle('A1')->applyFromArray([
 				'font' => [
 					'bold' => true,
@@ -3243,8 +3243,8 @@ class Presence extends CI_Controller{
 			$sheet->mergeCells('A2:E2');
 			$sheet->setCellValue('A2', '*Note : Untuk jadwal libur, dapat diketik dengan kode "OFF" , tanpa tanda petik');
 
-			$sheet->setCellValue('A3', 'ID FINGERPRINT KARYAWAN');
-			$sheet->setCellValue('B3', 'NAMA KARYAWAN');
+			$sheet->setCellValue('A3', 'ID FINGERPRINT MITRA KERJA');
+			$sheet->setCellValue('B3', 'NAMA MITRA KERJA');
 			$sheet->setCellValue('C3', 'POSISI');
 
 			$daterange  = getRangeWorkDate($month, $year);

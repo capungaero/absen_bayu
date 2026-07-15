@@ -164,7 +164,7 @@ class DatReader extends CI_Controller {
         $uids = array_values(array_unique(array_map(function($e){ return (int)$e['user_id']; }, $edits)));
         $allowed = $this->_branch_user_ids($branch_id, $uids);
         $edits = array_values(array_filter($edits, function($e) use ($allowed){ return isset($allowed[(int)$e['user_id']]); }));
-        if (empty($edits)) return $this->_json(['error' => 'Karyawan yang diedit tidak ada di cabang ini'], 422);
+        if (empty($edits)) return $this->_json(['error' => 'Mitra Kerja yang diedit tidak ada di cabang ini'], 422);
 
         $saved = $this->dat_reader->save_work_edits($edits, (int)$this->userdata->id, date('Y-m-d H:i:s'));
         $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'saved' => $saved]));
@@ -294,7 +294,7 @@ class DatReader extends CI_Controller {
             }
         }
         if (empty($mirror_rows)) {
-            return ['ok' => false, 'msg' => 'Tap ditemukan tapi tidak ada yang cocok karyawan. Tidak dikenal: '.implode(', ', $missing_fingers)];
+            return ['ok' => false, 'msg' => 'Tap ditemukan tapi tidak ada yang cocok mitra kerja. Tidak dikenal: '.implode(', ', $missing_fingers)];
         }
 
         $now = date('Y-m-d H:i:s');

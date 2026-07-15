@@ -63,7 +63,7 @@ class leave extends CI_Controller{
 			$this->form_validation->set_rules('leave_reason', 'Alasan Izin', 'required');
 
 			if(in_array($this->role, ['admin', 'admin-branch', 'supervisor'])){
-				$this->form_validation->set_rules('user_id', 'Karyawan', 'required');
+				$this->form_validation->set_rules('user_id', 'Mitra Kerja', 'required');
 			}else{
 				$p['user_id'] = $this->userdata->user_id;
 			}

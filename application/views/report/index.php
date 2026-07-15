@@ -2,10 +2,10 @@
   <div class="row">
     <div class="col-12">
       <div class="page-title-box d-flex align-items-center justify-content-between">
-        <h4 class="mb-0"><i class="mdi mdi-flag-outline"></i> Laporan Karyawan (PWA)</h4>
+        <h4 class="mb-0"><i class="mdi mdi-flag-outline"></i> Laporan Mitra Kerja (PWA)</h4>
         <ol class="breadcrumb m-0">
           <li class="breadcrumb-item"><a href="#">Dashboard</a></li>
-          <li class="breadcrumb-item active">Laporan Karyawan</li>
+          <li class="breadcrumb-item active">Laporan Mitra Kerja</li>
         </ol>
       </div>
     </div>
@@ -46,7 +46,7 @@
       $fileUrl = $hasFile ? base_url($r['file_path']) : '';
       $ext     = $hasFile ? strtolower(pathinfo($r['file_path'], PATHINFO_EXTENSION)) : '';
       $isImg   = in_array($ext, ['jpg','jpeg','png','gif']);
-      $empName = htmlspecialchars(trim($r['emp_name']) ?: 'Karyawan #'.$r['user_id']);
+      $empName = htmlspecialchars(trim($r['emp_name']) ?: 'Mitra Kerja #'.$r['user_id']);
       $branch  = htmlspecialchars($r['branch_name'] ?: '-');
 
       $badgeCls = ['new'=>'bg-danger','read'=>'bg-secondary','acc'=>'bg-success'][$st] ?? 'bg-secondary';

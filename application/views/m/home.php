@@ -17,7 +17,7 @@ $photo = !empty($emp['photo']) && $emp['photo'] != 'default-photo.jpg';
             </div>
         <?php endif; ?>
         <div>
-            <div style="font-size:16px;font-weight:600"><?= htmlspecialchars($emp['first_name'] ?? 'Karyawan') ?></div>
+            <div style="font-size:16px;font-weight:600"><?= htmlspecialchars($emp['first_name'] ?? 'Mitra Kerja') ?></div>
             <div style="font-size:12px;opacity:.85">
                 <?= htmlspecialchars($emp['position_name'] ?? '') ?><?= !empty($emp['branch_name']) ? ' — ' . htmlspecialchars($emp['branch_name']) : '' ?>
             </div>

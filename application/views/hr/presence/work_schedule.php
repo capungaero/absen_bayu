@@ -190,7 +190,7 @@
                             </select>
                         </div>
                         <div>
-                            <label>Cari Karyawan</label>
+                            <label>Cari Mitra Kerja</label>
                             <input type="text" class="form-control form-control-sm" id="gameEmployeeSearch" placeholder="Nama / ID / posisi">
                         </div>
                         <div>
@@ -219,8 +219,8 @@
                     <div class="game-scheduler-body">
                         <aside class="game-roster">
                             <div class="game-roster-head">
-                                <strong>Roster Karyawan</strong>
-                                <div class="small text-muted">Drag foto/icon karyawan ke shift. Drop ke OFF untuk menghapus jadwal hari itu.</div>
+                                <strong>Roster Mitra Kerja</strong>
+                                <div class="small text-muted">Drag foto/icon mitra kerja ke shift. Drop ke OFF untuk menghapus jadwal hari itu.</div>
                                 <div class="game-off-zone" id="gameOffZone">Drop ke sini untuk OFF / tidak dijadwalkan</div>
                             </div>
                             <div class="game-roster-list" id="gameRosterList"></div>
@@ -341,7 +341,7 @@
                     </div>
 
                     <div class="mt-3 d-flex justify-content-between">
-                        <small class="text-muted">Total karyawan: <?= count($employees) ?>. Jadwal kosong akan menghapus jadwal pada tanggal tersebut.</small>
+                        <small class="text-muted">Total mitra kerja: <?= count($employees) ?>. Jadwal kosong akan menghapus jadwal pada tanggal tersebut.</small>
                         <button type="submit" class="btn btn-success"><i class="fa fa-save"></i> Simpan Jadwal</button>
                     </div>
                 </form>
@@ -358,11 +358,11 @@
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted">Kosongkan jadwal (no schedule) untuk satu karyawan pada rentang tanggal tertentu. Perubahan baru tersimpan setelah klik <b>Simpan Jadwal</b>.</p>
+                <p class="text-muted">Kosongkan jadwal (no schedule) untuk satu mitra kerja pada rentang tanggal tertentu. Perubahan baru tersimpan setelah klik <b>Simpan Jadwal</b>.</p>
                 <div class="mb-2">
-                    <label>Karyawan</label>
+                    <label>Mitra Kerja</label>
                     <select id="noSchedEmployee" class="form-control">
-                        <option value="">-- Pilih karyawan --</option>
+                        <option value="">-- Pilih mitra kerja --</option>
                         <?php foreach($employees as $emp){ ?>
                             <option value="<?= $emp['id'] ?>"><?= htmlspecialchars($emp['first_name'].' ('.$emp['employee_code'].')', ENT_QUOTES, 'UTF-8') ?></option>
                         <?php } ?>
@@ -651,7 +651,7 @@ function renderGameRoster(){
         html += renderGameEmployeeCard(employee, date, getEmployeeShiftForDate(employee.id, date), 'roster', null);
     });
 
-    $('#gameRosterList').html(html || '<div class="text-muted small p-2">Tidak ada karyawan yang cocok.</div>');
+    $('#gameRosterList').html(html || '<div class="text-muted small p-2">Tidak ada mitra kerja yang cocok.</div>');
 }
 
 function getGameShiftKeys(shiftFilter){
@@ -754,7 +754,7 @@ function renderGameBoard(){
         }
 
         if(people.length == 0){
-            html += '<div class="game-empty-lane">Drop karyawan ke sini</div>';
+            html += '<div class="game-empty-lane">Drop mitra kerja ke sini</div>';
         }
         html += '</div></div></div></div>';
     });
@@ -1430,12 +1430,12 @@ $(document).on('click', '#btnApplyNoSchedule', function(){
     var from  = $('#noSchedFrom').val();
     var to    = $('#noSchedTo').val();
 
-    if(!empId){ alert('Pilih karyawan dulu.'); return; }
+    if(!empId){ alert('Pilih mitra kerja dulu.'); return; }
     if(!from || !to){ alert('Pilih rentang tanggal (dari & sampai).'); return; }
     if(from > to){ var tmp = from; from = to; to = tmp; }
 
     var $row = $('.schedule-table tbody tr[data-employee-id="' + empId + '"]');
-    if(!$row.length){ alert('Karyawan tidak ditemukan di tabel.'); return; }
+    if(!$row.length){ alert('Mitra Kerja tidak ditemukan di tabel.'); return; }
 
     var count = 0;
     $row.find('td.schedule-date-col').each(function(){

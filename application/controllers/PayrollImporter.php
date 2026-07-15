@@ -104,7 +104,7 @@ class PayrollImporter extends CI_Controller {
 
         $targets = [[
             'key'      => 'employee',
-            'label'    => 'Karyawan (ID / Nama)',
+            'label'    => 'Mitra Kerja (ID / Nama)',
             'kind'     => 'key',
             'required' => true,
         ]];
@@ -218,7 +218,7 @@ class PayrollImporter extends CI_Controller {
 
         $mapping = isset($b['mapping']) && is_array($b['mapping']) ? $b['mapping'] : [];
         if (!isset($mapping['employee']) || $mapping['employee'] === '' || $mapping['employee'] === null) {
-            return $this->_json(['error' => 'Kolom kunci "Karyawan" belum dipetakan'], 422);
+            return $this->_json(['error' => 'Kolom kunci "Mitra Kerja" belum dipetakan'], 422);
         }
         $key_col = (int)$mapping['employee'];
 
@@ -281,7 +281,7 @@ class PayrollImporter extends CI_Controller {
         }
 
         if (empty($user_ids)) {
-            return $this->_json(['error' => 'Tidak ada karyawan yang cocok. Cek pemetaan kolom kunci & isi data.',
+            return $this->_json(['error' => 'Tidak ada mitra kerja yang cocok. Cek pemetaan kolom kunci & isi data.',
                                  'missing' => $missing, 'missing_keys' => $missing_keys], 422);
         }
 

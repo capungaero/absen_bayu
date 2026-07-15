@@ -245,7 +245,7 @@ export default function App() {
       {/* Rekap */}
       {recap && (
         <div className="recap">
-          <Stat label="Karyawan" value={recap.karyawan} />
+          <Stat label="Mitra Kerja" value={recap.karyawan} />
           <Stat label="Hari-Absen" value={recap.hari_absen} />
           <Stat label="Total Tap" value={recap.total_tap} />
           <Stat label="Hadir Lengkap" value={recap.hadir_lengkap} cls="ok" />

@@ -2,12 +2,12 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="dripicons-biefcase"></i>Potongan Karyawan</h4>
+            <h4 class="mb-0"><i class="dripicons-biefcase"></i>Potongan Mitra Kerja</h4>
 
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
                     <li class="breadcrumb-item"><a href="javascript:void(0);">Master Data</a></li>
-                    <li class="breadcrumb-item active"><a href="<?= site_url('master_data/deduction') ?>">Potongan Karyawan</a></li>
+                    <li class="breadcrumb-item active"><a href="<?= site_url('master_data/deduction') ?>">Potongan Mitra Kerja</a></li>
                 </ol>
             </div>
 
@@ -20,14 +20,14 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">Daftar Potongan Karyawan</h6>
+                <h6 class="card-title">Daftar Potongan Mitra Kerja</h6>
             </div>
             <div class="card-body">
 
                 <form>
                     <div class="row">
                         <div class="col-md-2">
-                            <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalAdd" class="btn btn-primary"><i class="dripicons-plus"></i> Tambah Potongan Karyawan</a>
+                            <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalAdd" class="btn btn-primary"><i class="dripicons-plus"></i> Tambah Potongan Mitra Kerja</a>
                         </div>
 
                         <?php if($role == 'admin'){ ?>
@@ -68,7 +68,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary">
-                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Tambah Potongan Karyawan</h5>
+                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Tambah Potongan Mitra Kerja</h5>
                 <button style="color: #fff" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -78,7 +78,7 @@
                     <div class="col-md-12">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Nama</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Nama Potongan Karyawan" class="form-control" name="deduction_name">
+                            <input type="text" required="" autocomplete="off" placeholder="Nama Potongan Mitra Kerja" class="form-control" name="deduction_name">
                         </div>
                     </div>
                     <div class="col-md-12">
@@ -111,7 +111,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-warning">
-                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Ubah Potongan Karyawan</h5>
+                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Ubah Potongan Mitra Kerja</h5>
                 <button style="color: #fff" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -121,7 +121,7 @@
                     <div class="col-md-12">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Nama</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Nama Potongan Karyawan" class="form-control" name="deduction_name" id="e_name">
+                            <input type="text" required="" autocomplete="off" placeholder="Nama Potongan Mitra Kerja" class="form-control" name="deduction_name" id="e_name">
                         </div>
                     </div>
                     <div class="col-md-12">
@@ -154,7 +154,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header bg-danger">
-                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Hapus Potongan Karyawan</h5>
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Hapus Potongan Mitra Kerja</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
