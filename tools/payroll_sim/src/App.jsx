@@ -158,7 +158,7 @@ export default function App() {
         {/* Search */}
         <div className="search-wrap">
           <input
-            placeholder="Cari nama atau kode karyawan..."
+            placeholder="Cari nama atau kode mitra kerja..."
             value={query}
             onChange={e => { setQuery(e.target.value); if (!e.target.value) setSelected(null); }}
             onKeyDown={e => e.key === 'Enter' && results[0] && selectEmployee(results[0])}

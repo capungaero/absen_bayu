@@ -155,7 +155,7 @@
                                        name="notif_absent_enabled" value="1"
                                        <?= (!empty($cfg['notif_absent_enabled'])) ? 'checked' : '' ?>>
                                 <label class="form-check-label" for="notif_absent_enabled">
-                                    <i class="mdi mdi-account-alert text-danger"></i> Notif Karyawan Tidak Hadir
+                                    <i class="mdi mdi-account-alert text-danger"></i> Notif Mitra Kerja Tidak Hadir
                                 </label>
                             </div>
                         </div>

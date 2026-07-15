@@ -46,7 +46,7 @@
                     </div>
                     <div>
                         <h4 class="mb-1 mt-1"><?= $count_employee ?></h4>
-                        <p class="text-muted mb-0">Karyawan Aktif</p>
+                        <p class="text-muted mb-0">Mitra Kerja Aktif</p>
                     </div>
                 </div>
                 <a href="<?= site_url('master_data/employee') ?>">
@@ -101,19 +101,19 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">NOTIFIKASI TANGGAL KONTRAK KARYAWAN</h6>
+                <h6 class="card-title">NOTIFIKASI TANGGAL KONTRAK MITRA KERJA</h6>
             </div>
             <div class="card-body">
                 <div class="mb-3">
                     Note :<br>
                     * Notifikasi berjalan jika tanggal selesai kontrak akan habis dibawah 1 bulan <br>
-                    ** Harap <b>Perpanjang</b> Atau <b>Nonaktifkan Manual</b> status karyawan jika ada masa kontrak yang sudah habis
+                    ** Harap <b>Perpanjang</b> Atau <b>Nonaktifkan Manual</b> status mitra kerja jika ada masa kontrak yang sudah habis
                 </div>
                 <table class="table">
                     <thead style="background-color: #eee">
                         <tr>
                             <th style="width: 5%">NO</th>
-                            <th>KARYAWAN</th>
+                            <th>MITRA KERJA</th>
                             <th>NIK</th>
                             <th>JABATAN / POSISI</th>
                             <th>STATUS KERJA</th>
@@ -156,7 +156,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header bg-danger">
-                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Status Karyawan</h5>
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Status Mitra Kerja</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -167,7 +167,7 @@
                     </div>
                     <div class="col-md-9">
                         <h6>Apakah anda yakin mengubah status data ini ?</h6>
-                        Status data karyawan akan diubah
+                        Status data mitra kerja akan diubah
                     </div>
                 </div>
             </div>

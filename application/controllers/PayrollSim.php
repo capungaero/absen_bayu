@@ -308,7 +308,7 @@ class PayrollSim extends CI_Controller {
 
         // 1. Employee
         if ($this->emp_batch_cache !== null) {
-            if (!isset($this->emp_batch_cache[$eid])) throw new Exception('Karyawan tidak ditemukan');
+            if (!isset($this->emp_batch_cache[$eid])) throw new Exception('Mitra Kerja tidak ditemukan');
             $emp = $this->emp_batch_cache[$eid];
         } else {
             $emp_q = $this->db->query("
@@ -322,7 +322,7 @@ class PayrollSim extends CI_Controller {
                 JOIN branch b ON b.id = p.branch_id
                 WHERE u.id = ?
             ", [$eid]);
-            if (!$emp_q->num_rows()) throw new Exception('Karyawan tidak ditemukan');
+            if (!$emp_q->num_rows()) throw new Exception('Mitra Kerja tidak ditemukan');
             $emp = $emp_q->row_array();
         }
         $salary = (float)($emp['salary'] ?? 0);

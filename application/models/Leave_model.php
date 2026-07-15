@@ -103,7 +103,7 @@ Class leave_model extends CI_Model{
          'class' => 'table table-striped table-bordered',
           ))
          ->column('<b>NO</b>', 'num_dt leave_id')
-         ->column('<b>KARYAWAN</b>', 'first_name', function($data, $row){
+         ->column('<b>MITRA KERJA</b>', 'first_name', function($data, $row){
             $txt = $row['first_name']."<br><small class='text-muted'><i class='fa fa-user-circle'></i> ".$row['employee_code']."<br><i class='fa fa-building'></i> ".$row['branch_name']."</small>";
 
             return $txt;
@@ -162,7 +162,7 @@ Class leave_model extends CI_Model{
          'class' => 'table table-striped table-bordered',
           ))
          ->column('<b>NO</b>', 'num_dt leave_id')
-         ->column('<b>KARYAWAN</b>', 'first_name', function($data, $row){
+         ->column('<b>MITRA KERJA</b>', 'first_name', function($data, $row){
             $txt = $row['first_name']."<br><small class='text-muted'><i class='fa fa-user-circle'></i> ".$row['employee_code']."<br><i class='fa fa-building'></i> ".$row['branch_name']."</small>";
 
             return $txt;

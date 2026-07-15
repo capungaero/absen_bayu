@@ -121,7 +121,7 @@
                 <div class="row">
                   <div class="col-md-12">
                       <b><i class="dripicons-briefcase"></i> WAKTU KERJA</b><br>
-                      <small class="text-muted">Merupakan rentang waktu kerja karyawan</small>
+                      <small class="text-muted">Merupakan rentang waktu kerja mitra kerja</small>
                   </div>
                   <div class="col-md-6">
                     <div class="mb-3">
@@ -344,7 +344,7 @@
                 <div class="row">
                   <div class="col-md-12">
                       <b><i class="dripicons-briefcase"></i> WAKTU KERJA</b><br>
-                      <small class="text-muted">Merupakan rentang waktu kerja karyawan</small>
+                      <small class="text-muted">Merupakan rentang waktu kerja mitra kerja</small>
                   </div>
                   <div class="col-md-6">
                     <div class="mb-3">

@@ -78,7 +78,7 @@ $selected_month = (int) $month;
     </div>
     <div class="col-md-3 col-6 mb-2">
         <div class="card mb-0"><div class="card-body py-2">
-            <small class="text-muted">Karyawan PLA</small>
+            <small class="text-muted">Mitra Kerja PLA</small>
             <h5 class="mb-0"><?= (int) $report['total_users'] ?></h5>
         </div></div>
     </div>
@@ -102,7 +102,7 @@ $selected_month = (int) $month;
         <div class="card">
             <div class="card-body">
                 <small class="text-muted">
-                    Rumus per karyawan:
+                    Rumus per mitra kerja:
                     <code>(Fee Pokok &divide; <?= (int) $days_in_month ?> hari &divide; 10 jam)</code> &times;
                     <code>(Kekurangan menit &divide; 60)</code>.
                     Hanya hari dengan flag <span class="badge bg-primary">PLA</span> dan status approved yang dihitung.
@@ -113,7 +113,7 @@ $selected_month = (int) $month;
                 <div class="text-center py-5">
                     <i class="mdi mdi-clock-check-outline" style="font-size:42px; color:#6c757d"></i>
                     <h5 class="mt-2">Tidak ada PLA</h5>
-                    <p class="text-muted">Belum ada karyawan dengan flag Izin Pulang Cepat di periode payroll yang dipilih.</p>
+                    <p class="text-muted">Belum ada mitra kerja dengan flag Izin Pulang Cepat di periode payroll yang dipilih.</p>
                 </div>
                 <?php else: ?>
                 <div class="table-responsive mt-3">
@@ -121,7 +121,7 @@ $selected_month = (int) $month;
                         <thead class="table-light">
                             <tr>
                                 <th style="width:32px">#</th>
-                                <th>Karyawan</th>
+                                <th>Mitra Kerja</th>
                                 <th>Cabang / Divisi</th>
                                 <th>Rincian Tanggal PLA</th>
                                 <th class="text-end">Kekurangan</th>

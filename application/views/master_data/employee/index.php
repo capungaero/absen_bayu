@@ -3,12 +3,12 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="dripicons-inbox"></i> Karyawan</h4>
+            <h4 class="mb-0"><i class="dripicons-inbox"></i> Mitra Kerja</h4>
 
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
                     <li class="breadcrumb-item"><a href="javascript:void(0);">Master Data</a></li>
-                    <li class="breadcrumb-item active"><a href="<?= site_url('master_data/employee') ?>">Karyawan</a></li>
+                    <li class="breadcrumb-item active"><a href="<?= site_url('master_data/employee') ?>">Mitra Kerja</a></li>
                 </ol>
             </div>
 
@@ -21,7 +21,7 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title">Daftar Karyawan</h6>
+                <h6 class="card-title">Daftar Mitra Kerja</h6>
             </div>
             <div class="card-body">
                 <?php if($role == 'admin'){ ?>
@@ -29,11 +29,11 @@
                     <form>
                         <div class="row">
                             <div class="col-md-7">
-                                <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalAdd" class="btn btn-primary"><i class="dripicons-plus"></i> Tambah Karyawan</a> &emsp;
+                                <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalAdd" class="btn btn-primary"><i class="dripicons-plus"></i> Tambah Mitra Kerja</a> &emsp;
 
                                 <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalUpload" class="btn btn-success"><i class="fa fa-clock"></i> Upload</a> &emsp;
 
-                                <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportEmployee" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Karyawan</a>
+                                <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportEmployee" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Mitra Kerja</a>
                             </div>
 
                             <div class="col-md-4">
@@ -54,7 +54,7 @@
 
                     <br><br>
                 <?php }else if(in_array($role, ['admin-branch', 'hr'])){ ?>
-                    <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportEmployee" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Karyawan</a>
+                    <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalExportEmployee" class="btn btn-outline-danger"><i class="fa fa-file-excel"></i> Download Daftar Mitra Kerja</a>
                     <br><br>
                 <?php } ?>
                 <div class="table-responsive">
@@ -74,7 +74,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary">
-                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Tambah Karyawan</h5>
+                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Tambah Mitra Kerja</h5>
                 <button style="color: #fff" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -84,13 +84,13 @@
                     <div class="col-md-5">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-email-input">ID Fingerprint</label>
-                            <input type="text" required="" autocomplete="off" placeholder="ID Fingerprint karyawan" class="form-control" name="employee_code">
+                            <input type="text" required="" autocomplete="off" placeholder="ID Fingerprint mitra kerja" class="form-control" name="employee_code">
                         </div>
                     </div>
                     <div class="col-md-7">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Nama</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Nama karyawan" class="form-control" name="first_name">
+                            <input type="text" required="" autocomplete="off" placeholder="Nama mitra kerja" class="form-control" name="first_name">
                         </div>
                     </div>
 
@@ -258,7 +258,7 @@
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Hak Akses</label>
                             <select class="form-control" required="" name="access">
-                                <option value="2">Karyawan</option>
+                                <option value="2">Mitra Kerja</option>
                                 <option value="7">Supervisor</option>
                                 <option value="6">Admin Cabang</option>
                                 <option value="1">Superadmin</option>
@@ -286,7 +286,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-warning">
-                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Ubah Karyawan</h5>
+                <h5 style="color: #fff" class="modal-title mt-0" id="myModalLabel"><i class="fa fa-plus"></i> Ubah Mitra Kerja</h5>
                 <button style="color: #fff" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -302,7 +302,7 @@
                     <div class="col-md-7">
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Nama</label>
-                            <input type="text" required="" autocomplete="off" placeholder="Nama karyawan" class="form-control" name="first_name" id="e_name">
+                            <input type="text" required="" autocomplete="off" placeholder="Nama mitra kerja" class="form-control" name="first_name" id="e_name">
                         </div>
                     </div>
 
@@ -471,7 +471,7 @@
                         <div class="mb-3">
                             <label class="form-label" for="formrow-password-input">Hak Akses</label>
                             <select class="form-control" required="" id="e_access" name="access">
-                                <option value="2">Karyawan</option>
+                                <option value="2">Mitra Kerja</option>
                                 <option value="7">Supervisor</option>
                                 <option value="6">Admin Cabang</option>
 
@@ -503,7 +503,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header bg-danger">
-                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Hapus Karyawan</h5>
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Hapus Mitra Kerja</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -514,7 +514,7 @@
                     </div>
                     <div class="col-md-9">
                         <h6>Apakah anda yakin menghapus data ini ?</h6>
-                        Data yang telah dihapus tidak dapat dikembalikan lagi dan semua data yang berhubungan dengan karyawan ini juga akan terhapus
+                        Data yang telah dihapus tidak dapat dikembalikan lagi dan semua data yang berhubungan dengan mitra kerja ini juga akan terhapus
                     </div>
                 </div>
             </div>
@@ -534,7 +534,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header bg-danger">
-                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Status Karyawan</h5>
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Status Mitra Kerja</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -545,7 +545,7 @@
                     </div>
                     <div class="col-md-9">
                         <h6>Apakah anda yakin mengubah status data ini ?</h6>
-                        Status data karyawan akan diubah
+                        Status data mitra kerja akan diubah
                     </div>
                 </div>
             </div>
@@ -602,7 +602,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="modalExportEmployeeLabel"><i class="fa fa-file-excel"></i> Export Data Karyawan</h5>
+                <h5 class="modal-title" id="modalExportEmployeeLabel"><i class="fa fa-file-excel"></i> Export Data Mitra Kerja</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -627,11 +627,11 @@
 
                         <div class="col-md-12">
                             <div class="mb-3">
-                                <label class="form-label">Status Karyawan</label>
+                                <label class="form-label">Status Mitra Kerja</label>
                                 <select class="form-control" name="status">
-                                    <option value="all">Semua Karyawan</option>
-                                    <option value="active">Karyawan Aktif</option>
-                                    <option value="inactive">Karyawan Tidak Aktif</option>
+                                    <option value="all">Semua Mitra Kerja</option>
+                                    <option value="active">Mitra Kerja Aktif</option>
+                                    <option value="inactive">Mitra Kerja Tidak Aktif</option>
                                 </select>
                             </div>
                         </div>
@@ -675,7 +675,7 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="staticBackdropLabel">Upload Karyawan</h5>
+                <h5 class="modal-title" id="staticBackdropLabel">Upload Mitra Kerja</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -695,7 +695,7 @@
                             <h6>File Excel</h6>
                             <input type="file" required="" name="excel_file"> <br>
                             <small class="text-muted">Silahkan upload file excel yang sudah didownload dari sistem</small> <br><br>
-                            <button class="btn btn-success" id="btnUpload">Upload Karyawan</button> &nbsp;
+                            <button class="btn btn-success" id="btnUpload">Upload Mitra Kerja</button> &nbsp;
                             <a href="<?= base_url('assets/Template_Tambah_Karyawan.xlsx') ?>" class="btn btn-outline-danger"><i class="fa fa-download"></i> Download Template</a>
                         </div>
                     </div>
@@ -1039,7 +1039,7 @@ $(document).on('change', '#e_status_work', function(){
                 }
             },
             complete : function(){
-                btn.html('Upload Karyawan').removeAttr('disabled');
+                btn.html('Upload Mitra Kerja').removeAttr('disabled');
             }
         });
 

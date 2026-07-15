@@ -77,7 +77,7 @@
                     <?php if(in_array($role, ['admin', 'admin-branch', 'hr', 'supervisor'])){ ?>
                         <div class="col-md-12">
                             <div class="mb-3">
-                                <label class="form-label" for="formrow-password-input">Karyawan</label>
+                                <label class="form-label" for="formrow-password-input">Mitra Kerja</label>
                                 <select style="width: 100%" class="form-control select-plugin" id="overtimeEmployeeSelect" required="" multiple>
                                     <option value="">Pilih</option>
                                     <?php foreach ($employee as $row) { ?>
@@ -93,7 +93,7 @@
                             <table class="table table-bordered align-middle">
                                 <thead>
                                     <tr>
-                                        <th>Karyawan</th>
+                                        <th>Mitra Kerja</th>
                                         <th style="width: 140px">Lama Lembur</th>
                                         <th style="width: 180px">Tanggal Lembur</th>
                                         <th style="width: 60px"></th>
@@ -112,7 +112,7 @@
                                         </tr>
                                     <?php }else{ ?>
                                         <tr class="overtime-empty-row">
-                                            <td colspan="4" class="text-muted text-center">Pilih karyawan untuk membuat baris lembur.</td>
+                                            <td colspan="4" class="text-muted text-center">Pilih mitra kerja untuk membuat baris lembur.</td>
                                         </tr>
                                     <?php } ?>
                                 </tbody>
@@ -150,7 +150,7 @@
             </div>
             <div class="modal-body">
                 <table class="table">
-                    <tr><th>Karyawan</th><td id="e_employee_label"></td></tr>
+                    <tr><th>Mitra Kerja</th><td id="e_employee_label"></td></tr>
                 </table>
                 <div class="row">
                     <div class="col-md-3">
@@ -224,7 +224,7 @@
         var selected = $('#overtimeEmployeeSelect option:selected');
         var tbody = $('#overtimeRows');
         if(selected.length == 0){
-            tbody.html('<tr class="overtime-empty-row"><td colspan="4" class="text-muted text-center">Pilih karyawan untuk membuat baris lembur.</td></tr>');
+            tbody.html('<tr class="overtime-empty-row"><td colspan="4" class="text-muted text-center">Pilih mitra kerja untuk membuat baris lembur.</td></tr>');
             return;
         }
 

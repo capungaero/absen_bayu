@@ -67,7 +67,7 @@
 
                     <div class="col-md-2">
                         <?php if($role != 'employee' && $role != 'supervisor') { ?>
-                            Total Karyawan
+                            Total Mitra Kerja
                             <h6><?= !empty($payroll) ? $payroll['total_employee'] : '-' ?></h6>
                         <?php } ?>
                     </div>
@@ -170,7 +170,7 @@
                         </div>
                         <div class="col-md-3">
                             <small><em class="fa fa-search"></em> Pencarian</small>
-                            <input id="autocomplete" type="text" class="form-control" placeholder="Cari Karyawan...">
+                            <input id="autocomplete" type="text" class="form-control" placeholder="Cari Mitra Kerja...">
                         </div>
                     </div>
 
@@ -235,7 +235,7 @@
                 </div>
                 <div class="modal-body">
                     <input type="file" name="excel_file" class="form-control" accept=".xlsx,.xls" required>
-                    <small class="text-muted d-block mt-2">Gunakan template dari tombol Download Template. Nilai pada file akan mengganti komisi dan potongan karyawan yang ada di file untuk periode ini.</small>
+                    <small class="text-muted d-block mt-2">Gunakan template dari tombol Download Template. Nilai pada file akan mengganti komisi dan potongan mitra kerja yang ada di file untuk periode ini.</small>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-primary" id="btnImportComponent"><i class="fa fa-upload"></i> Import</button>
@@ -305,7 +305,7 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header bg-primary">
-                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">EXPORT PDF SLIP PEMBAGIAN FEE KARYAWAN</h5>
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">EXPORT PDF SLIP PEMBAGIAN FEE MITRA KERJA</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -511,7 +511,7 @@
                 });
 
                 if(employeeIDs.length == 0){
-                    alert('Silahkan pilih minimal 1 karyawan')
+                    alert('Silahkan pilih minimal 1 mitra kerja')
                     return
                 }
 
@@ -692,8 +692,8 @@
     $(document).on('click', '#btnRecalcAuto', function(){
         var hasPayroll = <?= !empty($payroll) ? 'true' : 'false' ?>;
         var msg = hasPayroll
-            ? 'Hitung ulang 5 komisi otomatis (Disiplin/Transport/Beras/Soskes/Sholat) berdasarkan data presensi terkini?\n\nNilai auto akan menimpa entri manual HR pada 5 item ini; THP per karyawan akan diperbarui.'
-            : 'Hitung otomatis 5 komisi (Disiplin/Transport/Beras/Soskes/Sholat) dari data presensi terkini? Nilai akan tertulis ke kolom Komisi Lainnya untuk semua karyawan periode ini.';
+            ? 'Hitung ulang 5 komisi otomatis (Disiplin/Transport/Beras/Soskes/Sholat) berdasarkan data presensi terkini?\n\nNilai auto akan menimpa entri manual HR pada 5 item ini; THP per mitra kerja akan diperbarui.'
+            : 'Hitung otomatis 5 komisi (Disiplin/Transport/Beras/Soskes/Sholat) dari data presensi terkini? Nilai akan tertulis ke kolom Komisi Lainnya untuk semua mitra kerja periode ini.';
         if(!confirm(msg)) return;
         var btn = $('#btnRecalcAuto');
         var label = btn.html();

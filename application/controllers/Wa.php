@@ -357,7 +357,7 @@ class Wa extends CI_Controller {
         }
 
         if ($absent_count === 0) {
-            $this->session->set_flashdata('rekap_info', 'Semua karyawan sudah hadir hari ini.');
+            $this->session->set_flashdata('rekap_info', 'Semua mitra kerja sudah hadir hari ini.');
             return;
         }
 
@@ -385,7 +385,7 @@ class Wa extends CI_Controller {
         }
 
         $count = $absent_count;
-        $this->session->set_flashdata('rekap_success', "Notifikasi tidak hadir dikirim ke {$success_count} nomor. ({$count} karyawan tidak hadir)");
+        $this->session->set_flashdata('rekap_success', "Notifikasi tidak hadir dikirim ke {$success_count} nomor. ({$count} mitra kerja tidak hadir)");
     }
 
     private function _parse_phones($phones_string) {

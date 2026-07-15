@@ -39,7 +39,7 @@
                             <div class="card-body">
                                 <table class="table">
                                     <tr>
-                                        <td style="width: 33.3%"><i class="dripicons-tags"></i> Karyawan<br><b><?= $leave['first_name'] ?><br><small class="text-muted">Kode : <?= $leave['employee_code'] ?></small></b></td>
+                                        <td style="width: 33.3%"><i class="dripicons-tags"></i> Mitra Kerja<br><b><?= $leave['first_name'] ?><br><small class="text-muted">Kode : <?= $leave['employee_code'] ?></small></b></td>
 
                                         <td style="width: 33.3%"><i class="dripicons-briefcase"></i> Jabatan<br><b><?= $leave['position_name'] ?></b></td>
                                         <td style="width: 33.3%">Default Potongan Kompensasi Izin<br><b><?= $leave['default_potongan'] ?>%</b></td>

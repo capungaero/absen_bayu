@@ -110,7 +110,7 @@ $query_base = $_GET;
                     <tr>
                         <th>Tanggal</th>
                         <th>ID</th>
-                        <th>Nama Karyawan</th>
+                        <th>Nama Mitra Kerja</th>
                         <th>Cabang</th>
                         <th>Divisi</th>
                         <th>Kedatangan</th>
@@ -195,7 +195,7 @@ $query_base = $_GET;
                     <tr>
                         <th>Tanggal</th>
                         <th>ID</th>
-                        <th>Nama Karyawan</th>
+                        <th>Nama Mitra Kerja</th>
                         <th>Cabang</th>
                         <th>Divisi</th>
                         <th>Shift</th>
@@ -206,7 +206,7 @@ $query_base = $_GET;
                 <tbody>
                     <?php if (empty($absent_rows)): ?>
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">Tidak ada karyawan terjadwal yang belum terdeteksi mesin absensi.</td>
+                        <td colspan="8" class="text-center text-muted py-4">Tidak ada mitra kerja terjadwal yang belum terdeteksi mesin absensi.</td>
                     </tr>
                     <?php else: ?>
                     <?php foreach ($absent_rows as $row): ?>

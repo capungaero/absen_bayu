@@ -62,7 +62,7 @@
               <tr>
                 <th style="width:140px">Waktu</th>
                 <th style="width:80px">Aksi</th>
-                <th>Karyawan / Tanggal</th>
+                <th>Mitra Kerja / Tanggal</th>
                 <th>Diubah Oleh</th>
                 <th>Perubahan</th>
                 <th style="width:80px"></th>

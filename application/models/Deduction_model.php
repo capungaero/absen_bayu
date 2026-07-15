@@ -86,7 +86,7 @@ Class Deduction_model extends CI_Model{
          'class' => 'table table-striped table-bordered',
           ))
          ->column('<b>NO</b>', 'num_dt deduction_id')
-         ->column('<b>NAMA POTONGAN KARYAWAN</b>', 'deduction_name')
+         ->column('<b>NAMA POTONGAN MITRA KERJA</b>', 'deduction_name')
          ->column('<b>STATUS</b>', 'is_active', function($data, $row){
             if($row['is_active'] == '1'){
                $title = 'Aktif';

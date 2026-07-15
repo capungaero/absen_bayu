@@ -58,7 +58,7 @@ class Overtime extends CI_Controller{
 			$this->form_validation->set_data($p);
 
 			if(in_array($this->role, ['admin', 'admin-branch', 'hr', 'supervisor'])){
-				$this->form_validation->set_rules('user_id[]', 'Karyawan', 'required');
+				$this->form_validation->set_rules('user_id[]', 'Mitra Kerja', 'required');
 			}else{
 				$p['user_id'] = [$this->userdata->user_id];
 			}
@@ -77,7 +77,7 @@ class Overtime extends CI_Controller{
 					if($user_id == '' || $hour == '' || $date == '' || !is_numeric($hour) || $hour <= 0 || strtotime($date) === false){
 						$res = [
 							'status' => false,
-							'message' => 'Lengkapi karyawan, lama lembur, dan tanggal lembur pada setiap baris.'
+							'message' => 'Lengkapi mitra kerja, lama lembur, dan tanggal lembur pada setiap baris.'
 						];
 						echo json_encode($res);
 						return;
@@ -163,7 +163,7 @@ class Overtime extends CI_Controller{
 				}else{
 					$res = [
 						'status'  => false,
-						'message' => 'Karyawan belum dipilih'
+						'message' => 'Mitra Kerja belum dipilih'
 					];
 				}
 

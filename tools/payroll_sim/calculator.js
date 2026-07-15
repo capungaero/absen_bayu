@@ -76,7 +76,7 @@ export async function calculateSalary(db, employeeId, month, year, customItems =
     WHERE u.id = ?
   `, [employeeId]);
 
-  if (!empRows.length) throw new Error('Karyawan tidak ditemukan');
+  if (!empRows.length) throw new Error('Mitra Kerja tidak ditemukan');
   const emp = empRows[0];
   const salary = Number(emp.salary) || 0;
   const salaryMin = Number(emp.salary_minimum) || 0;

@@ -17,13 +17,13 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h6 class="card-title mb-0">Riwayat Pembayaran BPJS Karyawan</h6>
+                <h6 class="card-title mb-0">Riwayat Pembayaran BPJS Mitra Kerja</h6>
                 <button id="btnSyncGaji" class="btn btn-sm btn-success"><i class="mdi mdi-sync"></i> Sinkron ke Fee</button>
             </div>
             <div class="card-body">
 
                 <div class="alert alert-info py-2 mb-3" style="font-size:13px">
-                    <i class="mdi mdi-information"></i> Karyawan <b>"Dibayar Kantor"</b> otomatis masuk potongan BPJS di fee; karyawan <b>mandiri yang sudah di-ACC</b> otomatis masuk insentif. Tombol <b>Sinkron ke Fee</b> menerapkan ulang semua data periode ini (mis. setelah ubah konfigurasi). Tidak berlaku bila pembagian fee periode sudah final.
+                    <i class="mdi mdi-information"></i> Mitra Kerja <b>"Dibayar Kantor"</b> otomatis masuk potongan BPJS di fee; mitra kerja <b>mandiri yang sudah di-ACC</b> otomatis masuk insentif. Tombol <b>Sinkron ke Fee</b> menerapkan ulang semua data periode ini (mis. setelah ubah konfigurasi). Tidak berlaku bila pembagian fee periode sudah final.
                 </div>
 
 
@@ -68,7 +68,7 @@
                         <thead>
                             <tr>
                                 <th>No</th>
-                                <th>Karyawan</th>
+                                <th>Mitra Kerja</th>
                                 <th>Jabatan</th>
                                 <th class="text-center">Dibayar Kantor</th>
                                 <th class="text-end">Potongan Kesehatan</th>

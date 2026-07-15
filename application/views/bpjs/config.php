@@ -24,18 +24,18 @@
         <div class="card">
             <div class="card-header"><h5 class="card-title mb-0"><i class="mdi mdi-medical-bag me-1 text-danger"></i>BPJS Kesehatan</h5></div>
             <div class="card-body" data-bpjs-group="kesehatan">
-                <p class="text-muted">Isi <b>beban karyawan</b> & <b>beban perusahaan</b> (total &amp; persen terhitung otomatis), atau isi <b>total</b> &amp; <b>persen karyawan</b> (beban terhitung otomatis).</p>
+                <p class="text-muted">Isi <b>beban mitra kerja</b> & <b>beban perusahaan</b> (total &amp; persen terhitung otomatis), atau isi <b>total</b> &amp; <b>persen mitra kerja</b> (beban terhitung otomatis).</p>
                 <div class="mb-3">
                     <label class="form-label">Total Iuran / Bulan</label>
                     <input type="text" class="form-control bpjs-num" data-field="total" name="kesehatan_total" value="<?= (int)($cfg['kesehatan_total'] ?? 0) ?>">
                 </div>
                 <div class="row">
                     <div class="col-6 mb-3">
-                        <label class="form-label">% Ditanggung Karyawan</label>
+                        <label class="form-label">% Ditanggung Mitra Kerja</label>
                         <input type="number" step="0.01" min="0" max="100" class="form-control bpjs-pct" data-field="pct" name="kesehatan_pct_employee" value="<?= (float)($cfg['kesehatan_pct_employee'] ?? 0) ?>">
                     </div>
                     <div class="col-6 mb-3">
-                        <label class="form-label">Beban Karyawan (Potongan)</label>
+                        <label class="form-label">Beban Mitra Kerja (Potongan)</label>
                         <input type="text" class="form-control bpjs-num" data-field="employee" name="kesehatan_employee" value="<?= (int)($cfg['kesehatan_employee'] ?? 0) ?>">
                     </div>
                     <div class="col-6 mb-3">
@@ -52,18 +52,18 @@
         <div class="card">
             <div class="card-header"><h5 class="card-title mb-0"><i class="mdi mdi-hard-hat me-1 text-primary"></i>BPJS Ketenagakerjaan</h5></div>
             <div class="card-body" data-bpjs-group="ketenagakerjaan">
-                <p class="text-muted">Isi <b>beban karyawan</b> & <b>beban perusahaan</b> (total &amp; persen terhitung otomatis), atau isi <b>total</b> &amp; <b>persen karyawan</b> (beban terhitung otomatis).</p>
+                <p class="text-muted">Isi <b>beban mitra kerja</b> & <b>beban perusahaan</b> (total &amp; persen terhitung otomatis), atau isi <b>total</b> &amp; <b>persen mitra kerja</b> (beban terhitung otomatis).</p>
                 <div class="mb-3">
                     <label class="form-label">Total Iuran / Bulan</label>
                     <input type="text" class="form-control bpjs-num" data-field="total" name="ketenagakerjaan_total" value="<?= (int)($cfg['ketenagakerjaan_total'] ?? 0) ?>">
                 </div>
                 <div class="row">
                     <div class="col-6 mb-3">
-                        <label class="form-label">% Ditanggung Karyawan</label>
+                        <label class="form-label">% Ditanggung Mitra Kerja</label>
                         <input type="number" step="0.01" min="0" max="100" class="form-control bpjs-pct" data-field="pct" name="ketenagakerjaan_pct_employee" value="<?= (float)($cfg['ketenagakerjaan_pct_employee'] ?? 0) ?>">
                     </div>
                     <div class="col-6 mb-3">
-                        <label class="form-label">Beban Karyawan (Potongan)</label>
+                        <label class="form-label">Beban Mitra Kerja (Potongan)</label>
                         <input type="text" class="form-control bpjs-num" data-field="employee" name="ketenagakerjaan_employee" value="<?= (int)($cfg['ketenagakerjaan_employee'] ?? 0) ?>">
                     </div>
                     <div class="col-6 mb-3">
@@ -80,7 +80,7 @@
         <div class="card">
             <div class="card-header"><h5 class="card-title mb-0"><i class="mdi mdi-cash-plus me-1 text-success"></i>Insentif Bayar Mandiri</h5></div>
             <div class="card-body">
-                <p class="text-muted">Diberikan ke karyawan yang membayar BPJS sendiri (setelah bukti di-ACC admin).</p>
+                <p class="text-muted">Diberikan ke mitra kerja yang membayar BPJS sendiri (setelah bukti di-ACC admin).</p>
                 <div class="mb-3">
                     <label class="form-label">Nominal Insentif Mandiri</label>
                     <input type="text" class="form-control bpjs-plain" name="mandiri_insentif" value="<?= (int)($cfg['mandiri_insentif'] ?? 0) ?>">
