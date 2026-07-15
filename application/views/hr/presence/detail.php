@@ -1761,23 +1761,11 @@ td.attendance { position: relative; }
             return false;
         });
 
-        // Prompt password gate sebelum operasi sync/hapus.
-        // onOk(password) dipanggil bila admin submit; onCancel() bila dibatalkan.
+        // Gate password sync/hapus DINONAKTIFKAN atas permintaan user: lanjut
+        // langsung tanpa modal. onOk dipanggil dgn password kosong; server-side
+        // _verify_sync_gate() juga sudah dimatikan.
         function promptSyncPassword(onOk, onCancel){
-            Swal.fire({
-                title: 'Password Sync',
-                input: 'password',
-                inputLabel: 'Masukkan password untuk melanjutkan',
-                inputPlaceholder: 'Password sync',
-                inputAttributes: { autocomplete: 'off', autocapitalize: 'off' },
-                showCancelButton: true,
-                confirmButtonText: 'Lanjutkan',
-                cancelButtonText: 'Batal',
-                confirmButtonColor: '#36b9cc'
-            }).then(function(r){
-                if(r.isConfirmed){ onOk(r.value || ''); }
-                else if(typeof onCancel === 'function'){ onCancel(); }
-            });
+            onOk('');
         }
 
         function doSyncAjax(url, data, btn, originalText, loadingMsg){

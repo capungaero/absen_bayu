@@ -2156,11 +2156,10 @@ class Presence extends CI_Controller{
 	}
 
 	private function _verify_sync_gate(){
-		if(!defined('SYNC_GATE_HASH') || SYNC_GATE_HASH === ''){
-			return true;
-		}
-		$pass = (string)$this->input->post('sync_gate_password');
-		return $pass !== '' && password_verify($pass, SYNC_GATE_HASH);
+		// Gate password sync/hapus presensi DINONAKTIFKAN atas permintaan user
+		// (sync & hapus langsung tanpa password). Gate Lock Gaji di Payroll.php
+		// terpisah dan TIDAK terpengaruh.
+		return true;
 	}
 
 	/** Response JSON standar saat password gate gagal. */
