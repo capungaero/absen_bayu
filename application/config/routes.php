@@ -220,6 +220,9 @@ $route['hr/payroll/(:num)/(:num)'] = 'hr/Payroll/detail/$1/$2';
 $route['hr/payroll/(:num)/(:num)/print'] = 'hr/Payroll/print/$1/$2';
 $route['hr/payroll/(:num)/(:num)/print/(:num)'] = 'hr/Payroll/print_slip/$1/$2/$3';
 $route['hr/payroll/(:num)/(:num)/excel'] = 'hr/Payroll/excel/$1/$2';
+
+$route['hr/payroll/(:num)/(:num)/excel_v2'] = 'hr/Payroll/excel_v2/$1/$2';
+$route['hr/payroll/(:num)/(:num)/print_by_penempatan'] = 'hr/Payroll/print_by_penempatan/$1/$2';
 $route['generate_payroll/(:num)/(:num)'] = 'hr/Payroll/generate/$1/$2';
 $route['payroll_template_component/(:num)/(:num)'] = 'hr/Payroll/template_component/$1/$2';
 $route['payroll_template_overtime/(:num)/(:num)'] = 'hr/Payroll/template_overtime/$1/$2';
