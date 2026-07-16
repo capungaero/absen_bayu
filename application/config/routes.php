@@ -84,6 +84,19 @@ $route['api/submit_overtime'] = 'Api/submit_overtime';
 $route['api/bpjs']            = 'Api/bpjs';
 $route['api/submit_bpjs']     = 'Api/submit_bpjs';
 
+// API JSON admin/sistem eksternal (stateless, API-key bearer; CSRF dikecualikan di config via 'api/(.*)')
+$route['api/admin/presence']                 = 'Api_admin/presence_list';
+$route['api/admin/presence/update_workhour'] = 'Api_admin/update_workhour';
+$route['api/admin/presence/update_shift']    = 'Api_admin/update_shift';
+$route['api/admin/presence/cancel']          = 'Api_admin/cancel';
+$route['api/admin/leave']                    = 'Api_admin_hr/leave_list';
+$route['api/admin/leave/approve']            = 'Api_admin_hr/leave_approve';
+$route['api/admin/leave/deny']               = 'Api_admin_hr/leave_deny';
+$route['api/admin/overtime']                 = 'Api_admin_hr/overtime_list';
+$route['api/admin/overtime/approve']         = 'Api_admin_hr/overtime_approve';
+$route['api/admin/overtime/deny']            = 'Api_admin_hr/overtime_deny';
+$route['api/admin/payroll']                  = 'Api_admin_hr/payroll_list';
+
 $route['authentication/login']  = 'Auth';
 $route['do_login']				= 'Auth/do_login';
 $route['logout']				= 'Auth/logout';
@@ -220,7 +233,6 @@ $route['hr/payroll/(:num)/(:num)'] = 'hr/Payroll/detail/$1/$2';
 $route['hr/payroll/(:num)/(:num)/print'] = 'hr/Payroll/print/$1/$2';
 $route['hr/payroll/(:num)/(:num)/print/(:num)'] = 'hr/Payroll/print_slip/$1/$2/$3';
 $route['hr/payroll/(:num)/(:num)/excel'] = 'hr/Payroll/excel/$1/$2';
-
 $route['hr/payroll/(:num)/(:num)/excel_v2'] = 'hr/Payroll/excel_v2/$1/$2';
 $route['hr/payroll/(:num)/(:num)/print_by_penempatan'] = 'hr/Payroll/print_by_penempatan/$1/$2';
 $route['generate_payroll/(:num)/(:num)'] = 'hr/Payroll/generate/$1/$2';
