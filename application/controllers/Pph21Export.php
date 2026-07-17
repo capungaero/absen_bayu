@@ -33,6 +33,7 @@ class Pph21Export extends CI_Controller {
         }
         $this->config->load('pph21_export');
         $this->load->library('pph21_workbook');
+        $this->load->library('pph21_np_calc'); // format angka XML (xf) — pola Bp21Bulk
     }
 
     private function _die($data, $code) {
@@ -73,11 +74,27 @@ class Pph21Export extends CI_Controller {
                  ->where('year', (int)$p->year)->group_by('subdivision_id')->get()->result() as $r) {
             $roster_n[$r->subdivision_id] = (int)$r->n;
         }
+        // Status pengisian 4 kolom manual (pph21_manual) per CV — utk warning
+        // di tombol Export XML: kolom yang belum ada satupun nilainya.
+        $manual_n = [];
+        if ($this->db->table_exists('pph21_manual')) {
+            $q = $this->db->select("u.subdivision_id AS sid,
+                    SUM(m.tunjangan > 0) AS tunjangan, SUM(m.insentif > 0) AS insentif,
+                    SUM(m.subsidi > 0) AS subsidi, SUM(m.bonus > 0) AS bonus", false)
+                ->from('pph21_manual m')->join('users u', 'u.id = m.user_id')
+                ->where('m.payroll_id', $pid)->group_by('u.subdivision_id')->get()->result();
+            foreach ($q as $mn) {
+                $manual_n[(int)$mn->sid] = ['tunjangan' => (int)$mn->tunjangan, 'insentif' => (int)$mn->insentif,
+                    'subsidi' => (int)$mn->subsidi, 'bonus' => (int)$mn->bonus];
+            }
+        }
+        $zero = ['tunjangan' => 0, 'insentif' => 0, 'subsidi' => 0, 'bonus' => 0];
         $seen = [];
         foreach ($rows as $r) {
             $r->subdivision_name = trim((string)$r->subdivision_name) !== '' ? trim($r->subdivision_name) : '(TANPA SUBDIVISI)';
             $r->npwp = isset($npwp[$r->id]) ? $npwp[$r->id] : '';
             $r->roster = isset($roster_n[$r->id]) ? $roster_n[$r->id] : 0;
+            $r->manual = isset($manual_n[(int)$r->id]) ? $manual_n[(int)$r->id] : $zero;
             $seen[(int)$r->id] = true;
         }
         // CV yang hanya ada di roster (semua karyawannya sudah tidak aktif) tetap dilaporkan
@@ -85,7 +102,7 @@ class Pph21Export extends CI_Controller {
             if (isset($seen[$sid2])) continue;
             $s = $this->db->select('subdivision_name')->from('subdivision')->where('id', $sid2)->get()->row();
             $rows[] = (object)['id' => $sid2, 'subdivision_name' => $s ? trim($s->subdivision_name) : '(?)',
-                'n' => 0, 'npwp' => isset($npwp[$sid2]) ? $npwp[$sid2] : '', 'roster' => $n2];
+                'n' => 0, 'npwp' => isset($npwp[$sid2]) ? $npwp[$sid2] : '', 'roster' => $n2, 'manual' => $zero];
         }
         $this->_json(['payroll' => $p, 'cvs' => $rows]);
     }
@@ -178,7 +195,113 @@ class Pph21Export extends CI_Controller {
         exit;
     }
 
+    /**
+     * XML Coretax MmPayrollBulk satu CV (pegawai tetap, pola pelaporan Juni 2026:
+     * Gross = bruto GROSS-UP, Rate = tarif TER final iterasi 3 tahap).
+     * pph21_export/export_xml?payroll_id=..&subdivision_id=..
+     */
+    public function export_xml() {
+        $pid = (int)$this->input->get('payroll_id');
+        $sid = (int)$this->input->get('subdivision_id');
+        $p = $this->_payroll($pid);
+        if (!$p) { $this->_json(['error' => 'Payroll tidak ditemukan'], 404); return; }
+        $data = $this->_cv_rows($pid, $p, $sid);
+        if (!$data['rows']) { $this->_json(['error' => 'Tidak ada karyawan utk CV ini'], 404); return; }
+        if ($data['meta']['npwp'] === '') { $this->_json(['error' => 'NPWP CV belum diisi di config pph21_export.php'], 422); return; }
+        $xml = $this->_mm_xml($data['meta'], $data['rows']);
+        $fname = sprintf('%02d %s - PPH21 %s.xml', $p->month, $this->_month_name($p->month), $data['meta']['cv']);
+        header('Content-Type: application/xml; charset=utf-8');
+        header('Content-Disposition: attachment; filename="'.str_replace('"', '', $fname).'"');
+        echo $xml; exit;
+    }
+
+    /** ZIP XML MmPayrollBulk semua CV satu payroll. */
+    public function export_xml_all() {
+        $pid = (int)$this->input->get('payroll_id');
+        $p = $this->_payroll($pid);
+        if (!$p) { $this->_json(['error' => 'Payroll tidak ditemukan'], 404); return; }
+        $sids = $this->db->query(
+            'SELECT DISTINCT sid FROM ('
+            .'SELECT COALESCE(u.subdivision_id, 0) AS sid FROM payroll_detail pd JOIN users u ON u.id = pd.user_id WHERE pd.payroll_id = '.(int)$pid
+            .' UNION SELECT subdivision_id AS sid FROM pph21_roster WHERE year = '.(int)$p->year
+            .') x')->result();
+        $tmp = tempnam(sys_get_temp_dir(), 'pph21x');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $count = 0;
+        foreach ($sids as $s) {
+            $data = $this->_cv_rows($pid, $p, (int)$s->sid);
+            if (!$data['rows'] || $data['meta']['npwp'] === '') continue;
+            $zip->addFromString(sprintf('%02d %s - PPH21 %s.xml',
+                $p->month, $this->_month_name($p->month), $data['meta']['cv']),
+                $this->_mm_xml($data['meta'], $data['rows']));
+            $count++;
+        }
+        $zip->close();
+        if (!$count) { @unlink($tmp); $this->_json(['error' => 'Tidak ada data (atau NPWP CV belum diisi)'], 404); return; }
+        $fname = sprintf('PPh21 XML %02d-%d %s (semua CV).zip', $p->month, $p->year, $p->branch_name);
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="'.str_replace('"', '', $fname).'"');
+        header('Content-Length: '.filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    /** Tarif TER bulanan (tabel bersama Pph21_workbook). Batas eksklusif: > limit. */
+    private function _ter_rate($gross, $cat) {
+        $tables = Pph21_workbook::ter_tables();
+        $rate = 0;
+        foreach ($tables[$cat] as $row) {
+            if ($row[0] == 0 || $gross > $row[0]) $rate = $row[1];
+            else break;
+        }
+        return $rate;
+    }
+
+    /** Bangun MmPayrollBulk dari baris _cv_rows (format persis pelaporan Juni 2026). */
+    private function _mm_xml($meta, $rows) {
+        $premi = $meta['premi'];
+        $premi_total = $premi['jkk'] + $premi['jkm'] + $premi['kes'];
+        $last = date('Y-m-t', mktime(0, 0, 0, (int)$meta['month'], 1, (int)$meta['year']));
+        $calc = $this->pph21_np_calc;
+        $x = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+        $x .= "<MmPayrollBulk xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n";
+        $x .= "\t<TIN>".htmlspecialchars($meta['npwp'], ENT_XML1)."</TIN>\n";
+        $x .= "\t<ListOfMmPayroll>\n";
+        foreach ($rows as $e) {
+            $bruto = $e['thp'] + $e['cashbon'] + $e['insentif'] + $e['subsidi'] + $e['bonus']
+                   + (!empty($e['bpjs']) ? $premi_total : 0);
+            if ($bruto <= 0) continue; // resign/nihil: tidak ada penghasilan utk dilaporkan
+            $ptkp = $e['ptkp'] !== '' ? $e['ptkp'] : 'TK/0';
+            $cat = Pph21_workbook::ter_category($ptkp);
+            // gross-up iteratif 3 tahap — sama dgn kolom U/V/W kertas kerja
+            $t1 = $this->_ter_rate($bruto, $cat);
+            $t2 = $this->_ter_rate($bruto / (1 - $t1 / 100), $cat);
+            $rate = $this->_ter_rate($bruto / (1 - $t2 / 100), $cat);
+            $gross_up = $rate > 0 ? $bruto / (1 - $rate / 100) : $bruto;
+            $x .= "\t\t<MmPayroll>\n";
+            $x .= "\t\t\t<TaxPeriodMonth>".(int)$meta['month']."</TaxPeriodMonth>\n";
+            $x .= "\t\t\t<TaxPeriodYear>".(int)$meta['year']."</TaxPeriodYear>\n";
+            $x .= "\t\t\t<CounterpartOpt>Resident</CounterpartOpt>\n";
+            $x .= "\t\t\t<CounterpartPassport xsi:nil=\"true\"/>\n";
+            $x .= "\t\t\t<CounterpartTin>".htmlspecialchars($e['nik'], ENT_XML1)."</CounterpartTin>\n";
+            $x .= "\t\t\t<StatusTaxExemption>".htmlspecialchars($ptkp, ENT_XML1)."</StatusTaxExemption>\n";
+            $x .= "\t\t\t<Position>".htmlspecialchars((string)$e['position'], ENT_XML1)."</Position>\n";
+            $x .= "\t\t\t<TaxCertificate>N/A</TaxCertificate>\n";
+            $x .= "\t\t\t<TaxObjectCode>21-100-01</TaxObjectCode>\n";
+            $x .= "\t\t\t<Gross>".$calc->xf($gross_up)."</Gross>\n";
+            $x .= "\t\t\t<Rate>".$calc->xf($rate)."</Rate>\n";
+            $x .= "\t\t\t<IDPlaceOfBusinessActivity>".htmlspecialchars($meta['npwp'].'000000', ENT_XML1)."</IDPlaceOfBusinessActivity>\n";
+            $x .= "\t\t\t<WithholdingDate>".$last."</WithholdingDate>\n";
+            $x .= "\t\t</MmPayroll>\n";
+        }
+        $x .= "\t</ListOfMmPayroll>\n";
+        $x .= "</MmPayrollBulk>\n";
+        return $x;
+    }
 
     private function _payroll($pid) {
         return $this->db->select('p.id, p.month, p.year, p.branch_id, b.branch_name')

@@ -313,6 +313,8 @@ $route['pph21_export/cvs']        = 'Pph21Export/cvs';
 $route['pph21_export/export']     = 'Pph21Export/export';
 $route['pph21_export/export_all'] = 'Pph21Export/export_all';
 $route['pph21_export/export_combined'] = 'Pph21Export/export_combined';
+$route['pph21_export/export_xml']      = 'Pph21Export/export_xml';
+$route['pph21_export/export_xml_all']  = 'Pph21Export/export_xml_all';
 
 // PPh21 pegawai tidak tetap & tenaga ahli (import per masa, XML Bp21Bulk gabungan)
 $route['pph21_nonpegawai/refs']           = 'Pph21Nonpegawai/refs';

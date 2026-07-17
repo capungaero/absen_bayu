@@ -43,6 +43,7 @@
       <div style="flex:0 0 auto; align-self:end;">
         <a class="btn" id="zipBtn" href="#">⬇ Download Semua CV (ZIP)</a>
         <a class="btn" id="combBtn" href="#" style="background:#1e9e63;">⬇ Semua CV (1 File Excel)</a>
+        <a class="btn" id="xmlZipBtn" href="#" style="background:#8e44ad;">⬇ XML Semua CV (ZIP)</a>
       </div>
     </div>
     <div id="status">Memuat periode…</div>
@@ -83,25 +84,67 @@ async function loadPeriods() {
   } catch (e) { $('#status').textContent = 'Gagal memuat: ' + e.message; }
 }
 
+// Label 4 kolom isian manual (tools Input Manual PPh21) utk warning XML.
+const MANUAL_COLS = [
+  ['tunjangan', 'Uang Jalan Kanvas'],
+  ['insentif', 'Uang Konsumsi / Insentif Lain'],
+  ['subsidi', 'Subsidi Pajak / Lembur'],
+  ['bonus', 'Bonus / THR'],
+];
+let cvList = [];
+
+function emptyCols(c) {
+  const m = c.manual || {};
+  return MANUAL_COLS.filter(([k]) => !(m[k] > 0)).map(([, label]) => label);
+}
+
+// Warning sebelum download XML bila ada kolom manual yang masih kosong.
+function confirmXml(cvs) {
+  const problems = cvs.map(c => ({ name: c.subdivision_name, cols: emptyCols(c) }))
+                      .filter(p => p.cols.length);
+  if (!problems.length) return true;
+  const detail = problems.map(p =>
+    ` • ${p.name}: ${p.cols.length === MANUAL_COLS.length ? 'SEMUA kolom manual kosong' : p.cols.join(', ')}`).join('\n');
+  return confirm(
+    'PERHATIAN — data Input Manual PPh21 belum lengkap:\n\n' + detail +
+    '\n\nKolom di atas belum ada nilainya untuk periode ini, sehingga bruto & PPh 21 ' +
+    'pada XML yang dibuat kemungkinan TIDAK AKURAT.\n' +
+    'Isi dulu lewat Tools > Input Manual PPh21, atau lanjutkan bila memang tidak ada datanya.\n\n' +
+    'Tetap download XML?');
+}
+
 async function loadCvs() {
   const pid = $('#period').value;
   $('#status').textContent = 'Memuat daftar CV…';
   $('#tbl').style.display = 'none';
   $('#zipBtn').href = `${API}/export_all?payroll_id=${pid}`;
   $('#combBtn').href = `${API}/export_combined?payroll_id=${pid}`;
+  $('#xmlZipBtn').href = `${API}/export_xml_all?payroll_id=${pid}`;
   try {
     const d = await jget(`${API}/cvs?payroll_id=${pid}`);
-    $('#tbody').innerHTML = d.cvs.map(c => `
+    cvList = d.cvs;
+    $('#tbody').innerHTML = d.cvs.map((c, i) => `
       <tr>
         <td>${c.subdivision_name}</td>
         <td>${c.n} aktif${c.roster ? ` <span class="muted">/ roster ${c.roster}</span>` : ''}</td>
         <td>${c.npwp ? c.npwp : '<span class="npwp-missing">belum diisi (config)</span>'}</td>
-        <td><a class="btn gray" href="${API}/export?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ Excel</a></td>
+        <td>
+          <a class="btn gray" href="${API}/export?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ Excel</a>
+          <a class="btn" style="background:#8e44ad;" data-xml="${i}" href="${API}/export_xml?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ XML</a>
+        </td>
       </tr>`).join('');
+    $('#tbody').querySelectorAll('a[data-xml]').forEach(a => {
+      a.addEventListener('click', (ev) => {
+        if (!confirmXml([cvList[+a.dataset.xml]])) ev.preventDefault();
+      });
+    });
     $('#tbl').style.display = '';
     $('#status').textContent = `${d.cvs.length} CV pada periode ini.`;
   } catch (e) { $('#status').textContent = 'Gagal memuat: ' + e.message; }
 }
+$('#xmlZipBtn').addEventListener('click', (ev) => {
+  if (!confirmXml(cvList)) ev.preventDefault();
+});
 loadPeriods();
 </script>
 </body>
