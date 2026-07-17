@@ -103,8 +103,9 @@
 
                     <div class="col-md-12">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">No KK</label>
-                            <input type="text" autocomplete="off" placeholder="No KK" class="form-control" name="npwp_number">
+                            <label class="form-label" for="formrow-password-input">NIK / NPWP (untuk pajak)</label>
+                            <input type="text" autocomplete="off" placeholder="16 digit NIK atau 15 digit NPWP" class="form-control" name="npwp_number" pattern="[0-9]{15,16}" maxlength="16" title="Isi 16 digit NIK atau 15 digit NPWP (dipakai bukti potong PPh21)">
+                            <small class="text-muted">Dipakai laporan pajak (bukti potong Coretax). Kosongkan bila sama dengan NIK di atas — akan diisi otomatis.</small>
                         </div>
                     </div>
 
@@ -315,8 +316,9 @@
 
                     <div class="col-md-12">
                         <div class="mb-3">
-                            <label class="form-label" for="formrow-password-input">No KK</label>
-                            <input type="text" id="npwp_number" autocomplete="off" placeholder="No KK" class="form-control" name="npwp_number">
+                            <label class="form-label" for="formrow-password-input">NIK / NPWP (untuk pajak)</label>
+                            <input type="text" id="npwp_number" autocomplete="off" placeholder="16 digit NIK atau 15 digit NPWP" class="form-control" name="npwp_number" pattern="[0-9]{15,16}" maxlength="16" title="Isi 16 digit NIK atau 15 digit NPWP (dipakai bukti potong PPh21)">
+                            <small class="text-muted">Dipakai laporan pajak (bukti potong Coretax). Kosongkan bila sama dengan NIK di atas — akan diisi otomatis.</small>
                         </div>
                     </div>
 

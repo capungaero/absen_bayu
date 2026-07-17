@@ -69,6 +69,25 @@ class Employee extends CI_Controller{
 		}
 	}
 
+	// users.npwp_number dibaca semua tool PPh21 (Pph21Export, Pph21Manual) sebagai
+	// NIK/NPWP 15-16 digit untuk bukti potong Coretax. Field ini dulu berlabel
+	// "No KK" di form sehingga sering dikosongkan dan karyawan hilang dari laporan
+	// pajak (kasus user 1537, Jul 2026). Kalau kosong tapi NIK (contract_number)
+	// berpola 16 digit, salin otomatis.
+	private function _fill_npwp_from_nik(&$p){
+		$has  = array_key_exists('npwp_number', $p);
+		$npwp = $has ? preg_replace('/[\s.\-]/', '', trim((string) $p['npwp_number'])) : '';
+		if($npwp === ''){
+			$nik = isset($p['contract_number']) ? preg_replace('/\s+/', '', trim((string) $p['contract_number'])) : '';
+			if(preg_match('/^[0-9]{16}$/', $nik)){
+				$npwp = $nik;
+			}
+		}
+		if($has || $npwp !== ''){
+			$p['npwp_number'] = $npwp;
+		}
+	}
+
 	public function insert(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			$res = ['status' => false, 'message' => 'Terjadi kesalahan'];
@@ -81,6 +100,8 @@ class Employee extends CI_Controller{
 			if($p['salary_minimum'] != ''){
 				$p['salary_minimum'] = format_angka($p['salary_minimum']);
 			}
+
+			$this->_fill_npwp_from_nik($p);
 
 			$this->form_validation->set_data($p);
 
@@ -112,6 +133,7 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_rules('account_number', 'Nomor Rekening', 'required|numeric');
 			$this->form_validation->set_rules('account_bank', 'Nama Bank', 'required');
 			$this->form_validation->set_rules('account_name', 'Pemilik Rekening', 'required');
+			$this->form_validation->set_rules('npwp_number', 'NIK / NPWP (untuk pajak)', 'regex_match[/^[0-9]{15,16}$/]');
 
 			if($this->form_validation->run() == TRUE){
 				$unique = [
@@ -242,6 +264,8 @@ class Employee extends CI_Controller{
 				$p['salary_minimum'] = format_angka($p['salary_minimum']);
 			}
 
+			$this->_fill_npwp_from_nik($p);
+
 			$this->form_validation->set_data($p);
 
 			if($p['salary_minimum'] != ''){
@@ -253,7 +277,7 @@ class Employee extends CI_Controller{
 			}else{
 				$p['status_work_expiration'] = null;
 			}
-			
+
 			$this->form_validation->set_rules('first_name', 'Nama mitra kerja', 'required');
 			$this->form_validation->set_rules('employee_code', 'Kode mitra kerja', 'required');
 			$this->form_validation->set_rules('phone', 'Kontak', 'required');
@@ -275,10 +299,11 @@ class Employee extends CI_Controller{
 			$this->form_validation->set_rules('account_number', 'Nomor Rekening', 'required|numeric');
 			$this->form_validation->set_rules('account_bank', 'Nama Bank', 'required');
 			$this->form_validation->set_rules('account_name', 'Pemilik Rekening', 'required');
+			$this->form_validation->set_rules('npwp_number', 'NIK / NPWP (untuk pajak)', 'regex_match[/^[0-9]{15,16}$/]');
 
 			if($this->form_validation->run() == TRUE){
 				$unique = [
-					'employee_code' => 'NIK', 
+					'employee_code' => 'NIK',
 					'email' 	 	=> 'Email',
 					'phone' 		=> 'Nomor Handphone',
 					'account_number'=> 'Nomor Rekening'
@@ -602,6 +627,8 @@ class Employee extends CI_Controller{
 			    		'access'		  => $row[20],
 			    		'location'	  => isset($row[21]) ? $row[21] : null
 			    	];
+
+			    	$this->_fill_npwp_from_nik($data_raw);
 
 			    	$data[] = $data_raw;
 			    	$this->form_validation->set_data($data_raw);
