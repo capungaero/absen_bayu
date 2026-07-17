@@ -98,7 +98,9 @@ class Pph21_workbook {
             'Dihasilkan otomatis oleh tools Export PPh21 (aplikasi absensi).',
             '',
             'KOLOM TERISI OTOMATIS DARI DATABASE:',
-            ' - DATA UMUM: nama, jabatan, NIK (users.npwp_number), status PTKP (users.ptkp_status).',
+            ' - DATA UMUM: nama, jabatan, NIK (users.npwp_number), status PTKP (users.ptkp_status),',
+            '   masa kerja (kolom G/H) dari tanggal mulai kerja (users.join_date) dan bulan nonaktif',
+            '   tahun berjalan (users.last_status saat dinonaktifkan) — masa perolehan penghasilan PMK 168/2023.',
             ' - Gaji Pokok  = THP final e-absensi (payroll_detail.salary_thp).',
             ' - Tunjangan/Cash Bon = potongan CASHBON + PIUTANG KANVAS (pinjaman, penambah bruto)',
             '   + uang jalan kanvas dari tools Input Manual PPh21 (bila sudah diisi).',
@@ -145,8 +147,11 @@ class Pph21_workbook {
             $ws->setCellValueExplicit($this->xy(4, $r), (string)$e['nik'], DataType::TYPE_STRING);
             $ws->setCellValue($this->xy(5, $r), "=IF(D{$r}>0,1,0)");
             $ws->setCellValue($this->xy(6, $r), $e['ptkp'] !== '' ? $e['ptkp'] : 'TK/0');
-            $ws->setCellValueExplicit($this->xy(7, $r), '01', DataType::TYPE_STRING);
-            $ws->setCellValueExplicit($this->xy(8, $r), '12', DataType::TYPE_STRING);
+            // masa perolehan penghasilan aktual (join/resign tahun berjalan) — PMK 168/2023
+            $ma = isset($e['masa_awal'])  ? (int)$e['masa_awal']  : 1;
+            $mk = isset($e['masa_akhir']) ? (int)$e['masa_akhir'] : 12;
+            $ws->setCellValueExplicit($this->xy(7, $r), sprintf('%02d', $ma), DataType::TYPE_STRING);
+            $ws->setCellValueExplicit($this->xy(8, $r), sprintf('%02d', $mk), DataType::TYPE_STRING);
             $ws->setCellValue($this->xy(9, $r), "=(H{$r}-G{$r})+1");
             $r++;
         }
@@ -283,7 +288,9 @@ class Pph21_workbook {
                 $ws->setCellValue($this->xy(4, $r), $meta['penempatan']);
                 $ws->setCellValueExplicit($this->xy(5, $r), (string)$e['nik'], DataType::TYPE_STRING);
                 $ws->setCellValue($this->xy(6, $r), $e['ptkp'] !== '' ? $e['ptkp'] : 'TK/0');
-                $ws->setCellValue($this->xy(7, $r), 12);
+                $ws->setCellValue($this->xy(7, $r),
+                    (isset($e['masa_akhir']) ? (int)$e['masa_akhir'] : 12)
+                    - (isset($e['masa_awal']) ? (int)$e['masa_awal'] : 1) + 1);
                 $ws->setCellValue($this->xy(8, $r), round($e['thp'], 2));
                 if ($e['cashbon'] > 0) $ws->setCellValue($this->xy(9, $r), round($e['cashbon'], 2));
                 if (!empty($e['insentif'])) $ws->setCellValue($this->xy(10, $r), round($e['insentif'], 2));

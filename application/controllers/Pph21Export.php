@@ -318,7 +318,8 @@ class Pph21Export extends CI_Controller {
     private function _cv_rows($pid, $p, $sid) {
         $emps = $this->db->select("pd.user_id, TRIM(CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,''))) AS name,
                 COALESCE(pos.position_name, '') AS position, COALESCE(u.npwp_number, '') AS nik,
-                COALESCE(u.ptkp_status, '') AS ptkp, pd.salary_thp, COALESCE(s.subdivision_name,'') AS cv", false)
+                COALESCE(u.ptkp_status, '') AS ptkp, pd.salary_thp, COALESCE(s.subdivision_name,'') AS cv,
+                u.join_date, u.active, u.last_status", false)
             ->from('payroll_detail pd')
             ->join('users u', 'u.id = pd.user_id')
             ->join('position pos', 'pos.id = u.position_id', 'left')
@@ -332,6 +333,16 @@ class Pph21Export extends CI_Controller {
             ->order_by('sort_order')->get()->result_array();
         if (!$emps && !$roster) return ['meta' => [], 'rows' => []];
 
+        // tanggal join/resign utk baris roster yang tidak ada di payroll bulan ini
+        $ru = [];
+        $roster_uids = array_filter(array_column($roster, 'user_id'));
+        if ($roster_uids) {
+            foreach ($this->db->select('id, join_date, active, last_status')->from('users')
+                     ->where_in('id', $roster_uids)->get()->result_array() as $u) {
+                $ru[(int)$u['id']] = $u;
+            }
+        }
+
         $uids = array_column($emps, 'user_id');
         $addback = $this->_ded_sums($p, $uids, $this->config->item('pph21_addback_deductions'));
         $bpjs    = $this->_ded_sums($p, $uids, $this->config->item('pph21_bpjs_markers'));
@@ -342,9 +353,10 @@ class Pph21Export extends CI_Controller {
             $by_uid[$e['user_id']] = $i;
             $by_key[$this->_norm($e['name'])] = $i;
         }
-        $mkrow = function ($e) use ($addback, $bpjs, $manual) {
+        $mkrow = function ($e) use ($addback, $bpjs, $manual, $p) {
             $uid = $e['user_id'];
             $m = isset($manual[$uid]) ? $manual[$uid] : null;
+            list($ma, $mk) = $this->_masa($p->year, $e['join_date'], $e['active'], $e['last_status']);
             return [
                 'name'     => $e['name'],
                 'position' => $e['position'],
@@ -357,6 +369,8 @@ class Pph21Export extends CI_Controller {
                 'subsidi'  => $m ? (float)$m->subsidi : 0.0,
                 'bonus'    => $m ? (float)$m->bonus : 0.0,
                 'bpjs'     => !empty($bpjs[$uid]),
+                'masa_awal'  => $ma,
+                'masa_akhir' => $mk,
             ];
         };
 
@@ -379,11 +393,16 @@ class Pph21Export extends CI_Controller {
                     $used[$i] = true;
                 } else {
                     // resign / tidak ada di payroll bulan ini → baris nihil (tetap dilaporkan)
+                    $u = $rr['user_id'] !== null && isset($ru[(int)$rr['user_id']]) ? $ru[(int)$rr['user_id']] : null;
+                    list($ma, $mk) = $u
+                        ? $this->_masa($p->year, $u['join_date'], $u['active'], $u['last_status'])
+                        : [1, 12];
                     $rows[] = [
                         'name' => $rr['name'], 'position' => $rr['position'],
                         'nik' => preg_replace('/\D/', '', $rr['nik']),
                         'ptkp' => '', 'thp' => 0.0, 'cashbon' => 0.0,
                         'insentif' => 0.0, 'subsidi' => 0.0, 'bonus' => 0.0, 'bpjs' => false,
+                        'masa_awal' => $ma, 'masa_akhir' => $mk,
                     ];
                 }
             }
@@ -417,6 +436,25 @@ class Pph21Export extends CI_Controller {
 
     private function _norm($s) {
         return preg_replace('/[^A-Z]/', '', strtoupper((string)$s));
+    }
+
+    /**
+     * Masa perolehan penghasilan [bulan awal, bulan akhir] dlm tahun pajak
+     * (PMK 168/2023, contoh Buku DJP hal. 65 & 68): awal = bulan join bila
+     * join_date di tahun pajak ini, selain itu 01; akhir = bulan nonaktif
+     * (users.last_status saat active=0) bila di tahun pajak ini, selain itu 12.
+     */
+    private function _masa($year, $join_date, $active, $last_status) {
+        $awal = 1;
+        if ($join_date && (int)substr($join_date, 0, 4) === (int)$year) {
+            $awal = max(1, min(12, (int)substr($join_date, 5, 2)));
+        }
+        $akhir = 12;
+        if ((string)$active === '0' && $last_status && (int)substr($last_status, 0, 4) === (int)$year) {
+            $akhir = max(1, min(12, (int)substr($last_status, 5, 2)));
+        }
+        if ($akhir < $awal) $akhir = $awal;
+        return [$awal, $akhir];
     }
 
     private function _roster_insert($p, $sid, $e, $order) {
