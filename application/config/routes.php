@@ -316,6 +316,10 @@ $route['pph21_export/export_combined'] = 'Pph21Export/export_combined';
 $route['pph21_export/export_xml']      = 'Pph21Export/export_xml';
 $route['pph21_export/export_xml_all']  = 'Pph21Export/export_xml_all';
 
+// PPh21 masa pajak terakhir (penghitungan ulang tahunan Ps.17 — PMK 168/2023)
+$route['pph21_final/export']     = 'Pph21Final/export';
+$route['pph21_final/export_all'] = 'Pph21Final/export_all';
+
 // PPh21 pegawai tidak tetap & tenaga ahli (import per masa, XML Bp21Bulk gabungan)
 $route['pph21_nonpegawai/refs']           = 'Pph21Nonpegawai/refs';
 $route['pph21_nonpegawai/data']           = 'Pph21Nonpegawai/data';

@@ -44,6 +44,7 @@
         <a class="btn" id="zipBtn" href="#">⬇ Download Semua CV (ZIP)</a>
         <a class="btn" id="combBtn" href="#" style="background:#1e9e63;">⬇ Semua CV (1 File Excel)</a>
         <a class="btn" id="xmlZipBtn" href="#" style="background:#8e44ad;">⬇ XML Semua CV (ZIP)</a>
+        <a class="btn" id="finalZipBtn" href="#" style="background:#d35400;" title="Penghitungan ulang tahunan tarif Ps.17 — Desember utk semua karyawan aktif, bulan lain utk karyawan resign bulan itu">⬇ Masa Pajak Terakhir (ZIP)</a>
       </div>
     </div>
     <div id="status">Memuat periode…</div>
@@ -60,11 +61,16 @@
     <a href="../pph21_manual/index.html" target="_blank">Tools &gt; Input Manual PPh21</a> sebelum export —
     nilainya otomatis mengisi kolom terkait. Bila belum diisi, kolom tetap kosong dan bisa diisi langsung di Excel.
     Tarif TER &amp; gross-up (termasuk iterasi SOP) menghitung ulang otomatis; pastikan kolom <b>Cek</b> dan <b>Cek Tarif GU</b> = 0.<br>
-    Nilai premi BPJS &amp; NPWP per CV diatur di <code>application/config/pph21_export.php</code>.
+    Nilai premi BPJS &amp; NPWP per CV diatur di <code>application/config/pph21_export.php</code>.<br>
+    <b>Masa Pajak Terakhir (MPT):</b> penghitungan ulang setahun dengan tarif Ps. 17 (PMK 168/2023) —
+    pilih periode <b>Desember</b> untuk semua karyawan aktif, atau bulan lain untuk karyawan yang
+    resign/nonaktif bulan itu. PPh negatif = lebih potong, dikembalikan ke karyawan. Pastikan payroll
+    &amp; Input Manual seluruh bulan tahun berjalan sudah final sebelum export.
   </div>
 </div>
 <script>
 const API = '../../pph21_export';
+const FINAL = '../../pph21_final';
 const $ = (s) => document.querySelector(s);
 
 async function jget(url) {
@@ -120,6 +126,7 @@ async function loadCvs() {
   $('#zipBtn').href = `${API}/export_all?payroll_id=${pid}`;
   $('#combBtn').href = `${API}/export_combined?payroll_id=${pid}`;
   $('#xmlZipBtn').href = `${API}/export_xml_all?payroll_id=${pid}`;
+  $('#finalZipBtn').href = `${FINAL}/export_all?payroll_id=${pid}`;
   try {
     const d = await jget(`${API}/cvs?payroll_id=${pid}`);
     cvList = d.cvs;
@@ -131,6 +138,7 @@ async function loadCvs() {
         <td>
           <a class="btn gray" href="${API}/export?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ Excel</a>
           <a class="btn" style="background:#8e44ad;" data-xml="${i}" href="${API}/export_xml?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ XML</a>
+          <a class="btn" style="background:#d35400;" title="Kertas kerja masa pajak terakhir (Ps.17 setahun)" href="${FINAL}/export?payroll_id=${pid}&subdivision_id=${c.id ?? 0}">⬇ MPT</a>
         </td>
       </tr>`).join('');
     $('#tbody').querySelectorAll('a[data-xml]').forEach(a => {
