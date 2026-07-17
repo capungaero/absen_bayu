@@ -279,8 +279,8 @@ Status setelah sampel Juni 2026 diterima (17 Jul 2026):
 7. Rekap gabungan per CV (tetap + TT + tenaga ahli) di sheet RINCIAN / halaman rekap.
 8. Deploy (pola scp + backup), commit, catat di memory.
 
-Sampel acuan disimpan user di `D:\Downloads\06 Juni - PPH21 TDK TETAP CV Brilliant.{xml,xlsx}`
-(+ `06 Juni - PPH21 CV Brilliant.{xml,xlsx}` utk pegawai tetap) — salin ke folder
-kerja sebelum mulai implementasi agar tidak hilang.
+Sampel acuan tersimpan di `E:\VIBECODING\PAJAK_TIFFANY\sample_coretax\`
+(`06 Juni - PPH21 TDK TETAP CV Brilliant.{xml,xlsx}` + versi pegawai tetap) —
+berisi NIK, jangan masukkan ke repo git.
 
 Estimasi: Fase 1+2 ± 1 sesi kerja (gate XML sudah terjawab).
