@@ -375,6 +375,7 @@
                                             <a href="<?= base_url('tools/dat_reader/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-clock-check-outline"></i> DAT Reader</a>
                                             <a href="<?= base_url('tools/pph21_export/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Export PPh21</a>
                                             <a href="<?= base_url('tools/pph21_manual/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-table-edit"></i> Input Manual PPh21</a>
+                                            <a href="<?= base_url('tools/pph21_nonpegawai/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-account-clock"></i> PPh21 Tidak Tetap &amp; Tenaga Ahli</a>
                                         </div>
                                     </li>
                                 <?php } ?>

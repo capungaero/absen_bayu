@@ -50,6 +50,19 @@ class Pph21_workbook {
         [95600000,24],[110000000,25],[134000000,26],[169000000,27],[221000000,28],
         [390000000,29],[463000000,30],[561000000,31],[709000000,32],[965000000,33],[1419000000,34]];
 
+    /** Tabel TER bulanan utk dipakai library lain (mis. Pph21_np_calc). */
+    public static function ter_tables() {
+        return ['A' => self::$TER_A, 'B' => self::$TER_B, 'C' => self::$TER_C];
+    }
+
+    /** Kategori TER dari status PTKP — logika sama dgn ter_formula(). */
+    public static function ter_category($ptkp) {
+        $p = strtoupper(str_replace(' ', '', (string)$ptkp));
+        if (in_array($p, ['TK/0', 'TK/1', 'K/0'])) return 'A';
+        if ($p === 'K/3') return 'C';
+        return 'B';
+    }
+
     /**
      * Bangun workbook satu CV.
      *

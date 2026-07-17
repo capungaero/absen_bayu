@@ -314,6 +314,16 @@ $route['pph21_export/export']     = 'Pph21Export/export';
 $route['pph21_export/export_all'] = 'Pph21Export/export_all';
 $route['pph21_export/export_combined'] = 'Pph21Export/export_combined';
 
+// PPh21 pegawai tidak tetap & tenaga ahli (import per masa, XML Bp21Bulk gabungan)
+$route['pph21_nonpegawai/refs']           = 'Pph21Nonpegawai/refs';
+$route['pph21_nonpegawai/data']           = 'Pph21Nonpegawai/data';
+$route['pph21_nonpegawai/template']       = 'Pph21Nonpegawai/template';
+$route['pph21_nonpegawai/import']         = 'Pph21Nonpegawai/import';
+$route['pph21_nonpegawai/save']           = 'Pph21Nonpegawai/save';
+$route['pph21_nonpegawai/export_excel']   = 'Pph21Nonpegawai/export_excel';
+$route['pph21_nonpegawai/export_xml']     = 'Pph21Nonpegawai/export_xml';
+$route['pph21_nonpegawai/export_xml_all'] = 'Pph21Nonpegawai/export_xml_all';
+
 // Input Manual PPh21 (4 kolom isian manual kertas kerja, auth via CI3 session)
 $route['pph21_manual/periods']   = 'Pph21Manual/periods';
 $route['pph21_manual/employees'] = 'Pph21Manual/employees';

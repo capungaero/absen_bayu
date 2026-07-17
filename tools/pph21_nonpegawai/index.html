@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PPh 21 Tidak Tetap & Tenaga Ahli — Tiffany Houseware</title>
+<style>
+  :root { --b:#2c7be5; --bg:#f5f7fa; --card:#fff; --tx:#1e2a3a; --mut:#6b7a90; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--tx); }
+  .wrap { max-width:1240px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:20px; }
+  .card { background:var(--card); border-radius:10px; padding:20px; box-shadow:0 1px 4px rgba(20,40,80,.08); margin-bottom:16px; }
+  label { font-size:12px; font-weight:600; color:var(--mut); display:block; margin-bottom:4px; }
+  select { padding:9px 10px; border:1px solid #d5dce6; border-radius:8px; font-size:14px; background:#fff; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; align-items:end; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid #eef1f6; white-space:nowrap; }
+  th { font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.03em; position:sticky; top:0; background:var(--card); }
+  td.num { text-align:right; }
+  td.cv { background:#eef3fb; font-weight:600; }
+  tr.warn td { background:#fff6e5; }
+  .btn { display:inline-block; padding:8px 14px; border-radius:8px; border:0; cursor:pointer;
+         background:var(--b); color:#fff; font-size:13px; font-weight:600; text-decoration:none; }
+  .btn.gray { background:#e6ebf2; color:var(--tx); }
+  .btn.green { background:#1e9e63; }
+  .btn.sm { padding:4px 10px; font-size:12px; }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .muted { color:var(--mut); }
+  #status { font-size:13px; margin-top:8px; color:var(--mut); white-space:pre-line; }
+  #status.err { color:#c0392b; } #status.ok { color:#1e9e63; }
+  .note { font-size:12.5px; color:var(--mut); line-height:1.55; }
+  .note b { color:var(--tx); }
+  .badge { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; background:#e6ebf2; }
+  tfoot td { font-weight:700; border-top:2px solid #d5dce6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>PPh 21 Pegawai Tidak Tetap &amp; Tenaga Ahli</h1>
+  <div class="sub">Import data bulanan (komposisi bebas per CV) → hitung otomatis (TER bulanan / TER harian / Pasal 17, gross-up) → export kertas kerja Excel per CV + XML Coretax <b>Bp21Bulk</b> gabungan (tidak tetap + tenaga ahli dalam 1 file per CV).</div>
+
+  <div class="card">
+    <div class="row">
+      <div><label>Bulan</label><select id="month"></select></div>
+      <div><label>Tahun</label><select id="year"></select></div>
+      <div style="flex:0 0 auto;">
+        <a class="btn gray" id="tplBtn" href="#">⬇ Template Excel</a>
+        <button class="btn gray" id="impBtn">⬆ Import Excel</button>
+        <input type="file" id="impFile" accept=".xlsx,.xls" style="display:none;">
+        <button class="btn green" id="saveBtn" style="display:none;">💾 Simpan Hasil Import</button>
+        <a class="btn" id="zipBtn" href="#" style="display:none;">⬇ XML Semua CV (ZIP)</a>
+      </div>
+    </div>
+    <div id="status">Memuat…</div>
+    <div style="max-height:60vh; overflow:auto;">
+      <table id="tbl" style="display:none;">
+        <thead><tr>
+          <th>No</th><th>Nama</th><th>NIK</th><th>Kode Objek</th><th>PTKP</th><th>Hari</th>
+          <th>Neto Dibayar</th><th>Bruto (Gross Up)</th><th>Deemed</th><th>Tarif</th><th>PPh 21</th>
+          <th>No. Dokumen</th><th>Tgl Dok</th><th>Catatan</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+        <tfoot><tr>
+          <td colspan="6">TOTAL</td>
+          <td class="num" id="t_neto"></td><td class="num" id="t_bruto"></td><td></td><td></td>
+          <td class="num" id="t_pph"></td><td colspan="3"></td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="card note">
+    <b>Alur:</b> pilih masa → <b>⬇ Template Excel</b> (berisi dropdown kode objek/CV + data tersimpan bila ada) →
+    isi di Excel → <b>⬆ Import</b> → sistem menghitung &amp; menampilkan preview (baris bermasalah ditandai) →
+    <b>💾 Simpan</b> (mengganti seluruh data masa+CV yang sama) → tombol export Excel/XML muncul per CV.<br>
+    <b>Aturan hitung</b> (PP 58/2023, PMK 168/2023, Buku DJP 2024): kode <span class="badge">21-100-35</span> upah TT bulanan = TER bulanan (kategori PTKP);
+    <span class="badge">21-100-24</span> upah harian ≤ Rp2,5 jt/hari = 0% (≤ Rp450 rb) / 0,5%;
+    <span class="badge">21-100-07</span> tenaga ahli = 5% × 50% bruto. PPh ditanggung perusahaan — bruto di-gross-up dari neto
+    (pola pelaporan Juni 2026: Gross = neto ÷ 0,975). NPWP per CV dari <code>config/pph21_export.php</code>.
+  </div>
+</div>
+<script>
+const API = '../../pph21_nonpegawai';
+const $ = (s) => document.querySelector(s);
+let refs = null, preview = null;
+
+function setStatus(msg, cls) { const el = $('#status'); el.textContent = msg; el.className = cls || ''; }
+function fmt(n) { return (n || n === 0) ? Number(n).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : ''; }
+async function jget(url) {
+  const r = await fetch(url, { credentials: 'same-origin' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+function masaKey() { return $('#month').value + '-' + $('#year').value; }
+
+function render(rows, isPreview) {
+  const tb = $('#tbody'); tb.innerHTML = '';
+  let lastCv = null, t = { neto: 0, bruto: 0, pph: 0 }, no = 0;
+  rows.forEach(e => {
+    if (e.cv !== lastCv) {
+      lastCv = e.cv;
+      const trh = document.createElement('tr');
+      const btns = isPreview ? '' :
+        ` <a class="btn gray sm" href="${API}/export_excel?month=${$('#month').value}&year=${$('#year').value}&subdivision_id=${e.subdivision_id}">⬇ Excel</a>` +
+        ` <a class="btn sm" href="${API}/export_xml?month=${$('#month').value}&year=${$('#year').value}&subdivision_id=${e.subdivision_id}">⬇ XML</a>`;
+      trh.innerHTML = `<td class="cv" colspan="14">${e.cv}${btns}</td>`;
+      tb.appendChild(trh);
+      no = 0;
+    }
+    const warn = (e.warnings || []).join('; ');
+    const tr = document.createElement('tr');
+    if (warn) tr.className = 'warn';
+    tr.innerHTML = `<td>${++no}</td><td>${e.nama}</td><td class="muted">${e.nik}</td>` +
+      `<td>${e.kode_objek}</td><td>${e.ptkp}</td><td class="num">${e.hari_kerja > 0 ? e.hari_kerja : ''}</td>` +
+      `<td class="num">${fmt(e.neto)}</td><td class="num">${fmt(e.bruto)}</td>` +
+      `<td class="num">${e.deemed}</td><td class="num">${fmt(e.tarif)}%</td><td class="num"><b>${fmt(e.pph)}</b></td>` +
+      `<td class="muted">${e.doc_number}</td><td class="muted">${e.doc_date}</td><td>${warn || e.keterangan || ''}</td>`;
+    tb.appendChild(tr);
+    t.neto += +e.neto; t.bruto += +e.bruto; t.pph += +e.pph;
+  });
+  $('#t_neto').textContent = fmt(t.neto); $('#t_bruto').textContent = fmt(t.bruto); $('#t_pph').textContent = fmt(t.pph);
+  $('#tbl').style.display = rows.length ? '' : 'none';
+}
+
+async function loadRefs() {
+  const now = new Date();
+  $('#month').innerHTML = Array.from({length:12}, (_, i) =>
+    `<option value="${i+1}" ${i+1 === now.getMonth()+1 ? 'selected' : ''}>${String(i+1).padStart(2,'0')}</option>`).join('');
+  const y0 = now.getFullYear();
+  $('#year').innerHTML = [y0-1, y0, y0+1].map(y => `<option value="${y}" ${y === y0 ? 'selected' : ''}>${y}</option>`).join('');
+  try {
+    refs = await jget(API + '/refs');
+    $('#month').onchange = $('#year').onchange = loadData;
+    loadData();
+  } catch (e) { setStatus('Gagal memuat: ' + e.message, 'err'); }
+}
+
+async function loadData() {
+  preview = null; $('#saveBtn').style.display = 'none';
+  const m = $('#month').value, y = $('#year').value;
+  $('#tplBtn').href = `${API}/template?month=${m}&year=${y}`;
+  $('#zipBtn').href = `${API}/export_xml_all?month=${m}&year=${y}`;
+  setStatus('Memuat data tersimpan…');
+  try {
+    const d = await jget(`${API}/data?month=${m}&year=${y}`);
+    render(d.rows, false);
+    $('#zipBtn').style.display = d.rows.length ? '' : 'none';
+    setStatus(d.rows.length
+      ? `${d.rows.length} baris tersimpan utk masa ${m}/${y}. Import ulang utk merevisi (replace per CV).`
+      : `Belum ada data utk masa ${m}/${y} — download template lalu import.`);
+  } catch (e) { setStatus('Gagal memuat: ' + e.message, 'err'); }
+}
+
+async function importFile(file) {
+  const fd = new FormData();
+  fd.append('month', $('#month').value); fd.append('year', $('#year').value);
+  fd.append('file', file);
+  setStatus('Membaca & menghitung…');
+  try {
+    const r = await fetch(API + '/import', { method: 'POST', credentials: 'same-origin', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    preview = j;
+    render(j.rows, true);
+    $('#saveBtn').style.display = j.rows.length ? '' : 'none';
+    $('#zipBtn').style.display = 'none';
+    let msg = `PREVIEW: ${j.rows.length} baris terhitung — periksa lalu klik Simpan.`;
+    const nWarn = j.rows.filter(x => (x.warnings || []).length).length;
+    if (nWarn) msg += ` ${nWarn} baris ber-warning (disorot kuning).`;
+    if (j.errors.length) msg += `\nDITOLAK (${j.errors.length}):\n` + j.errors.slice(0, 10).join('\n') + (j.errors.length > 10 ? '\n…' : '');
+    setStatus(msg, j.errors.length ? 'err' : 'ok');
+  } catch (e) { setStatus('Gagal import: ' + e.message, 'err'); }
+}
+
+async function save() {
+  if (!preview || !preview.rows.length) return;
+  $('#saveBtn').disabled = true;
+  setStatus('Menyimpan…');
+  try {
+    const r = await fetch(API + '/save', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month: +$('#month').value, year: +$('#year').value, rows: preview.rows }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j.error || ('HTTP ' + r.status)) + (j.detail ? '\n' + j.detail.join('\n') : ''));
+    setStatus(`Tersimpan: ${j.saved} baris pada ${j.cvs} CV.`, 'ok');
+    loadData();
+  } catch (e) { setStatus('Gagal menyimpan: ' + e.message, 'err'); }
+  $('#saveBtn').disabled = false;
+}
+
+$('#impBtn').addEventListener('click', () => $('#impFile').click());
+$('#impFile').addEventListener('change', () => {
+  if ($('#impFile').files[0]) { importFile($('#impFile').files[0]); $('#impFile').value = ''; }
+});
+$('#saveBtn').addEventListener('click', save);
+loadRefs();
+</script>
+</body>
+</html>
