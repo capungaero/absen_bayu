@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Input Manual PPh 21 — Tiffany Houseware</title>
+<style>
+  :root { --b:#2c7be5; --bg:#f5f7fa; --card:#fff; --tx:#1e2a3a; --mut:#6b7a90; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--tx); }
+  .wrap { max-width:1180px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:20px; }
+  .card { background:var(--card); border-radius:10px; padding:20px; box-shadow:0 1px 4px rgba(20,40,80,.08); margin-bottom:16px; }
+  label { font-size:12px; font-weight:600; color:var(--mut); display:block; margin-bottom:4px; }
+  select { width:100%; padding:9px 10px; border:1px solid #d5dce6; border-radius:8px; font-size:14px; background:#fff; }
+  .row { display:flex; gap:14px; flex-wrap:wrap; align-items:end; }
+  .row > div:first-child { flex:1 1 260px; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:13.5px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid #eef1f6; }
+  th { font-size:11.5px; color:var(--mut); text-transform:uppercase; letter-spacing:.03em; position:sticky; top:0; background:var(--card); }
+  th.man { background:#fce4d6; color:#8a4b20; }
+  td.cv { background:#eef3fb; font-weight:600; }
+  td input { width:110px; padding:5px 7px; border:1px solid #d5dce6; border-radius:6px; font-size:13px; text-align:right; }
+  td input.filled { background:#fff8e6; border-color:#e5c15a; }
+  .btn { display:inline-block; padding:8px 14px; border-radius:8px; border:0; cursor:pointer;
+         background:var(--b); color:#fff; font-size:13px; font-weight:600; text-decoration:none; }
+  .btn.gray { background:#e6ebf2; color:var(--tx); }
+  .btn.green { background:#1e9e63; }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .muted { color:var(--mut); }
+  #status { font-size:13px; margin-top:8px; color:var(--mut); }
+  #status.err { color:#c0392b; }
+  #status.ok { color:#1e9e63; }
+  .note { font-size:12.5px; color:var(--mut); line-height:1.55; }
+  .note b { color:var(--tx); }
+  tfoot td { font-weight:700; border-top:2px solid #d5dce6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Input Data Manual PPh 21</h1>
+  <div class="sub">Empat kolom isian manual kertas kerja Export PPh21 (uang jalan kanvas, uang konsumsi, subsidi/lembur, bonus/THR) — isi langsung di tabel atau import dari template Excel. Nilai tersimpan otomatis terisi saat Export PPh21.</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Periode Payroll</label>
+        <select id="period"></select>
+      </div>
+      <div style="flex:0 0 auto;">
+        <a class="btn gray" id="tplBtn" href="#">⬇ Template Excel</a>
+        <button class="btn gray" id="impBtn">⬆ Import Excel</button>
+        <input type="file" id="impFile" accept=".xlsx,.xls" style="display:none;">
+        <button class="btn green" id="saveBtn">💾 Simpan</button>
+      </div>
+    </div>
+    <div id="status">Memuat periode…</div>
+    <div style="max-height:62vh; overflow:auto;">
+      <table id="tbl" style="display:none;">
+        <thead><tr>
+          <th>No</th><th>Nama Pegawai</th><th>NIK</th><th>Jabatan</th>
+          <th class="man">Uang Jalan Kanvas</th><th class="man">Uang Konsumsi / Insentif Lain</th>
+          <th class="man">Subsidi Pajak / Lembur</th><th class="man">Bonus / THR</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+        <tfoot><tr>
+          <td colspan="4">TOTAL</td>
+          <td id="t_tunjangan"></td><td id="t_insentif"></td><td id="t_subsidi"></td><td id="t_bonus"></td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="card note">
+    <b>Cara pakai:</b> pilih periode → isi angka di kolom oranye (kosong = 0) → <b>Simpan</b>. Atau
+    <b>⬇ Template Excel</b> (sudah berisi daftar karyawan &amp; nilai tersimpan) → isi di Excel →
+    <b>⬆ Import Excel</b> (pencocokan via NIK, fallback nama) → periksa hasil → <b>Simpan</b>.<br>
+    <b>Pemetaan ke kertas kerja Export PPh21:</b> Uang Jalan Kanvas → ditambahkan ke kolom
+    <i>Tunjangan/Cash Bon</i> (di atas CASHBON+PIUTANG KANVAS dari payroll); Uang Konsumsi →
+    <i>Insentif/Tunjangan Lain</i>; Subsidi/Lembur → <i>Subsidi Pajak / Lembur</i>; Bonus/THR → <i>Bonus/THR</i>.
+    Import hanya mengisi tabel di layar — data baru tersimpan setelah tombol Simpan ditekan.
+  </div>
+</div>
+<script>
+const API = '../../pph21_manual';
+const COLS = ['tunjangan', 'insentif', 'subsidi', 'bonus'];
+const $ = (s) => document.querySelector(s);
+let rows = [];
+
+function setStatus(msg, cls) { const el = $('#status'); el.textContent = msg; el.className = cls || ''; }
+
+async function jget(url) {
+  const r = await fetch(url, { credentials: 'same-origin' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+function fmt(n) { return n ? n.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''; }
+
+function markFilled(inp) { inp.classList.toggle('filled', parseFloat(inp.value) > 0); }
+
+function totals() {
+  const t = { tunjangan: 0, insentif: 0, subsidi: 0, bonus: 0 };
+  document.querySelectorAll('#tbody input').forEach(inp => {
+    t[inp.dataset.col] += parseFloat(inp.value) || 0;
+  });
+  COLS.forEach(c => { $('#t_' + c).textContent = fmt(t[c]); });
+}
+
+function render() {
+  const tb = $('#tbody');
+  tb.innerHTML = '';
+  let lastCv = null;
+  rows.forEach((e, i) => {
+    if (e.cv !== lastCv) {
+      lastCv = e.cv;
+      const trh = document.createElement('tr');
+      trh.innerHTML = `<td class="cv" colspan="8">${e.cv}</td>`;
+      tb.appendChild(trh);
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i + 1}</td><td>${e.name}</td><td class="muted">${e.nik || '-'}</td><td class="muted">${e.position || ''}</td>` +
+      COLS.map(c => `<td><input type="number" min="0" step="any" data-uid="${e.user_id}" data-col="${c}" value="${e[c] || ''}"></td>`).join('');
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp => {
+    markFilled(inp);
+    inp.addEventListener('input', () => { markFilled(inp); totals(); });
+  });
+  totals();
+  $('#tbl').style.display = '';
+}
+
+async function loadPeriods() {
+  try {
+    const d = await jget(API + '/periods');
+    const sel = $('#period');
+    sel.innerHTML = d.periods.map(p =>
+      `<option value="${p.id}">${String(p.month).padStart(2,'0')}/${p.year} — ${p.branch_name}</option>`).join('');
+    sel.onchange = loadEmployees;
+    if (d.periods.length) loadEmployees(); else setStatus('Belum ada payroll.');
+  } catch (e) { setStatus('Gagal memuat: ' + e.message, 'err'); }
+}
+
+async function loadEmployees() {
+  const pid = $('#period').value;
+  $('#tplBtn').href = `${API}/template?payroll_id=${pid}`;
+  $('#tbl').style.display = 'none';
+  setStatus('Memuat daftar karyawan…');
+  try {
+    const d = await jget(`${API}/employees?payroll_id=${pid}`);
+    rows = d.rows;
+    render();
+    setStatus(`${rows.length} karyawan. Nilai tersimpan dimuat — edit lalu Simpan.`);
+  } catch (e) { setStatus('Gagal memuat: ' + e.message, 'err'); }
+}
+
+async function save() {
+  const pid = $('#period').value;
+  const data = {};
+  document.querySelectorAll('#tbody input').forEach(inp => {
+    const uid = inp.dataset.uid;
+    (data[uid] = data[uid] || { user_id: +uid })[inp.dataset.col] = parseFloat(inp.value) || 0;
+  });
+  $('#saveBtn').disabled = true;
+  setStatus('Menyimpan…');
+  try {
+    const r = await fetch(API + '/save', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payroll_id: +pid, rows: Object.values(data) }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    setStatus(`Tersimpan: ${j.saved} karyawan bernilai, ${j.removed} dikosongkan.` +
+      (j.skipped ? ` ${j.skipped} dilewati (bukan karyawan payroll ini).` : ''), 'ok');
+  } catch (e) { setStatus('Gagal menyimpan: ' + e.message, 'err'); }
+  $('#saveBtn').disabled = false;
+}
+
+async function importFile(file) {
+  const pid = $('#period').value;
+  const fd = new FormData();
+  fd.append('payroll_id', pid);
+  fd.append('file', file);
+  setStatus('Membaca file…');
+  try {
+    const r = await fetch(API + '/import', { method: 'POST', credentials: 'same-origin', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    const byUid = {};
+    j.rows.forEach(x => { byUid[x.user_id] = x; });
+    document.querySelectorAll('#tbody input').forEach(inp => {
+      const m = byUid[inp.dataset.uid];
+      if (m) { inp.value = m[inp.dataset.col] || ''; markFilled(inp); }
+    });
+    totals();
+    let msg = `Import: ${j.matched} baris cocok — periksa lalu klik Simpan.`;
+    if (j.unmatched.length) msg += ` TIDAK COCOK (${j.unmatched.length}): ${j.unmatched.slice(0, 8).join(', ')}${j.unmatched.length > 8 ? '…' : ''}`;
+    setStatus(msg, j.unmatched.length ? 'err' : 'ok');
+  } catch (e) { setStatus('Gagal import: ' + e.message, 'err'); }
+}
+
+$('#saveBtn').addEventListener('click', save);
+$('#impBtn').addEventListener('click', () => $('#impFile').click());
+$('#impFile').addEventListener('change', () => {
+  if ($('#impFile').files[0]) { importFile($('#impFile').files[0]); $('#impFile').value = ''; }
+});
+loadPeriods();
+</script>
+</body>
+</html>

@@ -475,6 +475,7 @@ $config['csrf_exclude_uris'] = array(
     'payroll_sim/(.*)', // Payroll simulator: read-only, auth via session ion_auth
     'payroll_import/(.*)', // Payroll importer: SPA same-origin, auth via session ion_auth + role check
     'dat_reader/(.*)',  // DAT reader: SPA same-origin, auth via session ion_auth + role check
+    'pph21_manual/(.*)', // Input manual PPh21: SPA same-origin, auth via session ion_auth + role check
 );
 
 /*

@@ -314,6 +314,13 @@ $route['pph21_export/export']     = 'Pph21Export/export';
 $route['pph21_export/export_all'] = 'Pph21Export/export_all';
 $route['pph21_export/export_combined'] = 'Pph21Export/export_combined';
 
+// Input Manual PPh21 (4 kolom isian manual kertas kerja, auth via CI3 session)
+$route['pph21_manual/periods']   = 'Pph21Manual/periods';
+$route['pph21_manual/employees'] = 'Pph21Manual/employees';
+$route['pph21_manual/save']      = 'Pph21Manual/save';
+$route['pph21_manual/template']  = 'Pph21Manual/template';
+$route['pph21_manual/import']    = 'Pph21Manual/import';
+
 // ============ BPJS ================
 $route['bpjs']                = 'Bpjs/index';
 $route['bpjs/config']         = 'Bpjs/config';

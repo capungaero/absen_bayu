@@ -212,21 +212,27 @@ class Pph21Export extends CI_Controller {
         $uids = array_column($emps, 'user_id');
         $addback = $this->_ded_sums($p, $uids, $this->config->item('pph21_addback_deductions'));
         $bpjs    = $this->_ded_sums($p, $uids, $this->config->item('pph21_bpjs_markers'));
+        $manual  = $this->_manual_rows($pid, $uids);
 
         $by_uid = $by_key = [];
         foreach ($emps as $i => $e) {
             $by_uid[$e['user_id']] = $i;
             $by_key[$this->_norm($e['name'])] = $i;
         }
-        $mkrow = function ($e) use ($addback, $bpjs) {
+        $mkrow = function ($e) use ($addback, $bpjs, $manual) {
             $uid = $e['user_id'];
+            $m = isset($manual[$uid]) ? $manual[$uid] : null;
             return [
                 'name'     => $e['name'],
                 'position' => $e['position'],
                 'nik'      => preg_replace('/\D/', '', $e['nik']),
                 'ptkp'     => strtoupper(str_replace(' ', '', $e['ptkp'])),
                 'thp'      => (float)$e['salary_thp'],
-                'cashbon'  => isset($addback[$uid]) ? (float)$addback[$uid] : 0.0,
+                'cashbon'  => (isset($addback[$uid]) ? (float)$addback[$uid] : 0.0)
+                              + ($m ? (float)$m->tunjangan : 0.0), // + uang jalan kanvas (input manual)
+                'insentif' => $m ? (float)$m->insentif : 0.0,
+                'subsidi'  => $m ? (float)$m->subsidi : 0.0,
+                'bonus'    => $m ? (float)$m->bonus : 0.0,
                 'bpjs'     => !empty($bpjs[$uid]),
             ];
         };
@@ -253,7 +259,8 @@ class Pph21Export extends CI_Controller {
                     $rows[] = [
                         'name' => $rr['name'], 'position' => $rr['position'],
                         'nik' => preg_replace('/\D/', '', $rr['nik']),
-                        'ptkp' => '', 'thp' => 0.0, 'cashbon' => 0.0, 'bpjs' => false,
+                        'ptkp' => '', 'thp' => 0.0, 'cashbon' => 0.0,
+                        'insentif' => 0.0, 'subsidi' => 0.0, 'bonus' => 0.0, 'bpjs' => false,
                     ];
                 }
             }
@@ -297,6 +304,17 @@ class Pph21Export extends CI_Controller {
             'position' => $e['position'], 'sort_order' => $order,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
+    }
+
+    /** Nilai input manual (tools/pph21_manual) per user utk payroll ini. */
+    private function _manual_rows($pid, $uids) {
+        if (!$uids || !$this->db->table_exists('pph21_manual')) return [];
+        $out = [];
+        foreach ($this->db->from('pph21_manual')->where('payroll_id', (int)$pid)
+                 ->where_in('user_id', $uids)->get()->result() as $m) {
+            $out[$m->user_id] = $m;
+        }
+        return $out;
     }
 
     /** SUM potongan bernama tertentu per user utk bulan payroll (keyed month/year). */

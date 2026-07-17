@@ -87,13 +87,14 @@ class Pph21_workbook {
             'KOLOM TERISI OTOMATIS DARI DATABASE:',
             ' - DATA UMUM: nama, jabatan, NIK (users.npwp_number), status PTKP (users.ptkp_status).',
             ' - Gaji Pokok  = THP final e-absensi (payroll_detail.salary_thp).',
-            ' - Tunjangan/Cash Bon = potongan CASHBON + PIUTANG KANVAS (pinjaman, penambah bruto).',
+            ' - Tunjangan/Cash Bon = potongan CASHBON + PIUTANG KANVAS (pinjaman, penambah bruto)',
+            '   + uang jalan kanvas dari tools Input Manual PPh21 (bila sudah diisi).',
+            ' - Insentif/Tunjangan Lain, Subsidi Pajak/Lembur, Bonus/THR = dari tools Input Manual PPh21.',
             ' - JKK/JKM/BPJS KES = premi dibayar perusahaan, terisi utk karyawan yg bulan ini punya potongan BPJS.',
             '',
-            'KOLOM DIISI MANUAL (rumus menghitung ulang otomatis):',
-            ' - Tunjangan/Cash Bon: TAMBAHKAN uang jalan kanvas (data di luar absensi) bila ada.',
-            ' - Insentif/Tunjangan Lain: uang konsumsi (jurnal 620017, di luar absensi).',
-            ' - Subsidi Pajak/Lembur dan Bonus/THR bila ada.',
+            'DATA DI LUAR ABSENSI (uang jalan kanvas, uang konsumsi jurnal 620017, subsidi/lembur, bonus/THR)',
+            'diinput lewat menu Tools > Input Manual PPh21 (manual atau import template Excel) SEBELUM export;',
+            'bila belum diisi, kolomnya kosong dan tetap bisa diisi langsung di Excel (rumus menghitung ulang otomatis).',
             '',
             'TARIF TER: otomatis (VLOOKUP ke sheet TER, PP 58/2023) TERMASUK iterasi gross-up SOP',
             '(3 tahap, kolom bantu U-W tersembunyi). Kolom "Cek" dan "Cek Tarif GU" harus 0.',
@@ -179,7 +180,10 @@ class Pph21_workbook {
             $ws->setCellValue($this->xy(5, $r), "='DATA UMUM'!I{$dr}");
             $ws->setCellValue($this->xy(6, $r), round($e['thp'], 2));
             if ($e['cashbon'] > 0) $ws->setCellValue($this->xy(7, $r), round($e['cashbon'], 2));
-            // H, I, J sengaja kosong (isi manual)
+            // H, I, J terisi dari tools Input Manual PPh21 (pph21_manual); kosong bila belum diisi
+            if (!empty($e['insentif'])) $ws->setCellValue($this->xy(8, $r), round($e['insentif'], 2));
+            if (!empty($e['subsidi']))  $ws->setCellValue($this->xy(9, $r), round($e['subsidi'], 2));
+            if (!empty($e['bonus']))    $ws->setCellValue($this->xy(10, $r), round($e['bonus'], 2));
             if (!empty($e['bpjs'])) {
                 $ws->setCellValue($this->xy(11, $r), $premi['jkk']);
                 $ws->setCellValue($this->xy(12, $r), $premi['jkm']);
@@ -269,6 +273,9 @@ class Pph21_workbook {
                 $ws->setCellValue($this->xy(7, $r), 12);
                 $ws->setCellValue($this->xy(8, $r), round($e['thp'], 2));
                 if ($e['cashbon'] > 0) $ws->setCellValue($this->xy(9, $r), round($e['cashbon'], 2));
+                if (!empty($e['insentif'])) $ws->setCellValue($this->xy(10, $r), round($e['insentif'], 2));
+                if (!empty($e['subsidi']))  $ws->setCellValue($this->xy(11, $r), round($e['subsidi'], 2));
+                if (!empty($e['bonus']))    $ws->setCellValue($this->xy(12, $r), round($e['bonus'], 2));
                 if (!empty($e['bpjs'])) {
                     $ws->setCellValue($this->xy(13, $r), $premi['jkk']);
                     $ws->setCellValue($this->xy(14, $r), $premi['jkm']);

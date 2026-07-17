@@ -55,9 +55,10 @@
   <div class="card note">
     <b>Kolom terisi dari database:</b> nama, jabatan, NIK, PTKP, Gaji Pokok (THP), Tunjangan/Cash Bon
     (potongan CASHBON + PIUTANG KANVAS), premi JKK/JKM/BPJS Kes perusahaan (peserta terdeteksi dari potongan BPJS bulan tsb).<br>
-    <b>Kolom diisi manual:</b> uang jalan kanvas (tambahkan ke Tunjangan/Cash Bon), uang konsumsi
-    (Insentif/Tunjangan Lain), subsidi/lembur, bonus/THR. Tarif TER &amp; gross-up (termasuk iterasi SOP)
-    menghitung ulang otomatis; pastikan kolom <b>Cek</b> dan <b>Cek Tarif GU</b> = 0.<br>
+    <b>Data di luar absensi</b> (uang jalan kanvas, uang konsumsi, subsidi/lembur, bonus/THR) diinput lewat
+    <a href="../pph21_manual/index.html" target="_blank">Tools &gt; Input Manual PPh21</a> sebelum export —
+    nilainya otomatis mengisi kolom terkait. Bila belum diisi, kolom tetap kosong dan bisa diisi langsung di Excel.
+    Tarif TER &amp; gross-up (termasuk iterasi SOP) menghitung ulang otomatis; pastikan kolom <b>Cek</b> dan <b>Cek Tarif GU</b> = 0.<br>
     Nilai premi BPJS &amp; NPWP per CV diatur di <code>application/config/pph21_export.php</code>.
   </div>
 </div>
