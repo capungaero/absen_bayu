@@ -2733,8 +2733,19 @@ class Presence extends CI_Controller{
 				//   HANYA mengisi sholat yang kolom in-nya masih kosong; nilai manual
 				//   tidak pernah ditimpa/di-clear mesin.
 				$is_manual = !in_array((string)$existing['input_by'], ['system', 'machine', ''], true);
+
+				// Sholat yang SENGAJA dikosongkan manual (presence.cleared_fields,
+				// dirawat trigger presence_provenance_bu) tidak boleh diisi ulang sync.
+				$cleared = [];
+				if(!empty($existing['cleared_fields'])){
+					$cleared = array_filter(array_map('trim', explode(',', (string)$existing['cleared_fields'])));
+				}
+
 				$update = [];
 				foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'] as $pray){
+					if(in_array($pray.'_time_in', $cleared, true)){
+						continue;
+					}
 					$p_in  = $pray_data[$pray.'_time_in'];
 					$p_out = $pray_data[$pray.'_time_out'];
 					$p_late = isset($pray_data[$pray.'_time_late']) ? (int)$pray_data[$pray.'_time_late'] : 0;

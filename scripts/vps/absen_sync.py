@@ -1016,13 +1016,21 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
         field_late = f"{col}_time_late"
 
         with conn.cursor() as cur:
-            cur.execute(f"SELECT id, input_by, {field_in} FROM presence "
+            cur.execute(f"SELECT id, input_by, cleared_fields, {field_in} FROM presence "
                         "WHERE user_id = %s AND flow_date = %s",
                         (user_id, date_str))
             existing = cur.fetchone()
 
         if not existing:
             skipped_no_presence += 1
+            continue
+
+        # Sholat yang SENGAJA dikosongkan manual (cleared_fields, dirawat trigger
+        # presence_provenance_bu) tidak boleh diisi ulang sync -- sama dgn PHP
+        # _import_pray_sheet.
+        cleared = {f.strip() for f in str(existing.get('cleared_fields') or '').split(',') if f.strip()}
+        if field_in in cleared:
+            skipped_manual += 1
             continue
 
         is_manual = str(existing.get('input_by') or '') not in ('system', 'machine', '')

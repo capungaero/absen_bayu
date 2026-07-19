@@ -136,6 +136,15 @@ Solusi: `presence.cleared_fields` (VARCHAR, daftar koma; subset dari
   kini pakai aturan anchor yang sama dgn PHP — `entry_time_late`/`rest_time_late`
   hanya diisi bila kolom jam sumbernya juga baru terisi (bug lama: late=0
   dianggap "kosong" oleh cek `int(...)==0`, sama dgn bug empty(0) PHP).
+- **Diperluas ke sholat (trigger v3, 19 Jul 2026 malam)**: 6 anchor tambahan
+  `subuh_time_in`/`dzuhur_time_in`/`ashar_time_in`/`maghrib_time_in`/
+  `isha_time_in`/`friday_time_in` — satu kolom `_time_in` per sholat sudah
+  cukup (merge sholat mengisi in+out sekaligus berdasar kekosongan in-nya,
+  lihat `_import_pray_sheet` & `sync_pray_machine`). Pembaca yang ikut
+  disesuaikan: `_import_pray_sheet` (`Presence.php`) dan
+  `absen_sync.py::sync_pray_machine`. `Wa.php` tidak menyentuh kolom sholat,
+  jadi tidak perlu diubah. Tidak perlu ALTER TABLE — kapasitas
+  `VARCHAR(191)` sudah cukup utk 10 nama kolom sekaligus.
 
 **Lock gaji di cron Python** (8 Jul 2026): `absen_sync.py` kini melewati
 cabang yang payroll periodenya sudah dikunci (`get_locked_branches` — paralel

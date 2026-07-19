@@ -49,6 +49,9 @@ END$$
 
 -- v2 (Fase 2): + perawatan & penegakan `cleared_fields` (lihat
 -- add_cleared_fields.sql — kolom tsb HARUS sudah ada sebelum trigger ini).
+-- v3 (19 Jul 2026): cakupan cleared_fields diperluas ke 6 anchor sholat
+-- (subuh/dzuhur/ashar/maghrib/isha/friday _time_in) — pengosongan sholat
+-- manual kini juga terlindungi dari refill sync, sama seperti 4 kolom kerja.
 DROP TRIGGER IF EXISTS presence_provenance_bu$$
 CREATE TRIGGER presence_provenance_bu
 BEFORE UPDATE ON presence
@@ -121,6 +124,46 @@ BEGIN
       SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',rest_time_out,', ','));
     END IF;
 
+    -- Sholat: anchor per waktu sholat = kolom {pray}_time_in (samakan dgn
+    -- konvensi merge _import_pray_sheet & absen_sync.py::sync_pray_machine
+    -- yang mengisi in+out sekaligus berdasar kekosongan in-nya saja).
+    IF OLD.subuh_time_in IS NOT NULL AND NEW.subuh_time_in IS NULL
+       AND FIND_IN_SET('subuh_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',subuh_time_in'));
+    ELSEIF NEW.subuh_time_in IS NOT NULL AND FIND_IN_SET('subuh_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',subuh_time_in,', ','));
+    END IF;
+    IF OLD.dzuhur_time_in IS NOT NULL AND NEW.dzuhur_time_in IS NULL
+       AND FIND_IN_SET('dzuhur_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',dzuhur_time_in'));
+    ELSEIF NEW.dzuhur_time_in IS NOT NULL AND FIND_IN_SET('dzuhur_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',dzuhur_time_in,', ','));
+    END IF;
+    IF OLD.ashar_time_in IS NOT NULL AND NEW.ashar_time_in IS NULL
+       AND FIND_IN_SET('ashar_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',ashar_time_in'));
+    ELSEIF NEW.ashar_time_in IS NOT NULL AND FIND_IN_SET('ashar_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',ashar_time_in,', ','));
+    END IF;
+    IF OLD.maghrib_time_in IS NOT NULL AND NEW.maghrib_time_in IS NULL
+       AND FIND_IN_SET('maghrib_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',maghrib_time_in'));
+    ELSEIF NEW.maghrib_time_in IS NOT NULL AND FIND_IN_SET('maghrib_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',maghrib_time_in,', ','));
+    END IF;
+    IF OLD.isha_time_in IS NOT NULL AND NEW.isha_time_in IS NULL
+       AND FIND_IN_SET('isha_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',isha_time_in'));
+    ELSEIF NEW.isha_time_in IS NOT NULL AND FIND_IN_SET('isha_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',isha_time_in,', ','));
+    END IF;
+    IF OLD.friday_time_in IS NOT NULL AND NEW.friday_time_in IS NULL
+       AND FIND_IN_SET('friday_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',friday_time_in'));
+    ELSEIF NEW.friday_time_in IS NOT NULL AND FIND_IN_SET('friday_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',friday_time_in,', ','));
+    END IF;
+
   ELSEIF @absen_sync_ctx = 'admin_reset' THEN
     -- Reset sengaja: baris kembali milik mesin, tanda cleared ikut dihapus.
     SET NEW.cleared_fields = '';
@@ -147,6 +190,31 @@ BEGIN
     IF FIND_IN_SET('rest_time_out', OLD.cleared_fields) > 0
        AND OLD.rest_time_out IS NULL AND NEW.rest_time_out IS NOT NULL THEN
       SET NEW.rest_time_out = NULL, NEW.rest_time_late = OLD.rest_time_late;
+    END IF;
+
+    IF FIND_IN_SET('subuh_time_in', OLD.cleared_fields) > 0
+       AND OLD.subuh_time_in IS NULL AND NEW.subuh_time_in IS NOT NULL THEN
+      SET NEW.subuh_time_in = NULL, NEW.subuh_time_out = OLD.subuh_time_out, NEW.subuh_time_late = OLD.subuh_time_late;
+    END IF;
+    IF FIND_IN_SET('dzuhur_time_in', OLD.cleared_fields) > 0
+       AND OLD.dzuhur_time_in IS NULL AND NEW.dzuhur_time_in IS NOT NULL THEN
+      SET NEW.dzuhur_time_in = NULL, NEW.dzuhur_time_out = OLD.dzuhur_time_out, NEW.dzuhur_time_late = OLD.dzuhur_time_late;
+    END IF;
+    IF FIND_IN_SET('ashar_time_in', OLD.cleared_fields) > 0
+       AND OLD.ashar_time_in IS NULL AND NEW.ashar_time_in IS NOT NULL THEN
+      SET NEW.ashar_time_in = NULL, NEW.ashar_time_out = OLD.ashar_time_out, NEW.ashar_time_late = OLD.ashar_time_late;
+    END IF;
+    IF FIND_IN_SET('maghrib_time_in', OLD.cleared_fields) > 0
+       AND OLD.maghrib_time_in IS NULL AND NEW.maghrib_time_in IS NOT NULL THEN
+      SET NEW.maghrib_time_in = NULL, NEW.maghrib_time_out = OLD.maghrib_time_out, NEW.maghrib_time_late = OLD.maghrib_time_late;
+    END IF;
+    IF FIND_IN_SET('isha_time_in', OLD.cleared_fields) > 0
+       AND OLD.isha_time_in IS NULL AND NEW.isha_time_in IS NOT NULL THEN
+      SET NEW.isha_time_in = NULL, NEW.isha_time_out = OLD.isha_time_out, NEW.isha_time_late = OLD.isha_time_late;
+    END IF;
+    IF FIND_IN_SET('friday_time_in', OLD.cleared_fields) > 0
+       AND OLD.friday_time_in IS NULL AND NEW.friday_time_in IS NOT NULL THEN
+      SET NEW.friday_time_in = NULL, NEW.friday_time_out = OLD.friday_time_out, NEW.friday_time_late = OLD.friday_time_late;
     END IF;
   END IF;
 END$$
