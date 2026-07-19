@@ -1370,7 +1370,7 @@ class Presence extends CI_Controller{
 			$existing_map = [];
 			if(!empty($data_user_ids) && !empty($data_dates)){
 				$existing_rows = $this->db
-					->select('id, user_id, flow_date, entry_time, out_time, rest_time_in, rest_time_out, entry_time_late, rest_time_late, input_by')
+					->select('id, user_id, flow_date, entry_time, out_time, rest_time_in, rest_time_out, entry_time_late, rest_time_late, input_by, cleared_fields')
 					->where_in('user_id', $data_user_ids)
 					->where_in('flow_date', $data_dates)
 					->get('presence')->result_array();

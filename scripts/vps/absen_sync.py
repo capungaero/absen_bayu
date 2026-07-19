@@ -727,7 +727,7 @@ def upsert_presence(conn, payload):
     """
     query_check = """
         SELECT id, entry_time, out_time, rest_time_in, rest_time_out,
-               entry_time_late, rest_time_late, input_by
+               entry_time_late, rest_time_late, input_by, cleared_fields
         FROM presence
         WHERE user_id = %s AND flow_date = %s
     """
@@ -750,14 +750,26 @@ def upsert_presence(conn, payload):
         update = {'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
         if is_manual:
-            # Fill-empty only — mirror presence_merge_preserve_existing (PHP)
+            # Fill-empty only — mirror presence_merge_preserve_existing (PHP).
+            # cleared_fields = kolom yang SENGAJA dikosongkan manual (dirawat
+            # trigger presence_provenance_bu) -> dilarang diisi ulang.
+            cleared = {f.strip() for f in str(existing.get('cleared_fields') or '').split(',') if f.strip()}
             for field in ['entry_time', 'out_time', 'rest_time_in', 'rest_time_out']:
+                if field in cleared:
+                    continue
                 if not existing.get(field) and payload.get(field):
                     update[field] = payload[field]
-            for field in ['entry_time_late', 'rest_time_late']:
-                if (not existing.get(field) or int(existing.get(field) or 0) == 0) \
-                        and payload.get(field) and int(payload[field]) != 0:
-                    update[field] = payload[field]
+            # Late HANYA diisi bila kolom jam sumbernya juga baru terisi oleh
+            # import ini. late=0 adalah nilai sah (tidak telat), bukan "belum
+            # dihitung" — dulu dianggap kosong sehingga re-sync membalikkan
+            # koreksi manual jadi telat lagi (bug empty(0), paritas fix PHP
+            # presence_helper.php Jul 2026).
+            if not existing.get('entry_time') and 'entry_time' not in cleared \
+                    and payload.get('entry_time_late'):
+                update['entry_time_late'] = payload['entry_time_late']
+            if not existing.get('rest_time_out') and 'rest_time_out' not in cleared \
+                    and payload.get('rest_time_late'):
+                update['rest_time_late'] = payload['rest_time_late']
         else:
             # Latest scan wins (perilaku 2026-06-14) untuk baris tulisan mesin
             for field in ['entry_time', 'out_time', 'rest_time_in', 'rest_time_out']:

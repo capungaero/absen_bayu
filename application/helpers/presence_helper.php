@@ -168,16 +168,28 @@ if ( ! function_exists('presence_merge_preserve_existing'))
     {
         $update = [];
 
+        // Kolom yang SENGAJA dikosongkan manual (presence.cleared_fields, dirawat
+        // trigger presence_provenance_bu) tidak boleh diisi ulang oleh sync.
+        $cleared = [];
+        if (!empty($existing['cleared_fields'])) {
+            $cleared = array_filter(array_map('trim', explode(',', (string) $existing['cleared_fields'])));
+        }
+
         foreach (['entry_time', 'out_time', 'rest_time_in', 'rest_time_out'] as $field) {
+            if (in_array($field, $cleared, true)) {
+                continue;
+            }
             if (empty($existing[$field]) && !empty($new[$field])) {
                 $update[$field] = $new[$field];
             }
         }
 
-        if (empty($existing['entry_time']) && !empty($new['entry_time_late'])) {
+        if (empty($existing['entry_time']) && !empty($new['entry_time_late'])
+            && !in_array('entry_time', $cleared, true)) {
             $update['entry_time_late'] = $new['entry_time_late'];
         }
-        if (empty($existing['rest_time_out']) && !empty($new['rest_time_late'])) {
+        if (empty($existing['rest_time_out']) && !empty($new['rest_time_late'])
+            && !in_array('rest_time_out', $cleared, true)) {
             $update['rest_time_late'] = $new['rest_time_late'];
         }
 

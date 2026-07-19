@@ -114,6 +114,29 @@ Solusi permanen: trigger `presence_provenance_bi` / `presence_provenance_bu`
 - `Api_admin.php` `update_workhour`/`update_shift` kini menulis
   `input_by='manual'` (itu endpoint koreksi, bukan sync).
 
+## Kolom `cleared_fields`: pengosongan sengaja terlindungi (Fase 2, 19 Jul 2026)
+
+Gap lama: field jam yang SENGAJA dikosongkan admin tidak bisa dibedakan dari
+"belum ada data", sehingga gap-fill sync mengisinya lagi dari tap mesin.
+
+Solusi: `presence.cleared_fields` (VARCHAR, daftar koma; subset dari
+`entry_time,out_time,rest_time_in,rest_time_out`), lihat
+`database/add_cleared_fields.sql`:
+
+- **Dirawat otomatis oleh trigger** `presence_provenance_bu` v2: koneksi tanpa
+  kartu sync mengosongkan kolom berisi → nama kolom dicatat; kolom diisi lagi
+  manual → dihapus dari daftar. Berlaku juga utk edit via CLI/AI.
+- **Ditegakkan 2 lapis**: pembaca merge skip kolom terdaftar
+  (`presence_merge_preserve_existing`, `Wa.php::_upsert_today_presence`,
+  `absen_sync.py::upsert_presence`), DAN trigger membatalkan isi-ulang oleh
+  koneksi ber-kartu-sync (nilai dikembalikan NULL) — lapis terakhir bila ada
+  pembaca yang lupa di-update.
+- `@absen_sync_ctx='admin_reset'` mengosongkan daftar (baris kembali milik mesin).
+- Paritas Python (19 Jul 2026): `absen_sync.py::upsert_presence` cabang manual
+  kini pakai aturan anchor yang sama dgn PHP — `entry_time_late`/`rest_time_late`
+  hanya diisi bila kolom jam sumbernya juga baru terisi (bug lama: late=0
+  dianggap "kosong" oleh cek `int(...)==0`, sama dgn bug empty(0) PHP).
+
 **Lock gaji di cron Python** (8 Jul 2026): `absen_sync.py` kini melewati
 cabang yang payroll periodenya sudah dikunci (`get_locked_branches` — paralel
 `_payroll_locked` PHP), termasuk pada `recalc_period_lateness`. Sebelumnya

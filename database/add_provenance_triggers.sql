@@ -47,6 +47,8 @@ BEGIN
   END IF;
 END$$
 
+-- v2 (Fase 2): + perawatan & penegakan `cleared_fields` (lihat
+-- add_cleared_fields.sql — kolom tsb HARUS sudah ada sebelum trigger ini).
 DROP TRIGGER IF EXISTS presence_provenance_bu$$
 CREATE TRIGGER presence_provenance_bu
 BEFORE UPDATE ON presence
@@ -92,10 +94,60 @@ BEGIN
       SET NEW.input_by = 'manual';
       SET NEW.input_by_user_id = COALESCE(@audit_user_id, NEW.input_by_user_id);
     END IF;
-  ELSEIF OLD.input_by = 'manual' AND NOT (NEW.input_by <=> 'manual')
-         AND (@absen_sync_ctx <> 'admin_reset') THEN
-    -- Ratchet: sync tidak pernah bisa menurunkan manual -> system.
-    SET NEW.input_by = 'manual';
+
+    -- Perawatan cleared_fields: catat pengosongan sengaja, hapus saat diisi lagi.
+    IF OLD.entry_time IS NOT NULL AND NEW.entry_time IS NULL
+       AND FIND_IN_SET('entry_time', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',entry_time'));
+    ELSEIF NEW.entry_time IS NOT NULL AND FIND_IN_SET('entry_time', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',entry_time,', ','));
+    END IF;
+    IF OLD.out_time IS NOT NULL AND NEW.out_time IS NULL
+       AND FIND_IN_SET('out_time', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',out_time'));
+    ELSEIF NEW.out_time IS NOT NULL AND FIND_IN_SET('out_time', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',out_time,', ','));
+    END IF;
+    IF OLD.rest_time_in IS NOT NULL AND NEW.rest_time_in IS NULL
+       AND FIND_IN_SET('rest_time_in', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',rest_time_in'));
+    ELSEIF NEW.rest_time_in IS NOT NULL AND FIND_IN_SET('rest_time_in', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',rest_time_in,', ','));
+    END IF;
+    IF OLD.rest_time_out IS NOT NULL AND NEW.rest_time_out IS NULL
+       AND FIND_IN_SET('rest_time_out', NEW.cleared_fields) = 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM CONCAT(NEW.cleared_fields, ',rest_time_out'));
+    ELSEIF NEW.rest_time_out IS NOT NULL AND FIND_IN_SET('rest_time_out', NEW.cleared_fields) > 0 THEN
+      SET NEW.cleared_fields = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', NEW.cleared_fields, ','), ',rest_time_out,', ','));
+    END IF;
+
+  ELSEIF @absen_sync_ctx = 'admin_reset' THEN
+    -- Reset sengaja: baris kembali milik mesin, tanda cleared ikut dihapus.
+    SET NEW.cleared_fields = '';
+  ELSE
+    IF OLD.input_by = 'manual' AND NOT (NEW.input_by <=> 'manual') THEN
+      -- Ratchet: sync tidak pernah bisa menurunkan manual -> system.
+      SET NEW.input_by = 'manual';
+    END IF;
+
+    -- Penegakan: sync dilarang mengisi ulang kolom ber-tanda cleared.
+    -- (Pembaca merge di PHP/Python juga skip; ini lapis pengaman terakhir.)
+    IF FIND_IN_SET('entry_time', OLD.cleared_fields) > 0
+       AND OLD.entry_time IS NULL AND NEW.entry_time IS NOT NULL THEN
+      SET NEW.entry_time = NULL, NEW.entry_time_late = OLD.entry_time_late;
+    END IF;
+    IF FIND_IN_SET('out_time', OLD.cleared_fields) > 0
+       AND OLD.out_time IS NULL AND NEW.out_time IS NOT NULL THEN
+      SET NEW.out_time = NULL;
+    END IF;
+    IF FIND_IN_SET('rest_time_in', OLD.cleared_fields) > 0
+       AND OLD.rest_time_in IS NULL AND NEW.rest_time_in IS NOT NULL THEN
+      SET NEW.rest_time_in = NULL;
+    END IF;
+    IF FIND_IN_SET('rest_time_out', OLD.cleared_fields) > 0
+       AND OLD.rest_time_out IS NULL AND NEW.rest_time_out IS NOT NULL THEN
+      SET NEW.rest_time_out = NULL, NEW.rest_time_late = OLD.rest_time_late;
+    END IF;
   END IF;
 END$$
 

@@ -613,17 +613,28 @@ class Wa extends CI_Controller {
             return $this->db->affected_rows() > 0 ? 'inserted' : 'skipped';
         }
 
+        // Kolom yang sengaja dikosongkan manual tidak boleh diisi ulang
+        // (presence.cleared_fields, dirawat trigger presence_provenance_bu).
+        $cleared = array_filter(array_map('trim', explode(',', (string)($existing['cleared_fields'] ?? ''))));
+
         $update = ['updated_at' => date('Y-m-d H:i:s')];
         foreach (['entry_time', 'out_time', 'rest_time_in', 'rest_time_out'] as $field) {
+            if (in_array($field, $cleared, true)) { continue; }
             if (empty($existing[$field]) && !empty($row[$field])) {
                 $update[$field] = $row[$field];
             }
         }
 
-        foreach (['entry_time_late', 'rest_time_late'] as $field) {
-            if ((empty($existing[$field]) || (int)$existing[$field] === 0) && !empty($row[$field])) {
-                $update[$field] = $row[$field];
-            }
+        // Late hanya diisi bila kolom jam sumbernya juga baru terisi oleh upsert
+        // ini (paritas presence_merge_preserve_existing; late=0 = nilai sah,
+        // bukan "belum dihitung").
+        if (empty($existing['entry_time']) && !in_array('entry_time', $cleared, true)
+            && !empty($row['entry_time_late'])) {
+            $update['entry_time_late'] = $row['entry_time_late'];
+        }
+        if (empty($existing['rest_time_out']) && !in_array('rest_time_out', $cleared, true)
+            && !empty($row['rest_time_late'])) {
+            $update['rest_time_late'] = $row['rest_time_late'];
         }
 
         if (count($update) === 1) {
