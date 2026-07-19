@@ -895,6 +895,9 @@ class Presence extends CI_Controller{
 
 	public function upload_pray(){
 		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
+			// Kartu identitas sync: tanpa ini, trigger presence_provenance_* di DB
+			// menandai semua tulisan sebagai edit manual (default-deny overwrite).
+			$this->db->query("SET @absen_sync_ctx = 1");
 			$file_mimes = array('application/octet-stream', 'application/vnd.ms-excel', 'application/x-csv', 'text/x-csv', 'text/csv', 'application/csv', 'application/excel', 'application/vnd.msexcel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
  			
  			if(isset($_FILES['excel_file']['name']) && in_array($_FILES['excel_file']['type'], $file_mimes)){
@@ -1098,6 +1101,8 @@ class Presence extends CI_Controller{
 
 	public function upload(){
 		if(in_array($this->role, ['admin', 'admin-branch', 'hr'])){
+			// Kartu identitas sync utk trigger provenance (lihat upload_pray).
+			$this->db->query("SET @absen_sync_ctx = 1");
 			$file_mimes = array('application/octet-stream', 'application/vnd.ms-excel', 'application/x-csv', 'text/x-csv', 'text/csv', 'application/csv', 'application/excel', 'application/vnd.msexcel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
  			
  			if(isset($_FILES['excel_file']['name']) && in_array($_FILES['excel_file']['type'], $file_mimes)){
@@ -1622,6 +1627,8 @@ class Presence extends CI_Controller{
 	public function sync_cloud(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
+			// Kartu identitas sync utk trigger provenance (lihat upload_pray).
+			$this->db->query("SET @absen_sync_ctx = 1");
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1899,6 +1906,8 @@ class Presence extends CI_Controller{
 	public function sync_pray_cloud(){
 		if($this->input->is_ajax_request() && in_array($this->role, ['admin', 'admin-branch'])){
 			if(!$this->_verify_sync_gate()){ $this->_sync_gate_error(); return; }
+			// Kartu identitas sync utk trigger provenance (lihat upload_pray).
+			$this->db->query("SET @absen_sync_ctx = 1");
 			$p = $this->input->post();
 			$branch_id = $this->_resolve_branch_id(isset($p['branch_id']) ? $p['branch_id'] : null);
 			if($branch_id === false){
@@ -1988,6 +1997,9 @@ class Presence extends CI_Controller{
 			show_404();
 			return;
 		}
+
+		// Kartu identitas sync utk trigger provenance (lihat upload_pray).
+		$this->db->query("SET @absen_sync_ctx = 1");
 
 		// Lock anti-overlap: kalau run sebelumnya belum selesai, keluar.
 		$lock_path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'absen_sync_cron.lock';

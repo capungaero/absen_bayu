@@ -144,7 +144,9 @@ class Api_admin extends CI_Controller {
             'rest_time_late'   => $rest_time_late,
             'created_at'       => $now,
             'updated_at'       => $now,
-            'input_by'         => 'system',
+            // 'manual': ini endpoint KOREKSI (via API/AI agent), bukan sync mesin —
+            // hasilnya tidak boleh ditimpa sync berikutnya.
+            'input_by'         => 'manual',
             'input_by_user_id' => null,
             'is_overtime'      => !empty($p['overtime']) ? $p['overtime'] : '0',
             'flow_date'        => $date,
@@ -219,7 +221,8 @@ class Api_admin extends CI_Controller {
         }
 
         if($has_attendance){
-            $upd = ['updated_at'=>date('Y-m-d H:i:s'), 'input_by'=>'system', 'input_by_user_id'=>null];
+            // 'manual': koreksi shift via API = keputusan manusia/agent, lindungi dari sync.
+            $upd = ['updated_at'=>date('Y-m-d H:i:s'), 'input_by'=>'manual', 'input_by_user_id'=>null];
             if($p['shift_id'] == 'free'){
                 $upd['entry_time_late'] = 0; $upd['rest_time_late'] = 0;
             }else{

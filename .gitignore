@@ -129,6 +129,7 @@ test_db3.php
 # tidak accidentally expose data karyawan/jadwal yang juga di-stage di sini).
 !database/add_early_leave_columns.sql
 !database/backfill_sakit_presence_get_paid.sql
+!database/add_provenance_triggers.sql
 
 # Allow kode tool rekap sholat (override *.csv & config.json di atas)
 !tools/sholat_recap/config.json

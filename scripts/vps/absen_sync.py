@@ -451,6 +451,9 @@ def get_employee_map(conn, finger_ids, date, tunnel_port=None, db_config=None):
                     database=db_config['database'], charset=db_config['charset'],
                     cursorclass=pymysql.cursors.DictCursor,
                     read_timeout=60, write_timeout=60, connect_timeout=30,
+                    # Kartu identitas sync: tanpa ini, trigger presence_provenance_*
+                    # menandai semua tulisan sebagai edit manual.
+                    init_command="SET @absen_sync_ctx = 1",
                 )
                 continue
             raise
@@ -846,6 +849,9 @@ def get_db_connection(port):
         read_timeout=60,
         write_timeout=60,
         connect_timeout=30,
+        # Kartu identitas sync: tanpa ini, trigger presence_provenance_*
+        # menandai semua tulisan sebagai edit manual.
+        init_command="SET @absen_sync_ctx = 1",
     )
 
 # ═══════════════════════════════════════════════════════════════════════════════

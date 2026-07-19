@@ -88,6 +88,32 @@ Penanda `input_by='manual'` DIJAMIN di-set oleh semua endpoint edit manusia:
 approve izin (Leave.php/M.php), dan DAT Reader `push()`. Endpoint baru yang
 menulis presence atas nama manusia WAJIB ikut men-set penanda ini.
 
+## Trigger provenance: DEFAULT-DENY OVERWRITE (19 Jul 2026)
+
+Kelemahan skema di atas: penanda `manual` bersifat opt-in — edit langsung ke DB
+(mysql CLI oleh AI agent, script ad-hoc spt `sync_dump_wins_may.sql` /
+`backfill_sakit_presence_get_paid.sql`) tidak men-set `input_by`, sehingga baris
+tetap dianggap milik mesin dan tertimpa sync berikutnya.
+
+Solusi permanen: trigger `presence_provenance_bi` / `presence_provenance_bu`
+(`database/add_provenance_triggers.sql`) MEMBALIK default-nya di level DB:
+
+- **Setiap** INSERT/UPDATE yang mengubah kolom data pada `presence` otomatis
+  ditandai `input_by='manual'`, KECUALI koneksi men-set "kartu sync":
+  `SET @absen_sync_ctx = 1`.
+- Pemegang kartu sync HANYA jalur sync mesin resmi: `hr/Presence.php`
+  (`upload`, `upload_pray`, `sync_cloud`, `sync_pray_cloud`, `sync_cron`),
+  `Wa.php::_sync_today_attendance`, dan `scripts/vps/absen_sync.py`
+  (`init_command` pymysql). **Penulis sync BARU wajib ikut set variable ini** —
+  kalau lupa, tulisannya membeku sebagai manual (fail-safe: data terlindungi).
+- Update no-op / bump `updated_at` saja TIDAK mengubah provenance (perbandingan
+  kolom NULL-safe `<=>`; `created_at`/`updated_at`/`flag`/`input_by*` dikecualikan).
+- Ratchet: koneksi ber-kartu-sync tidak pernah bisa menurunkan `manual`→`system`.
+  Escape hatch bila admin SENGAJA mau reset baris ke milik mesin:
+  `SET @absen_sync_ctx = 'admin_reset';` sebelum UPDATE-nya.
+- `Api_admin.php` `update_workhour`/`update_shift` kini menulis
+  `input_by='manual'` (itu endpoint koreksi, bukan sync).
+
 **Lock gaji di cron Python** (8 Jul 2026): `absen_sync.py` kini melewati
 cabang yang payroll periodenya sudah dikunci (`get_locked_branches` — paralel
 `_payroll_locked` PHP), termasuk pada `recalc_period_lateness`. Sebelumnya

@@ -395,6 +395,9 @@ class Wa extends CI_Controller {
     }
 
     private function _sync_today_attendance() {
+        // Kartu identitas sync: tanpa ini, trigger presence_provenance_* di DB
+        // menandai semua tulisan sebagai edit manual (default-deny overwrite).
+        $this->db->query("SET @absen_sync_ctx = 1");
         $today = date('Y-m-d');
         $machines = $this->sync->get_active_by_type('attendance');
 
