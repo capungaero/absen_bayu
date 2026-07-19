@@ -627,6 +627,9 @@ class Wa extends CI_Controller {
             return 'skipped';
         }
 
+        log_late_flip('Wa::_upsert_today_presence', $existing['id'],
+            $existing['entry_time_late'], isset($update['entry_time_late']) ? $update['entry_time_late'] : $existing['entry_time_late'],
+            $existing['rest_time_late'], isset($update['rest_time_late']) ? $update['rest_time_late'] : $existing['rest_time_late']);
         $this->db->where('id', $existing['id'])->update('presence', $update);
         return 'updated';
     }

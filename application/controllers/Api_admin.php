@@ -155,6 +155,9 @@ class Api_admin extends CI_Controller {
 
         $check = $this->presence->get_detail(['user_id'=>$p['user_id'], 'flow_date'=>$date])->row_array();
         if(!empty($check)){
+            log_late_flip('Api_admin::update_workhour', $check['id'],
+                $check['entry_time_late'], $entry_time_late,
+                $check['rest_time_late'], $rest_time_late);
             $this->presence->update($presence, $check['id']);
         }else{
             $this->presence->insert($presence);
@@ -232,6 +235,9 @@ class Api_admin extends CI_Controller {
                 }
                 $upd['rest_time_late'] = $rest_late;
             }
+            log_late_flip('Api_admin::update_shift', $existing_presence['id'],
+                $existing_presence['entry_time_late'], $upd['entry_time_late'],
+                $existing_presence['rest_time_late'], $upd['rest_time_late']);
             $this->db->where('id', $existing_presence['id'])->update('presence', $upd);
             $recalc_done = true;
         }

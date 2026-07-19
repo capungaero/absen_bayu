@@ -427,6 +427,9 @@ class Presence extends CI_Controller{
 							}
 							$upd['rest_time_late'] = $rest_late;
 						}
+						log_late_flip('hr/Presence::update(shift change)', $existing_presence['id'],
+							$existing_presence['entry_time_late'], $upd['entry_time_late'],
+							$existing_presence['rest_time_late'], $upd['rest_time_late']);
 						$this->db->where('id', $existing_presence['id'])->update('presence', $upd);
 						$recalc_done = true;
 					}
@@ -580,6 +583,9 @@ class Presence extends CI_Controller{
 							 ])->row_array();
 
 					if(!empty($check)){
+						log_late_flip('hr/Presence::update_workhour', $check['id'],
+							$check['entry_time_late'], $entry_time_late,
+							$check['rest_time_late'], $rest_time_late);
 						$this->presence->update($presence , $check['id']);
 					}else{
 						$this->presence->insert($presence);
@@ -1393,6 +1399,11 @@ class Presence extends CI_Controller{
 				if($is_manual){
 					$update = presence_merge_preserve_existing($row, $existing);
 					if(!empty($update)){
+						if(array_key_exists('entry_time_late', $update) || array_key_exists('rest_time_late', $update)){
+							log_late_flip('hr/Presence::_import_presence_sheet(preserve_existing)', $existing['id'],
+								$existing['entry_time_late'], isset($update['entry_time_late']) ? $update['entry_time_late'] : $existing['entry_time_late'],
+								$existing['rest_time_late'], isset($update['rest_time_late']) ? $update['rest_time_late'] : $existing['rest_time_late']);
+						}
 						$update_rows[] = ['id' => $existing['id']] + $update;
 						$updated_rows++;
 					}else{
@@ -1549,6 +1560,8 @@ class Presence extends CI_Controller{
 			}
 
 			if((int)$row['entry_time_late'] !== (int)$new_entry_late || (int)$row['rest_time_late'] !== (int)$new_rest_late){
+				log_late_flip('hr/Presence::_recalc_period_lateness', $row['id'],
+					$row['entry_time_late'], $new_entry_late, $row['rest_time_late'], $new_rest_late);
 				// update_batch butuh kolom yang sama persis di tiap baris batch (kalau tidak,
 				// kolom yang absen di-set NULL oleh CI) — makanya dua field selalu disertakan.
 				$batch[] = [
@@ -2535,6 +2548,11 @@ class Presence extends CI_Controller{
 				$update = presence_merge_preserve_existing($row, $existing);
 
 				if(!empty($update)){
+					if(array_key_exists('entry_time_late', $update) || array_key_exists('rest_time_late', $update)){
+						log_late_flip('hr/Presence::_import_attlog_dat(preserve_existing)', $existing['id'],
+							$existing['entry_time_late'], isset($update['entry_time_late']) ? $update['entry_time_late'] : $existing['entry_time_late'],
+							$existing['rest_time_late'], isset($update['rest_time_late']) ? $update['rest_time_late'] : $existing['rest_time_late']);
+					}
 					$this->db->where('id', $existing['id'])->update('presence', $update);
 					$existing_presence[$key] = array_merge($existing, $update);
 					$saved_rows++;

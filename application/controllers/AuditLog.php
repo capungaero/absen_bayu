@@ -177,6 +177,15 @@ class AuditLog extends CI_Controller {
         $uid = (int)$this->userdata->id;
         $this->db->query("SET @audit_user_id = {$uid}");
 
+        if (array_key_exists('entry_time_late', $restore) || array_key_exists('rest_time_late', $restore)) {
+            $before = $this->db->where('id', (int)$log['record_id'])->get('presence')->row_array();
+            if ($before) {
+                log_late_flip('AuditLog::rollback', $log['record_id'],
+                    $before['entry_time_late'], isset($restore['entry_time_late']) ? $restore['entry_time_late'] : $before['entry_time_late'],
+                    $before['rest_time_late'], isset($restore['rest_time_late']) ? $restore['rest_time_late'] : $before['rest_time_late']);
+            }
+        }
+
         $this->db->where('id', (int)$log['record_id'])->update('presence', $restore);
 
         if ($this->db->affected_rows() === 0) {
@@ -276,6 +285,11 @@ class AuditLog extends CI_Controller {
             foreach ($plan['to_update'] as $rec_id => $data) {
                 $restore = $data['data'];
                 if (!empty($restore)) {
+                    if (array_key_exists('entry_time_late', $restore) || array_key_exists('rest_time_late', $restore)) {
+                        log_late_flip('AuditLog::mass_rollback_execute', $rec_id,
+                            'n/a', isset($restore['entry_time_late']) ? $restore['entry_time_late'] : 'n/a',
+                            'n/a', isset($restore['rest_time_late']) ? $restore['rest_time_late'] : 'n/a');
+                    }
                     $this->db->where('id', (int)$rec_id)->update('presence', $restore);
                     $exec_upd++;
                 }

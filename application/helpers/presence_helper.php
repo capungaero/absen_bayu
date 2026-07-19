@@ -143,7 +143,17 @@ if ( ! function_exists('presence_merge_preserve_existing'))
      *  - Untuk entry_time, out_time, rest_time_in, rest_time_out:
      *      kalau existing kosong DAN new ada nilai, set ke new.
      *  - Untuk entry_time_late, rest_time_late:
-     *      kalau existing kosong/0 DAN new ada nilai > 0, set ke new.
+     *      HANYA diisi kalau jam sumbernya (entry_time / rest_time_out) juga baru
+     *      terisi oleh import ini (existing sebelumnya kosong). Kalau entry_time
+     *      sudah ada nilainya (misal sudah dikoreksi manual ke non-telat),
+     *      entry_time_late TIDAK boleh ditimpa cuma karena hasil re-import dari
+     *      tap mentah mesin menghitung telat — entry_time_late=0 adalah nilai sah
+     *      (tidak telat), bukan "belum dihitung", jadi tidak boleh diperlakukan
+     *      sama dengan kolom jam yang pakai empty-string sebagai penanda kosong.
+     *      (Bug lama: entry_time_late=0 dianggap "kosong" oleh empty(), sehingga
+     *      re-sync/re-import berulang kali menimpanya balik jadi telat walau jam
+     *      masuk yang tersimpan sudah benar & tidak berubah — lihat presence.id
+     *      368655 investigasi Jul 2026.)
      *
      * Field lain (presence_status, presence_type, dll.) tidak diubah supaya
      * input manual tetap menang.
@@ -164,13 +174,11 @@ if ( ! function_exists('presence_merge_preserve_existing'))
             }
         }
 
-        foreach (['entry_time_late', 'rest_time_late'] as $field) {
-            $existing_val = isset($existing[$field]) ? $existing[$field] : null;
-            $is_existing_empty = empty($existing_val) || (int) $existing_val === 0;
-            $is_new_nonzero    = !empty($new[$field]) && (int) $new[$field] !== 0;
-            if ($is_existing_empty && $is_new_nonzero) {
-                $update[$field] = $new[$field];
-            }
+        if (empty($existing['entry_time']) && !empty($new['entry_time_late'])) {
+            $update['entry_time_late'] = $new['entry_time_late'];
+        }
+        if (empty($existing['rest_time_out']) && !empty($new['rest_time_late'])) {
+            $update['rest_time_late'] = $new['rest_time_late'];
         }
 
         return $update;
