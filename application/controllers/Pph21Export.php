@@ -34,6 +34,7 @@ class Pph21Export extends CI_Controller {
         $this->config->load('pph21_export');
         $this->load->library('pph21_workbook');
         $this->load->library('pph21_np_calc'); // format angka XML (xf) — pola Bp21Bulk
+        $this->load->library('pph21_des_workbook');
     }
 
     private function _die($data, $code) {
@@ -369,6 +370,149 @@ class Pph21Export extends CI_Controller {
         ], 'rows' => $rows];
     }
 
+    /**
+     * Workbook "REKAP PERHITUNGAN PPh 21 DESEMBER GROSS UP" (PPh Des & MPT)
+     * satu CV satu tahun. pph21_export/export_des?year=..&subdivision_id=..
+     */
+    public function export_des() {
+        $y = (int)$this->input->get('year');
+        $sid = (int)$this->input->get('subdivision_id');
+        $data = $this->_des_rows($y, $sid);
+        if (!$data['rows']) { $this->_json(['error' => 'Tidak ada data utk CV/tahun ini'], 404); return; }
+        $ss = $this->pph21_des_workbook->build($data['meta'], $data['rows']);
+        $this->_xlsx_out($ss, sprintf('REKAP PERHITUNGAN PPh 21 DESEMBER GROSS UP %d - %s.xlsx', $y, $data['meta']['cv']));
+    }
+
+    /** ZIP workbook PPh Des & MPT semua CV. */
+    public function export_des_all() {
+        $y = (int)$this->input->get('year');
+        $sids = $this->db->query(
+            'SELECT DISTINCT sid FROM ('
+            .'SELECT COALESCE(u.subdivision_id, 0) AS sid FROM payroll_detail pd JOIN payroll p ON p.id = pd.payroll_id JOIN users u ON u.id = pd.user_id WHERE p.year = '.(int)$y
+            .' UNION SELECT subdivision_id AS sid FROM pph21_roster WHERE year = '.(int)$y
+            .') x')->result();
+        $tmp = tempnam(sys_get_temp_dir(), 'pph21des');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $count = 0;
+        foreach ($sids as $s) {
+            $data = $this->_des_rows($y, (int)$s->sid);
+            if (!$data['rows']) continue;
+            $ss = $this->pph21_des_workbook->build($data['meta'], $data['rows']);
+            $f = tempnam(sys_get_temp_dir(), 'wb');
+            (new Xlsx($ss))->save($f);
+            $zip->addFromString(sprintf('REKAP PERHITUNGAN PPh 21 DESEMBER GROSS UP %d - %s.xlsx', $y, $data['meta']['cv']), file_get_contents($f));
+            @unlink($f);
+            $count++;
+        }
+        $zip->close();
+        if (!$count) { @unlink($tmp); $this->_json(['error' => 'Tidak ada data'], 404); return; }
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="PPh21 DES MPT '.$y.' (semua CV).zip"');
+        header('Content-Length: '.filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
+    }
+
+    /** Data workbook Des/MPT: komponen bulanan + iterasi tunjangan PPh setahun. */
+    private function _des_rows($y, $sid) {
+        $premi = $this->_premi();
+        $premi_total = $premi['jkk'] + $premi['jkm'] + $premi['kes'];
+        $ps = $this->db->select('p.id, p.month, p.year, p.branch_id, b.branch_name')
+            ->from('payroll p')->join('branch b', 'b.id = p.branch_id')
+            ->where('p.year', $y)->order_by('p.month, p.id')->get()->result();
+        $emp = []; $order = [];
+        foreach ($ps as $p) {
+            $data = $this->_cv_rows($p->id, $p, $sid);
+            if (!$data['rows']) continue;
+            $uids = array_filter(array_column($data['rows'], 'user_id'));
+            // potongan BPJS Ketenagakerjaan karyawan = JHT/JP bayar sendiri (pengurang neto)
+            $jamsostek = $this->_ded_sums($p, array_values($uids), ['BPJS KETENAGAKERJAAN']);
+            foreach ($data['rows'] as $e) {
+                $bruto = $this->_bruto_row($e, $premi_total);
+                if ($bruto <= 0) continue;
+                list($rate, $gu) = $this->_gu_of($bruto, $e['ptkp']);
+                $k = $this->_norm($e['name']);
+                if (!isset($emp[$k])) {
+                    $emp[$k] = ['name' => $e['name'], 'jabatan' => $e['position'], 'nik' => $e['nik'],
+                        'ptkp' => '', 'masa_awal' => 12, 'masa_akhir' => 1, 'monthly' => []];
+                    $order[] = $k;
+                }
+                if ($e['ptkp'] !== '') $emp[$k]['ptkp'] = $e['ptkp'];
+                if ($e['nik'] !== '') $emp[$k]['nik'] = $e['nik'];
+                $emp[$k]['masa_awal']  = min($emp[$k]['masa_awal'], isset($e['masa_awal']) ? $e['masa_awal'] : (int)$p->month);
+                $emp[$k]['masa_akhir'] = max($emp[$k]['masa_akhir'], isset($e['masa_akhir']) ? $e['masa_akhir'] : (int)$p->month);
+                $m = (int)$p->month;
+                $d = isset($emp[$k]['monthly'][$m]) ? $emp[$k]['monthly'][$m]
+                   : ['thp' => 0, 'tunj' => 0, 'pajak' => 0, 'premi' => 0, 'bonus' => 0, 'jamsostek' => 0];
+                $d['thp']   += $e['thp'];
+                $d['tunj']  += $e['cashbon'] + $e['insentif'] + $e['subsidi'];
+                $d['premi'] += !empty($e['bpjs']) ? $premi_total : 0;
+                $d['bonus'] += $e['bonus'];
+                $d['pajak'] += $gu - $bruto; // tunjangan PPh masa = PPh gross-up masa
+                $d['jamsostek'] += isset($jamsostek[$e['user_id']]) ? (float)$jamsostek[$e['user_id']] : 0;
+                $emp[$k]['monthly'][$m] = $d;
+            }
+        }
+        // urutan roster + iterasi setahun
+        $rows = []; $used = [];
+        foreach ($this->db->from('pph21_roster')->where(['year' => $y, 'subdivision_id' => $sid])
+                 ->order_by('sort_order')->get()->result_array() as $rr) {
+            $k = $this->_norm($rr['name']);
+            if (isset($emp[$k])) { $rows[] = $emp[$k]; $used[$k] = true; }
+            else {
+                $rows[] = ['name' => $rr['name'], 'jabatan' => $rr['position'],
+                    'nik' => preg_replace('/\D/', '', $rr['nik']), 'ptkp' => '',
+                    'masa_awal' => 1, 'masa_akhir' => 12, 'monthly' => []];
+            }
+        }
+        foreach ($order as $k) { if (!isset($used[$k])) $rows[] = $emp[$k]; }
+        if (!$rows) return ['meta' => [], 'rows' => []];
+        foreach ($rows as &$e) {
+            list($e['i_annual'], $e['ac']) = $this->_annual_iter($e);
+        }
+        unset($e);
+        $npwp_map = $this->config->item('pph21_npwp');
+        $s = $this->db->select('subdivision_name')->from('subdivision')->where('id', $sid)->get()->row();
+        return ['meta' => [
+            'cv' => $s ? trim($s->subdivision_name) : 'TANPA SUBDIVISI',
+            'npwp' => isset($npwp_map[$sid]) ? $npwp_map[$sid] : '',
+            'year' => $y,
+        ], 'rows' => $rows];
+    }
+
+    /** [tunjangan PPh setahun (konvergen), PPh dipotong Jan-Nov] utk satu karyawan. */
+    private function _annual_iter($e) {
+        $H = $J = $L = $O = $S = $ac = 0;
+        foreach ($e['monthly'] as $m => $d) {
+            $H += $d['thp']; $J += $d['tunj']; $L += $d['premi'];
+            $O += $d['bonus']; $S += $d['jamsostek'];
+            if ($m <= 11) $ac += $d['pajak'];
+        }
+        $G = max(1, $e['masa_akhir'] - $e['masa_awal'] + 1);
+        $ptkp_map = ['K/3' => 72000000, 'K/2' => 67500000, 'K/1' => 63000000, 'K/0' => 58500000,
+                     'TK/3' => 67500000, 'TK/2' => 63000000, 'TK/1' => 58500000, 'TK/0' => 54000000];
+        $ptkp = isset($ptkp_map[$e['ptkp']]) ? $ptkp_map[$e['ptkp']] : 54000000;
+        $I = 0.0;
+        for ($it = 0; $it < 50; $it++) {
+            $N = $H + $I + $J + $L;
+            $Q = min(0.05 * $N, $G * 500000);
+            $R = 0.05 * $N >= $G * 500000 ? 0
+               : ((0.05 * $N) + (0.05 * $O) >= $G * 500000 ? ($G * 500000) - (0.05 * $N) : 0.05 * $O);
+            $U = ($N + $O) - ($Q + $R + $S);
+            $W = floor(max($U - $ptkp, 0) / 1000) * 1000;
+            if ($W > 5000000000)      $X = 1444000000 + 0.35 * ($W - 5000000000);
+            elseif ($W > 500000000)   $X = 94000000 + 0.30 * ($W - 500000000);
+            elseif ($W > 250000000)   $X = 31500000 + 0.25 * ($W - 250000000);
+            elseif ($W > 60000000)    $X = 3000000 + 0.15 * ($W - 60000000);
+            else                      $X = 0.05 * $W;
+            if (abs($X - $I) < 0.5) { $I = $X; break; }
+            $I = $X;
+        }
+        return [$I, $ac];
+    }
+
     private function _xlsx_out($ss, $fname) {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="'.str_replace('"', '', $fname).'"');
@@ -496,6 +640,7 @@ class Pph21Export extends CI_Controller {
             $m = isset($manual[$uid]) ? $manual[$uid] : null;
             list($ma, $mk) = $this->_masa($p->year, $e['join_date'], $e['active'], $e['last_status']);
             return [
+                'user_id'  => (int)$uid,
                 'name'     => $e['name'],
                 'position' => $e['position'],
                 'nik'      => preg_replace('/\D/', '', $e['nik']),
@@ -536,6 +681,7 @@ class Pph21Export extends CI_Controller {
                         ? $this->_masa($p->year, $u['join_date'], $u['active'], $u['last_status'])
                         : [1, 12];
                     $rows[] = [
+                        'user_id' => $rr['user_id'] !== null ? (int)$rr['user_id'] : 0,
                         'name' => $rr['name'], 'position' => $rr['position'],
                         'nik' => preg_replace('/\D/', '', $rr['nik']),
                         'ptkp' => '', 'thp' => 0.0, 'cashbon' => 0.0,

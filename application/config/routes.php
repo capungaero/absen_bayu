@@ -319,6 +319,8 @@ $route['pph21_export/settings']        = 'Pph21Export/settings';
 $route['pph21_export/settings_save']   = 'Pph21Export/settings_save';
 $route['pph21_export/export_gu']       = 'Pph21Export/export_gu';
 $route['pph21_export/export_gu_all']   = 'Pph21Export/export_gu_all';
+$route['pph21_export/export_des']      = 'Pph21Export/export_des';
+$route['pph21_export/export_des_all']  = 'Pph21Export/export_des_all';
 
 // PPh21 masa pajak terakhir (penghitungan ulang tahunan Ps.17 — PMK 168/2023)
 $route['pph21_final/export']     = 'Pph21Final/export';

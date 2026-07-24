@@ -81,7 +81,9 @@
       </div>
       <div style="flex:0 0 auto;">
         <a class="btn" id="guBtn" href="#" style="background:#d35400;">⬇ PPH 21 GU (Konsultan)</a>
-        <a class="btn gray" id="guZipBtn" href="#">⬇ Semua CV (ZIP)</a>
+        <a class="btn" id="desBtn" href="#" style="background:#7d3c98;">⬇ PPH Des &amp; MPT (Konsultan)</a>
+        <a class="btn gray" id="guZipBtn" href="#">⬇ GU Semua CV (ZIP)</a>
+        <a class="btn gray" id="desZipBtn" href="#">⬇ Des Semua CV (ZIP)</a>
       </div>
       <div style="flex:1 1 auto;" class="muted" id="guStatus"></div>
     </div>
@@ -167,9 +169,13 @@ async function loadCvs() {
     // Export rumus custom (konsultan): rekap GU tahunan per CV
     const guYear = d.payroll ? d.payroll.year : new Date().getFullYear();
     $('#guCv').innerHTML = d.cvs.map(c => `<option value="${c.id ?? 0}">${c.subdivision_name}</option>`).join('');
-    const setGu = () => { $('#guBtn').href = `${API}/export_gu?year=${guYear}&subdivision_id=${$('#guCv').value}`; };
+    const setGu = () => {
+      $('#guBtn').href = `${API}/export_gu?year=${guYear}&subdivision_id=${$('#guCv').value}`;
+      $('#desBtn').href = `${API}/export_des?year=${guYear}&subdivision_id=${$('#guCv').value}`;
+    };
     $('#guCv').onchange = setGu; setGu();
     $('#guZipBtn').href = `${API}/export_gu_all?year=${guYear}`;
+    $('#desZipBtn').href = `${API}/export_des_all?year=${guYear}`;
     $('#guStatus').textContent = `Rekap bruto gross-up per masa, tahun ${guYear} (format REKAP DATA SPT MASA PPh 21 Gross Up).`;
     $('#tbody').innerHTML = d.cvs.map((c, i) => `
       <tr>
