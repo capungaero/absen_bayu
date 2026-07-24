@@ -315,6 +315,10 @@ $route['pph21_export/export_all'] = 'Pph21Export/export_all';
 $route['pph21_export/export_combined'] = 'Pph21Export/export_combined';
 $route['pph21_export/export_xml']      = 'Pph21Export/export_xml';
 $route['pph21_export/export_xml_all']  = 'Pph21Export/export_xml_all';
+$route['pph21_export/settings']        = 'Pph21Export/settings';
+$route['pph21_export/settings_save']   = 'Pph21Export/settings_save';
+$route['pph21_export/export_gu']       = 'Pph21Export/export_gu';
+$route['pph21_export/export_gu_all']   = 'Pph21Export/export_gu_all';
 
 // PPh21 masa pajak terakhir (penghitungan ulang tahunan Ps.17 — PMK 168/2023)
 $route['pph21_final/export']     = 'Pph21Final/export';

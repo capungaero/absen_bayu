@@ -48,6 +48,40 @@ class Pph21Export extends CI_Controller {
             ->set_output(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
+    /** Besaran premi JKK/JKM berlaku (override tersimpan, fallback config). */
+    public function settings() {
+        $premi = $this->_premi();
+        $this->_json(['jkk' => (float)$premi['jkk'], 'jkm' => (float)$premi['jkm']]);
+    }
+
+    /** Simpan besaran premi JKK/JKM: POST JSON {jkk, jkm}. */
+    public function settings_save() {
+        if ($this->input->method() !== 'post') { $this->_json(['error' => 'POST required'], 405); return; }
+        $body = json_decode(file_get_contents('php://input'), true);
+        $vals = [];
+        foreach (['jkk', 'jkm'] as $k) {
+            $v = isset($body[$k]) && is_numeric($body[$k]) ? round((float)$body[$k], 2) : null;
+            if ($v === null || $v < 0) { $this->_json(['error' => 'Nilai '.strtoupper($k).' tidak valid'], 422); return; }
+            $vals[$k] = $v;
+        }
+        $this->db->query('CREATE TABLE IF NOT EXISTS pph21_settings (
+            setting_key VARCHAR(50) NOT NULL PRIMARY KEY,
+            setting_value VARCHAR(100) NOT NULL,
+            updated_by INT UNSIGNED NULL,
+            updated_at DATETIME
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8');
+        $uid = (int)$this->ion_auth->user()->row()->id;
+        foreach ($vals as $k => $v) {
+            $this->db->query(
+                'INSERT INTO pph21_settings (setting_key, setting_value, updated_by, updated_at)
+                 VALUES (?,?,?,?)
+                 ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),
+                   updated_by=VALUES(updated_by), updated_at=VALUES(updated_at)',
+                ['premi_'.$k, (string)$v, $uid, date('Y-m-d H:i:s')]);
+        }
+        $this->_json(['saved' => true, 'jkk' => $vals['jkk'], 'jkm' => $vals['jkm']]);
+    }
+
     /** Daftar periode payroll (terbaru dulu) untuk dropdown. */
     public function periods() {
         $rows = $this->db->select('p.id, p.month, p.year, b.branch_name')
@@ -184,7 +218,7 @@ class Pph21Export extends CI_Controller {
             'penempatan' => isset($pen_map[$p->branch_id]) ? $pen_map[$p->branch_id] : $p->branch_name,
             'month'      => (int)$p->month,
             'year'       => (int)$p->year,
-            'premi'      => $this->config->item('pph21_premi'),
+            'premi'      => $this->_premi(),
         ];
         $ss = $this->pph21_workbook->build_combined($meta, $groups);
         $fname = sprintf('%02d %s PPh21 - Semua CV (%s).xlsx', $p->month, $this->_month_name($p->month), $meta['penempatan']);
@@ -248,6 +282,101 @@ class Pph21Export extends CI_Controller {
         exit;
     }
 
+    /**
+     * Rekap tahunan bruto gross-up per karyawan format konsultan
+     * ("REKAP DATA SPT MASA PPh Pasal 21 Gross Up"): kolom JAN..NOP, JUMLAH, DES, TOTAL.
+     * pph21_export/export_gu?year=..&subdivision_id=..
+     */
+    public function export_gu() {
+        $y = (int)$this->input->get('year');
+        $sid = (int)$this->input->get('subdivision_id');
+        $data = $this->_gu_rows($y, $sid);
+        if (!$data['rows']) { $this->_json(['error' => 'Tidak ada data utk CV/tahun ini'], 404); return; }
+        $ss = $this->pph21_workbook->build_gu_rekap($data['meta'], $data['rows']);
+        $this->_xlsx_out($ss, sprintf('REKAP DATA SPT MASA PPh21 %d - %s.xlsx', $y, $data['meta']['cv']));
+    }
+
+    /** ZIP rekap GU tahunan semua CV. */
+    public function export_gu_all() {
+        $y = (int)$this->input->get('year');
+        $sids = $this->db->query(
+            'SELECT DISTINCT sid FROM ('
+            .'SELECT COALESCE(u.subdivision_id, 0) AS sid FROM payroll_detail pd JOIN payroll p ON p.id = pd.payroll_id JOIN users u ON u.id = pd.user_id WHERE p.year = '.(int)$y
+            .' UNION SELECT subdivision_id AS sid FROM pph21_roster WHERE year = '.(int)$y
+            .') x')->result();
+        $tmp = tempnam(sys_get_temp_dir(), 'pph21gu');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $count = 0;
+        foreach ($sids as $s) {
+            $data = $this->_gu_rows($y, (int)$s->sid);
+            if (!$data['rows']) continue;
+            $ss = $this->pph21_workbook->build_gu_rekap($data['meta'], $data['rows']);
+            $f = tempnam(sys_get_temp_dir(), 'wb');
+            (new Xlsx($ss))->save($f);
+            $zip->addFromString(sprintf('REKAP DATA SPT MASA PPh21 %d - %s.xlsx', $y, $data['meta']['cv']), file_get_contents($f));
+            @unlink($f);
+            $count++;
+        }
+        $zip->close();
+        if (!$count) { @unlink($tmp); $this->_json(['error' => 'Tidak ada data'], 404); return; }
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="REKAP SPT MASA PPh21 GU '.$y.' (semua CV).zip"');
+        header('Content-Length: '.filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
+    }
+
+    /** Data rekap GU: bruto gross-up per karyawan per bulan (urut roster). */
+    private function _gu_rows($y, $sid) {
+        $premi = $this->_premi();
+        $premi_total = $premi['jkk'] + $premi['jkm'] + $premi['kes'];
+        $ps = $this->db->select('p.id, p.month, p.year, p.branch_id, b.branch_name')
+            ->from('payroll p')->join('branch b', 'b.id = p.branch_id')
+            ->where('p.year', $y)->order_by('p.month, p.id')->get()->result();
+        $monthly = []; $order = [];
+        foreach ($ps as $p) {
+            $data = $this->_cv_rows($p->id, $p, $sid);
+            foreach ($data['rows'] as $e) {
+                $bruto = $this->_bruto_row($e, $premi_total);
+                if ($bruto <= 0) continue;
+                list(, $gu) = $this->_gu_of($bruto, $e['ptkp']);
+                $k = $this->_norm($e['name']);
+                if (!isset($monthly[$k])) { $monthly[$k] = ['name' => $e['name'], 'm' => []]; $order[] = $k; }
+                $m = (int)$p->month;
+                $monthly[$k]['m'][$m] = (isset($monthly[$k]['m'][$m]) ? $monthly[$k]['m'][$m] : 0) + $gu;
+            }
+        }
+        // urutan mengikuti roster tahunan; nama di luar roster ditambah di bawah
+        $rows = []; $used = [];
+        foreach ($this->db->from('pph21_roster')->where(['year' => $y, 'subdivision_id' => $sid])
+                 ->order_by('sort_order')->get()->result_array() as $rr) {
+            $k = $this->_norm($rr['name']);
+            $rows[] = ['name' => $rr['name'], 'm' => isset($monthly[$k]) ? $monthly[$k]['m'] : []];
+            $used[$k] = true;
+        }
+        foreach ($order as $k) {
+            if (!isset($used[$k])) $rows[] = $monthly[$k];
+        }
+        if (!$rows) return ['meta' => [], 'rows' => []];
+        $npwp_map = $this->config->item('pph21_npwp');
+        $s = $this->db->select('subdivision_name')->from('subdivision')->where('id', $sid)->get()->row();
+        return ['meta' => [
+            'cv' => $s ? trim($s->subdivision_name) : 'TANPA SUBDIVISI',
+            'npwp' => isset($npwp_map[$sid]) ? $npwp_map[$sid] : '',
+            'year' => $y,
+        ], 'rows' => $rows];
+    }
+
+    private function _xlsx_out($ss, $fname) {
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="'.str_replace('"', '', $fname).'"');
+        header('Cache-Control: max-age=0');
+        (new Xlsx($ss))->save('php://output');
+        exit;
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /** Tarif TER bulanan (tabel bersama Pph21_workbook). Batas eksklusif: > limit. */
@@ -261,6 +390,21 @@ class Pph21Export extends CI_Controller {
         return $rate;
     }
 
+    /** [tarif final, bruto gross-up] dari bruto — iterasi 3 tahap (kolom U/V/W). */
+    private function _gu_of($bruto, $ptkp) {
+        $cat = Pph21_workbook::ter_category($ptkp !== '' ? $ptkp : 'TK/0');
+        $t1 = $this->_ter_rate($bruto, $cat);
+        $t2 = $this->_ter_rate($bruto / (1 - $t1 / 100), $cat);
+        $rate = $this->_ter_rate($bruto / (1 - $t2 / 100), $cat);
+        return [$rate, $rate > 0 ? $bruto / (1 - $rate / 100) : $bruto];
+    }
+
+    /** Bruto satu baris _cv_rows (kas + premi perusahaan bila peserta BPJS). */
+    private function _bruto_row($e, $premi_total) {
+        return $e['thp'] + $e['cashbon'] + $e['insentif'] + $e['subsidi'] + $e['bonus']
+             + (!empty($e['bpjs']) ? $premi_total : 0);
+    }
+
     /** Bangun MmPayrollBulk dari baris _cv_rows (format persis pelaporan Juni 2026). */
     private function _mm_xml($meta, $rows) {
         $premi = $meta['premi'];
@@ -272,16 +416,10 @@ class Pph21Export extends CI_Controller {
         $x .= "\t<TIN>".htmlspecialchars($meta['npwp'], ENT_XML1)."</TIN>\n";
         $x .= "\t<ListOfMmPayroll>\n";
         foreach ($rows as $e) {
-            $bruto = $e['thp'] + $e['cashbon'] + $e['insentif'] + $e['subsidi'] + $e['bonus']
-                   + (!empty($e['bpjs']) ? $premi_total : 0);
+            $bruto = $this->_bruto_row($e, $premi_total);
             if ($bruto <= 0) continue; // resign/nihil: tidak ada penghasilan utk dilaporkan
             $ptkp = $e['ptkp'] !== '' ? $e['ptkp'] : 'TK/0';
-            $cat = Pph21_workbook::ter_category($ptkp);
-            // gross-up iteratif 3 tahap — sama dgn kolom U/V/W kertas kerja
-            $t1 = $this->_ter_rate($bruto, $cat);
-            $t2 = $this->_ter_rate($bruto / (1 - $t1 / 100), $cat);
-            $rate = $this->_ter_rate($bruto / (1 - $t2 / 100), $cat);
-            $gross_up = $rate > 0 ? $bruto / (1 - $rate / 100) : $bruto;
+            list($rate, $gross_up) = $this->_gu_of($bruto, $ptkp);
             $x .= "\t\t<MmPayroll>\n";
             $x .= "\t\t\t<TaxPeriodMonth>".(int)$meta['month']."</TaxPeriodMonth>\n";
             $x .= "\t\t\t<TaxPeriodYear>".(int)$meta['year']."</TaxPeriodYear>\n";
@@ -429,13 +567,25 @@ class Pph21Export extends CI_Controller {
             'branch' => $p->branch_name,
             'month'  => (int)$p->month,
             'year'   => (int)$p->year,
-            'premi'  => $this->config->item('pph21_premi'),
+            'premi'  => $this->_premi(),
         ];
         return ['meta' => $meta, 'rows' => $rows];
     }
 
     private function _norm($s) {
         return preg_replace('/[^A-Z]/', '', strtoupper((string)$s));
+    }
+
+    /** Premi perusahaan: default config pph21_premi, jkk/jkm bisa di-override dari tabel pph21_settings (UI export). */
+    private function _premi() {
+        $premi = $this->config->item('pph21_premi');
+        if ($this->db->table_exists('pph21_settings')) {
+            foreach ($this->db->where_in('setting_key', ['premi_jkk', 'premi_jkm'])
+                     ->get('pph21_settings')->result() as $s) {
+                $premi[substr($s->setting_key, 6)] = (float)$s->setting_value;
+            }
+        }
+        return $premi;
     }
 
     /**

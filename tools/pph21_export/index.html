@@ -54,6 +54,39 @@
     </table>
   </div>
 
+  <div class="card">
+    <label>Premi JKK &amp; JKM Dibayar Perusahaan (per karyawan/bulan — penambah bruto utk peserta BPJS)</label>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:0 1 200px;">
+        <label for="jkk">JKK (Rp)</label>
+        <input type="number" id="jkk" min="0" step="0.01" style="width:100%; padding:9px 10px; border:1px solid #d5dce6; border-radius:8px; font-size:14px;">
+      </div>
+      <div style="flex:0 1 200px;">
+        <label for="jkm">JKM (Rp)</label>
+        <input type="number" id="jkm" min="0" step="0.01" style="width:100%; padding:9px 10px; border:1px solid #d5dce6; border-radius:8px; font-size:14px;">
+      </div>
+      <div style="flex:0 0 auto;">
+        <button class="btn" id="premiBtn" type="button">💾 Simpan</button>
+      </div>
+      <div style="flex:1 1 auto;" class="muted" id="premiStatus"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Export Rumus Custom (Konsultan)</label>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:0 1 320px;">
+        <label for="guCv">CV / Badan Usaha</label>
+        <select id="guCv"></select>
+      </div>
+      <div style="flex:0 0 auto;">
+        <a class="btn" id="guBtn" href="#" style="background:#d35400;">⬇ PPH 21 GU (Konsultan)</a>
+        <a class="btn gray" id="guZipBtn" href="#">⬇ Semua CV (ZIP)</a>
+      </div>
+      <div style="flex:1 1 auto;" class="muted" id="guStatus"></div>
+    </div>
+  </div>
+
   <div class="card note">
     <b>Kolom terisi dari database:</b> nama, jabatan, NIK, PTKP, Gaji Pokok (THP), Tunjangan/Cash Bon
     (potongan CASHBON + PIUTANG KANVAS), premi JKK/JKM/BPJS Kes perusahaan (peserta terdeteksi dari potongan BPJS bulan tsb).<br>
@@ -61,7 +94,8 @@
     <a href="../pph21_manual/index.html" target="_blank">Tools &gt; Input Manual PPh21</a> sebelum export —
     nilainya otomatis mengisi kolom terkait. Bila belum diisi, kolom tetap kosong dan bisa diisi langsung di Excel.
     Tarif TER &amp; gross-up (termasuk iterasi SOP) menghitung ulang otomatis; pastikan kolom <b>Cek</b> dan <b>Cek Tarif GU</b> = 0.<br>
-    Nilai premi BPJS &amp; NPWP per CV diatur di <code>application/config/pph21_export.php</code>.<br>
+    Besaran premi <b>JKK &amp; JKM</b> diatur lewat form di atas (tersimpan di database, dipakai semua export
+    Excel/XML/MPT); premi BPJS Kes &amp; NPWP per CV diatur di <code>application/config/pph21_export.php</code>.<br>
     <b>Masa Pajak Terakhir (MPT):</b> penghitungan ulang setahun dengan tarif Ps. 17 (PMK 168/2023) —
     pilih periode <b>Desember</b> untuk semua karyawan aktif, atau bulan lain untuk karyawan yang
     resign/nonaktif bulan itu. PPh negatif = lebih potong, dikembalikan ke karyawan. Pastikan payroll
@@ -130,6 +164,13 @@ async function loadCvs() {
   try {
     const d = await jget(`${API}/cvs?payroll_id=${pid}`);
     cvList = d.cvs;
+    // Export rumus custom (konsultan): rekap GU tahunan per CV
+    const guYear = d.payroll ? d.payroll.year : new Date().getFullYear();
+    $('#guCv').innerHTML = d.cvs.map(c => `<option value="${c.id ?? 0}">${c.subdivision_name}</option>`).join('');
+    const setGu = () => { $('#guBtn').href = `${API}/export_gu?year=${guYear}&subdivision_id=${$('#guCv').value}`; };
+    $('#guCv').onchange = setGu; setGu();
+    $('#guZipBtn').href = `${API}/export_gu_all?year=${guYear}`;
+    $('#guStatus').textContent = `Rekap bruto gross-up per masa, tahun ${guYear} (format REKAP DATA SPT MASA PPh 21 Gross Up).`;
     $('#tbody').innerHTML = d.cvs.map((c, i) => `
       <tr>
         <td>${c.subdivision_name}</td>
@@ -153,6 +194,34 @@ async function loadCvs() {
 $('#xmlZipBtn').addEventListener('click', (ev) => {
   if (!confirmXml(cvList)) ev.preventDefault();
 });
+
+// ---- Setting premi JKK/JKM (tabel pph21_settings; fallback config bila belum disimpan)
+async function loadPremi() {
+  try {
+    const d = await jget(API + '/settings');
+    $('#jkk').value = d.jkk;
+    $('#jkm').value = d.jkm;
+  } catch (e) { $('#premiStatus').textContent = 'Gagal memuat premi: ' + e.message; }
+}
+$('#premiBtn').addEventListener('click', async () => {
+  const jkk = parseFloat($('#jkk').value), jkm = parseFloat($('#jkm').value);
+  if (isNaN(jkk) || jkk < 0 || isNaN(jkm) || jkm < 0) {
+    $('#premiStatus').textContent = 'Isi JKK & JKM dengan angka ≥ 0.';
+    return;
+  }
+  $('#premiStatus').textContent = 'Menyimpan…';
+  try {
+    const r = await fetch(API + '/settings_save', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jkk, jkm }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    $('#premiStatus').textContent = `Tersimpan — JKK ${d.jkk.toLocaleString('id-ID')}, JKM ${d.jkm.toLocaleString('id-ID')} (berlaku utk export berikutnya).`;
+  } catch (e) { $('#premiStatus').textContent = 'Gagal menyimpan: ' + e.message; }
+});
+loadPremi();
 loadPeriods();
 </script>
 </body>

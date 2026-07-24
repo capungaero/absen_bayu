@@ -338,6 +338,63 @@ class Pph21_workbook {
         return $ss;
     }
 
+    /**
+     * Rekap tahunan format konsultan "REKAP DATA SPT MASA PPh Pasal 21 Gross Up":
+     * baris = karyawan (urut roster), kolom = JAN..NOP, JUMLAH (=SUM Jan-Nov),
+     * DES, TOTAL (=JUMLAH+DES). Nilai = bruto GROSS-UP yang dilapor per masa.
+     *
+     * @param array $meta ['cv','npwp','year']
+     * @param array $rows per karyawan: ['name', 'm' => [bulan => bruto_gu]]
+     */
+    public function build_gu_rekap($meta, $rows) {
+        $ss = new Spreadsheet();
+        $ss->getDefaultStyle()->getFont()->setName('Arial')->setSize(10);
+        $ws = $ss->getActiveSheet();
+        $ws->setTitle('PENGHASILAN BRUTO');
+        $ws->setCellValue('B1', 'REKAP DATA SPT MASA PPh PASAL 21 GROSS UP — '.$meta['cv'].' — TAHUN '.$meta['year']
+            .($meta['npwp'] !== '' ? ' — NPWP '.$meta['npwp'] : ''));
+        $ws->setCellValue('B2', 'PENGHASILAN BRUTO');
+        $ws->getStyle('B1:B2')->getFont()->setBold(true);
+
+        $hdr = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGUST', 'SEP', 'OKT', 'NOP'];
+        $ws->setCellValue('B3', 'Nama');
+        foreach ($hdr as $i => $t) $ws->setCellValue($this->xy(3 + $i, 3), $t); // C..M
+        $ws->setCellValue('N3', 'JUMLAH');
+        $ws->setCellValue('O3', 'DES');
+        $ws->setCellValue('P3', 'TOTAL');
+        $ws->getStyle('B3:P3')->getFont()->setBold(true);
+        $ws->getStyle('B3:M3')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('C6E0B4');
+        $ws->getStyle('N3:O3')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('9BC2E6');
+        $ws->getStyle('P3')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('C6E0B4');
+
+        $r0 = 4;
+        $r = $r0;
+        foreach ($rows as $i => $e) {
+            $ws->setCellValue('A'.$r, $i + 1);
+            $ws->setCellValue('B'.$r, $e['name']);
+            for ($m = 1; $m <= 11; $m++) {
+                if (isset($e['m'][$m])) $ws->setCellValue($this->xy(2 + $m, $r), round($e['m'][$m], 2));
+            }
+            $ws->setCellValue('N'.$r, "=SUM(C{$r}:M{$r})");
+            if (isset($e['m'][12])) $ws->setCellValue('O'.$r, round($e['m'][12], 2));
+            $ws->setCellValue('P'.$r, "=N{$r}+O{$r}");
+            $r++;
+        }
+        $rt = $r;
+        $ws->setCellValue('B'.$rt, 'TOTAL');
+        foreach (range('C', 'P') as $col) {
+            $ws->setCellValue($col.$rt, "=SUM({$col}{$r0}:{$col}".($rt - 1).')');
+        }
+        $ws->getStyle("B{$rt}:P{$rt}")->getFont()->setBold(true);
+        $ws->getStyle('C'.$r0.':P'.$rt)->getNumberFormat()->setFormatCode('#,##0;(#,##0);"-"');
+        $ws->getStyle('B3:P'.$rt)->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
+        $ws->getColumnDimension('A')->setWidth(5);
+        $ws->getColumnDimension('B')->setWidth(32);
+        foreach (range('C', 'P') as $col) $ws->getColumnDimension($col)->setWidth(13);
+        $ws->freezePane('C4');
+        return $ss;
+    }
+
     // ---------------------------------------------------------------------- TER
     private function sheet_ter($ws) {
         $ws->setTitle('TER');

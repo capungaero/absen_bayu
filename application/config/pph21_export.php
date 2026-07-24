@@ -9,6 +9,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 // Premi BPJS yang DIBAYAR PERUSAHAAN (penambah bruto, Tabel 8.1 buku DJP).
 // Diisikan otomatis untuk karyawan yang bulan itu punya potongan BPJS (> 0).
 // Nilai JKM 8.548,90 dikonfirmasi user 9 Jul 2026 (kertas kerja Mei sempat memakai 13.548,87).
+// CATATAN: jkk & jkm di sini hanya DEFAULT — bila sudah pernah disimpan lewat form
+// di halaman Export PPh21 (tabel pph21_settings), nilai tabel itu yang dipakai.
 $config['pph21_premi'] = [
     'jkk' => 7639.10,
     'jkm' => 8548.90,

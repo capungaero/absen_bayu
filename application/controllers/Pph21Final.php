@@ -110,6 +110,18 @@ class Pph21Final extends CI_Controller {
             ->where('p.id', $pid)->get()->row();
     }
 
+    /** Premi perusahaan: default config pph21_premi, jkk/jkm bisa di-override dari tabel pph21_settings (pola Pph21Export). */
+    private function _premi() {
+        $premi = $this->config->item('pph21_premi');
+        if ($this->db->table_exists('pph21_settings')) {
+            foreach ($this->db->where_in('setting_key', ['premi_jkk', 'premi_jkm'])
+                     ->get('pph21_settings')->result() as $s) {
+                $premi[substr($s->setting_key, 6)] = (float)$s->setting_value;
+            }
+        }
+        return $premi;
+    }
+
     /**
      * Baris kertas kerja masa pajak terakhir satu CV (urut roster).
      * Kandidat = roster tahunan + karyawan payroll bulan ini; disaring
@@ -152,7 +164,7 @@ class Pph21Final extends CI_Controller {
         if (!$uids) return ['meta' => [], 'rows' => []];
 
         // ---- agregasi bulanan Jan..M dari semua payroll tahun berjalan (cabang sama)
-        $premi = $this->config->item('pph21_premi');
+        $premi = $this->_premi();
         $premi_total = $premi['jkk'] + $premi['jkm'] + $premi['kes'];
         $agg = []; // uid => ['bulanan'=>[m=>['bruto_gu','pph']], 'bruto_akhir'=>..]
         foreach (array_keys($uids) as $uid) $agg[$uid] = ['bulanan' => [], 'bruto_akhir' => 0.0];
