@@ -739,18 +739,38 @@ class Pph21Export extends CI_Controller {
      * (PMK 168/2023, contoh Buku DJP hal. 65 & 68): awal = bulan join bila
      * join_date di tahun pajak ini, selain itu 01; akhir = bulan nonaktif
      * (users.last_status saat active=0) bila di tahun pajak ini, selain itu 12.
+     *
+     * Periode payroll Tiffany = tanggal 26 s.d. 25 (konfirmasi konsultan pajak
+     * 24 Jul 2026): tanggal 26-31 masuk PERIODE BULAN BERIKUTNYA — mis. masuk
+     * 27 Juni = periode penggajian Juli. Berlaku utk join maupun nonaktif;
+     * pergeseran dari Desember jatuh ke tahun berikutnya (bukan tahun pajak ini).
      */
     private function _masa($year, $join_date, $active, $last_status) {
         $awal = 1;
-        if ($join_date && (int)substr($join_date, 0, 4) === (int)$year) {
-            $awal = max(1, min(12, (int)substr($join_date, 5, 2)));
+        $pj = $this->_periode($join_date);
+        if ($pj) {
+            if ($pj[0] == (int)$year) $awal = $pj[1];
+            elseif ($pj[0] > (int)$year) $awal = 12; // periode mulai tahun depan — praktis nihil di tahun ini
         }
         $akhir = 12;
-        if ((string)$active === '0' && $last_status && (int)substr($last_status, 0, 4) === (int)$year) {
-            $akhir = max(1, min(12, (int)substr($last_status, 5, 2)));
+        if ((string)$active === '0') {
+            $pk = $this->_periode($last_status);
+            if ($pk && $pk[0] == (int)$year) $akhir = $pk[1];
+            elseif ($pk && $pk[0] < (int)$year) $akhir = $awal; // nonaktif sebelum tahun ini
         }
         if ($akhir < $awal) $akhir = $awal;
         return [$awal, $akhir];
+    }
+
+    /** [tahun, bulan] periode payroll (cut-off 26-25) dari tanggal: tgl >= 26 masuk periode bulan berikutnya. */
+    private function _periode($date) {
+        if (!$date) return null;
+        $y = (int)substr($date, 0, 4);
+        $m = (int)substr($date, 5, 2);
+        $d = (int)substr($date, 8, 2);
+        if ($y < 2000 || $m < 1 || $m > 12) return null;
+        if ($d >= 26) { $m++; if ($m > 12) { $m = 1; $y++; } }
+        return [$y, $m];
     }
 
     private function _roster_insert($p, $sid, $e, $order) {
