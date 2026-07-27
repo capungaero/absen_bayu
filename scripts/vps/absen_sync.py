@@ -982,7 +982,7 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
                     out_dt = datetime.strptime(f"{date_str} {scans['out']}", '%Y-%m-%d %H:%M:%S')
                     dur = (out_dt - in_dt).total_seconds() / 60
                     if dur > scans['max_min']:
-                        late = int(dur)
+                        late = int(dur - scans['max_min'])
                 except Exception:
                     pass
             prayer_results[(user_id, date_str, col)] = {
