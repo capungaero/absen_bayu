@@ -47,7 +47,9 @@ export default function App() {
 
       <nav className="tabs">
         <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>Dashboard</button>
-        <button className={tab === 'lapor' ? 'active' : ''} onClick={() => setTab('lapor')}>+ Lapor</button>
+        {(me.is_admin || me.is_inspector) && (
+          <button className={tab === 'lapor' ? 'active' : ''} onClick={() => setTab('lapor')}>+ Lapor</button>
+        )}
         {me.is_admin && (
           <button className={tab === 'kelola' ? 'active' : ''} onClick={() => setTab('kelola')}>Kelola</button>
         )}

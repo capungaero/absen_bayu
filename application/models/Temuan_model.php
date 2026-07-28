@@ -7,9 +7,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Temuan_model extends CI_Model {
 
-    protected $location_table = 'temuan_location';
-    protected $temuan_table   = 'temuan';
-    protected $config_table   = 'temuan_config';
+    protected $location_table  = 'temuan_location';
+    protected $temuan_table    = 'temuan';
+    protected $config_table    = 'temuan_config';
+    protected $inspector_table = 'temuan_inspector';
 
     public function __construct() {
         parent::__construct();
@@ -66,6 +67,16 @@ class Temuan_model extends CI_Model {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->inspector_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `user_id` INT NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -95,7 +106,42 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
-    // LOKASI
+    // INSPECTOR
+    // ====================================================================
+
+    public function get_inspectors() {
+        return $this->db
+            ->select("i.id, i.user_id, TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) AS name,
+                      p.position_name, b.branch_name")
+            ->from("{$this->inspector_table} i")
+            ->join('users u', 'u.id = i.user_id', 'left')
+            ->join('position p', 'p.id = u.position_id', 'left')
+            ->join('branch b', 'b.id = p.branch_id', 'left')
+            ->order_by('name')
+            ->get()->result_array();
+    }
+
+    public function is_inspector($user_id) {
+        return (int)$this->db->where('user_id', (int)$user_id)
+                             ->count_all_results($this->inspector_table) > 0;
+    }
+
+    public function add_inspector($user_id) {
+        if ($this->is_inspector($user_id)) { return false; }
+        $this->db->insert($this->inspector_table, [
+            'user_id'    => (int)$user_id,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        return true;
+    }
+
+    public function remove_inspector($id) {
+        $this->db->where('id', (int)$id)->delete($this->inspector_table);
+        return $this->db->affected_rows() > 0;
+    }
+
+    // ====================================================================
+    // LOKASI (KODE AREA)
     // ====================================================================
 
     public function get_locations($branch_id = null, $active_only = false) {

@@ -4,8 +4,101 @@ import { apiGet, apiPost } from '../api.js';
 export default function Admin({ me, onSessionEnd }) {
   return (
     <div>
+      <InspectorAdmin onSessionEnd={onSessionEnd} />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
+    </div>
+  );
+}
+
+function InspectorAdmin({ onSessionEnd }) {
+  const [inspectors, setInspectors] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [pick, setPick] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [i, e] = await Promise.all([
+        apiGet('/inspectors'),
+        apiGet('/employees'),
+      ]);
+      setInspectors(i.rows);
+      setEmployees(e.rows);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const add = async () => {
+    if (!pick) return;
+    setBusy(true);
+    setError('');
+    try {
+      await apiPost('/inspector_add', { user_id: pick });
+      setPick('');
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (row) => {
+    if (!window.confirm(`Hapus ${row.name} dari daftar inspector?`)) return;
+    try {
+      await apiPost('/inspector_delete', { id: row.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  const registered = new Set(inspectors.map((i) => Number(i.user_id)));
+
+  return (
+    <div className="admin-section">
+      <h3>🕵️ Inspector</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Hanya karyawan yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan.
+      </p>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="filter-row">
+        <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ flex: 1, minWidth: 200 }}>
+          <option value="">— pilih karyawan —</option>
+          {employees.filter((u) => !registered.has(Number(u.id))).map((u) => (
+            <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>
+          ))}
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || !pick}>+ Tambah Inspector</button>
+      </div>
+      <div className="table-wrap">
+        <table className="loc-table">
+          <thead>
+            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th><th></th></tr>
+          </thead>
+          <tbody>
+            {inspectors.map((row) => (
+              <tr key={row.id}>
+                <td>{row.name}</td>
+                <td>{row.position_name || '-'}</td>
+                <td>{row.branch_name || '-'}</td>
+                <td><button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button></td>
+              </tr>
+            ))}
+            {inspectors.length === 0 && (
+              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada inspector terdaftar.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -45,16 +138,19 @@ function LocationAdmin({ me, onSessionEnd }) {
 
   return (
     <div className="admin-section">
-      <h3>📍 Master Lokasi &amp; PJ</h3>
+      <h3>📍 Kode Area &amp; PJ Area</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). PJ area yang merespon temuan lewat aplikasi.
+      </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
         onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_id: '', is_active: 1 })}>
-        + Tambah Lokasi
+        + Tambah Kode Area
       </button>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Lokasi</th><th>Cabang</th><th>PJ</th><th>Status</th><th></th></tr>
+            <tr><th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {locations.map((l) => (
@@ -125,7 +221,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{form.id ? 'Edit Lokasi' : 'Tambah Lokasi'}</h3>
+        <h3>{form.id ? 'Edit Kode Area' : 'Tambah Kode Area'}</h3>
         {error && <div className="alert alert-error">{error}</div>}
         <div className="field">
           <label>Cabang</label>
@@ -134,11 +230,11 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
           </select>
         </div>
         <div className="field">
-          <label>Nama lokasi</label>
-          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Rak 1, Etalase 2" />
+          <label>Kode area / nama lokasi</label>
+          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Rak 1, WC, Gudang" />
         </div>
         <div className="field">
-          <label>Penanggung jawab (PJ)</label>
+          <label>PJ Area (penanggung jawab)</label>
           <select value={form.pj_user_id} onChange={(e) => set('pj_user_id', e.target.value)}>
             <option value="">— belum ditentukan —</option>
             {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}

@@ -134,13 +134,14 @@ class Temuan extends CI_Controller {
         if (!$this->_auth()) return;
         $u = $this->user;
         $this->_json(['status' => true, 'user' => [
-            'id'        => (int)$u['id'],
-            'name'      => trim($u['first_name'] . ' ' . $u['last_name']),
-            'role'      => $this->role,
-            'is_admin'  => $this->_is_admin(),
-            'branch_id' => (int)$u['branch_id'],
-            'branch'    => $u['branch_name'],
-            'position'  => $u['position_name'],
+            'id'           => (int)$u['id'],
+            'name'         => trim($u['first_name'] . ' ' . $u['last_name']),
+            'role'         => $this->role,
+            'is_admin'     => $this->_is_admin(),
+            'is_inspector' => $this->temuan->is_inspector($u['id']),
+            'branch_id'    => (int)$u['branch_id'],
+            'branch'       => $u['branch_name'],
+            'position'     => $u['position_name'],
         ]]);
     }
 
@@ -169,7 +170,43 @@ class Temuan extends CI_Controller {
     }
 
     // ====================================================================
-    // LOKASI (master)
+    // INSPECTOR (master)
+    // ====================================================================
+
+    // GET temuan/inspectors
+    public function inspectors() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_inspectors()]);
+    }
+
+    // POST temuan/inspector_add {user_id}
+    public function inspector_add() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $user_id = (int)($p['user_id'] ?? 0);
+        $u = $this->db->select('users.id')->where('users.id', $user_id)->where('users.active', 1)->get('users')->row_array();
+        if (!$u) { $this->_json(['status' => false, 'message' => 'Karyawan tidak ditemukan'], 404); return; }
+        if (!$this->temuan->add_inspector($user_id)) {
+            $this->_json(['status' => false, 'message' => 'Karyawan sudah terdaftar sebagai inspector'], 422); return;
+        }
+        $this->_json(['status' => true]);
+    }
+
+    // POST temuan/inspector_delete {id}
+    public function inspector_delete() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        if (!$this->temuan->remove_inspector((int)($p['id'] ?? 0))) {
+            $this->_json(['status' => false, 'message' => 'Inspector tidak ditemukan'], 404); return;
+        }
+        $this->_json(['status' => true]);
+    }
+
+    // ====================================================================
+    // LOKASI / KODE AREA (master)
     // ====================================================================
 
     // GET temuan/locations?branch_id=&all=1
@@ -258,8 +295,12 @@ class Temuan extends CI_Controller {
     }
 
     // POST temuan/create (multipart: location_id, description, photo)
+    // Hanya inspector terdaftar atau admin yang boleh memposting temuan.
     public function create() {
         if (!$this->_auth()) return;
+        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
+            $this->_json(['status' => false, 'message' => 'Hanya inspector yang boleh memposting temuan'], 403); return;
+        }
         $location_id = (int)$this->input->post('location_id');
         $description = trim((string)$this->input->post('description'));
 
