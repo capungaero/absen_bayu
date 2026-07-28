@@ -1,0 +1,220 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { apiGet, apiPost } from '../api.js';
+
+export default function Admin({ me, onSessionEnd }) {
+  return (
+    <div>
+      <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
+      <ConfigAdmin onSessionEnd={onSessionEnd} />
+    </div>
+  );
+}
+
+function LocationAdmin({ me, onSessionEnd }) {
+  const [branches, setBranches] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [editing, setEditing] = useState(null); // {id?, branch_id, name, pj_user_id, is_active}
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const [b, l] = await Promise.all([
+        apiGet('/branches'),
+        apiGet('/locations', { all: 1 }),
+      ]);
+      setBranches(b.rows);
+      setLocations(l.rows);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (loc) => {
+    if (!window.confirm(`Hapus lokasi "${loc.name}"? (kalau sudah dipakai temuan, hanya dinonaktifkan)`)) return;
+    try {
+      await apiPost('/location_delete', { id: loc.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="admin-section">
+      <h3>📍 Master Lokasi &amp; PJ</h3>
+      {error && <div className="alert alert-error">{error}</div>}
+      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_id: '', is_active: 1 })}>
+        + Tambah Lokasi
+      </button>
+      <div className="table-wrap">
+        <table className="loc-table">
+          <thead>
+            <tr><th>Lokasi</th><th>Cabang</th><th>PJ</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {locations.map((l) => (
+              <tr key={l.id} className={Number(l.is_active) ? '' : 'inactive'}>
+                <td>{l.name}</td>
+                <td>{l.branch_name}</td>
+                <td>{l.pj_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
+                <td>{Number(l.is_active) ? 'Aktif' : 'Nonaktif'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...l, pj_user_id: l.pj_user_id || '' })}>Edit</button>{' '}
+                  <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
+                </td>
+              </tr>
+            ))}
+            {locations.length === 0 && (
+              <tr><td colSpan="5" style={{ color: 'var(--muted)' }}>Belum ada lokasi.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <LocationModal
+          initial={editing}
+          branches={branches}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+          onSessionEnd={onSessionEnd}
+        />
+      )}
+    </div>
+  );
+}
+
+function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
+  const [form, setForm] = useState(initial);
+  const [employees, setEmployees] = useState([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!form.branch_id) { setEmployees([]); return; }
+    apiGet('/employees', { branch_id: form.branch_id }).then((d) => setEmployees(d.rows)).catch(() => {});
+  }, [form.branch_id]);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    if (!form.name.trim()) { setError('Nama lokasi wajib diisi'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await apiPost('/location_save', {
+        id: form.id || null,
+        branch_id: form.branch_id,
+        name: form.name.trim(),
+        pj_user_id: form.pj_user_id || null,
+        is_active: form.is_active ? 1 : 0,
+      });
+      onSaved();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{form.id ? 'Edit Lokasi' : 'Tambah Lokasi'}</h3>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label>Cabang</label>
+          <select value={form.branch_id} onChange={(e) => set('branch_id', e.target.value)} disabled={branches.length <= 1}>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Nama lokasi</label>
+          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Rak 1, Etalase 2" />
+        </div>
+        <div className="field">
+          <label>Penanggung jawab (PJ)</label>
+          <select value={form.pj_user_id} onChange={(e) => set('pj_user_id', e.target.value)}>
+            <option value="">— belum ditentukan —</option>
+            {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
+          </select>
+        </div>
+        <label className="check-row">
+          <input type="checkbox" checked={!!Number(form.is_active)} onChange={(e) => set('is_active', e.target.checked ? 1 : 0)} />
+          Aktif
+        </label>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? 'Menyimpan…' : 'Simpan'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfigAdmin({ onSessionEnd }) {
+  const [cfg, setCfg] = useState(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiGet('/config').then((d) => setCfg(d.config)).catch((err) => {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    });
+  }, [onSessionEnd]);
+
+  if (!cfg) return <div className="admin-section"><h3>📱 Notifikasi WA</h3>{error && <div className="alert alert-error">{error}</div>}</div>;
+
+  const set = (k, v) => setCfg((c) => ({ ...c, [k]: v }));
+
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    try {
+      await apiPost('/save_config', {
+        notify_enabled: Number(cfg.notify_enabled),
+        notify_done_enabled: Number(cfg.notify_done_enabled),
+        target_phones: cfg.target_phones || '',
+      });
+      setSuccess('Konfigurasi tersimpan.');
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="admin-section">
+      <h3>📱 Notifikasi WA</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Pesan dikirim lewat gateway WA yang sama dengan WA Agent (kirimi.id). Isi nomor tujuan
+        (mis. anggota grup), pisahkan dengan koma.
+      </p>
+      {error && <div className="alert alert-error">{error}</div>}
+      {success && <div className="alert alert-success">{success}</div>}
+      <label className="check-row">
+        <input type="checkbox" checked={!!Number(cfg.notify_enabled)} onChange={(e) => set('notify_enabled', e.target.checked ? 1 : 0)} />
+        Kirim notifikasi saat ada temuan baru
+      </label>
+      <label className="check-row">
+        <input type="checkbox" checked={!!Number(cfg.notify_done_enabled)} onChange={(e) => set('notify_done_enabled', e.target.checked ? 1 : 0)} />
+        Kirim notifikasi saat temuan selesai
+      </label>
+      <div className="field">
+        <label>Nomor tujuan (628xxx, pisah koma)</label>
+        <textarea value={cfg.target_phones || ''} onChange={(e) => set('target_phones', e.target.value)} placeholder="6281234567890, 6289876543210" />
+      </div>
+      <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Menyimpan…' : 'Simpan Konfigurasi'}</button>
+    </div>
+  );
+}

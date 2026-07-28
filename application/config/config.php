@@ -478,6 +478,7 @@ $config['csrf_exclude_uris'] = array(
     'pph21_manual/(.*)', // Input manual PPh21: SPA same-origin, auth via session ion_auth + role check
     'pph21_nonpegawai/(.*)', // PPh21 tidak tetap & tenaga ahli: SPA same-origin, auth via session ion_auth + role check
     'pph21_export/settings_save', // Simpan premi JKK/JKM: SPA same-origin, auth via session ion_auth + role check
+    'temuan/(.*)',       // Temuan: stateless, dilindungi token bearer sendiri (Api_token)
 );
 
 /*

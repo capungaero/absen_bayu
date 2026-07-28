@@ -307,6 +307,20 @@ $route['dat_reader/data']        = 'DatReader/data';
 $route['dat_reader/save']        = 'DatReader/save';
 $route['dat_reader/push']        = 'DatReader/push';
 
+// Temuan (laporan masalah toko, auth via token bearer Api_token — sama seperti PWA)
+$route['temuan/me']              = 'Temuan/me';
+$route['temuan/branches']        = 'Temuan/branches';
+$route['temuan/employees']       = 'Temuan/employees';
+$route['temuan/locations']       = 'Temuan/locations';
+$route['temuan/location_save']   = 'Temuan/location_save';
+$route['temuan/location_delete'] = 'Temuan/location_delete';
+$route['temuan/list']            = 'Temuan/list';
+$route['temuan/create']          = 'Temuan/create';
+$route['temuan/take']            = 'Temuan/take';
+$route['temuan/done']            = 'Temuan/done';
+$route['temuan/config']          = 'Temuan/config';
+$route['temuan/save_config']     = 'Temuan/save_config';
+
 // Export PPh21 (kertas kerja per CV dari payroll, auth via CI3 session)
 $route['pph21_export/periods']    = 'Pph21Export/periods';
 $route['pph21_export/cvs']        = 'Pph21Export/cvs';

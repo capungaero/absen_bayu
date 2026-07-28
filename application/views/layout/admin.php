@@ -376,6 +376,7 @@
                                             <a href="<?= base_url('tools/pph21_export/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-excel"></i> Export PPh21</a>
                                             <a href="<?= base_url('tools/pph21_manual/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-table-edit"></i> Input Manual PPh21</a>
                                             <a href="<?= base_url('tools/pph21_nonpegawai/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-account-clock"></i> PPh21 Tidak Tetap &amp; Tenaga Ahli</a>
+                                            <a href="<?= base_url('tools/temuan/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-flag-variant"></i> Temuan</a>
                                         </div>
                                     </li>
                                 <?php } ?>
