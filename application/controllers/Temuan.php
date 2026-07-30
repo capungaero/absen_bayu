@@ -347,6 +347,7 @@ class Temuan extends CI_Controller {
         $this->temuan->update_temuan($row['id'], [
             'status'   => 'dikerjakan',
             'taken_by' => (int)$this->user['id'],
+            'taken_as' => $this->_actor_label($row),
             'taken_at' => date('Y-m-d H:i:s'),
         ]);
         $this->_json(['status' => true, 'row' => $this->_row_out($this->temuan->get_temuan($row['id']))]);
@@ -370,6 +371,7 @@ class Temuan extends CI_Controller {
         $this->temuan->update_temuan($row['id'], [
             'status'          => 'selesai',
             'done_by'         => (int)$this->user['id'],
+            'done_as'         => $this->_actor_label($row),
             'done_at'         => date('Y-m-d H:i:s'),
             'done_photo_path' => $up['path'],
         ]);
@@ -383,7 +385,18 @@ class Temuan extends CI_Controller {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
+        // SPV: boleh merespon semua temuan di cabangnya, setara PJ area
+        if ($this->role === 'supervisor') {
+            return (int)$row['branch_id'] === (int)$this->user['branch_id'];
+        }
         return (int)$row['pj_user_id'] === (int)$this->user['id'];
+    }
+
+    /** Label pelaku respon: PJ (PJ area lokasi tsb), SPV, atau Admin. */
+    private function _actor_label($row) {
+        if ((int)$row['pj_user_id'] === (int)$this->user['id']) { return 'PJ'; }
+        if ($this->role === 'supervisor') { return 'SPV'; }
+        return 'Admin';
     }
 
     // ====================================================================
@@ -475,7 +488,8 @@ class Temuan extends CI_Controller {
         $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
         $msg .= "📍 Lokasi    : {$row['location_name']}\n";
         $msg .= "📝 Keterangan: {$row['description']}\n";
-        $msg .= "👷 Dikerjakan: {$row['done_by_name']}\n";
+        $done_label = !empty($row['done_as']) ? " ({$row['done_as']})" : '';
+        $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
         $msg .= "🕐 {$when}\n";
         $msg .= str_repeat("─", 30);
         $msg .= "\n_Pesan otomatis dari Aplikasi Temuan_";

@@ -144,6 +144,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .badge-baru { background: #fef2f2; color: var(--red); }
 .badge-dikerjakan { background: #fffbeb; color: var(--amber); }
 .badge-selesai { background: #f0fdf4; color: var(--green); }
+.badge-actor { background: #eef2ff; color: #4338ca; padding: 1px 7px; font-size: 11px; margin-left: 4px; }
 
 .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 14px; }
 

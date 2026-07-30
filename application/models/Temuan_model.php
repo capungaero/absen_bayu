@@ -43,8 +43,10 @@ class Temuan_model extends CI_Model {
                 `photo_path` VARCHAR(255) NULL,
                 `status` ENUM('baru','dikerjakan','selesai') NOT NULL DEFAULT 'baru',
                 `taken_by` INT NULL DEFAULT NULL,
+                `taken_as` VARCHAR(10) NULL DEFAULT NULL,
                 `taken_at` DATETIME NULL,
                 `done_by` INT NULL DEFAULT NULL,
+                `done_as` VARCHAR(10) NULL DEFAULT NULL,
                 `done_at` DATETIME NULL,
                 `done_photo_path` VARCHAR(255) NULL,
                 `created_at` DATETIME NULL,
@@ -66,6 +68,13 @@ class Temuan_model extends CI_Model {
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+
+        // Migrasi tabel lama: kolom label pelaku respon (PJ/SPV/Admin)
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'taken_as'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                ADD COLUMN `taken_as` VARCHAR(10) NULL DEFAULT NULL AFTER `taken_by`,
+                ADD COLUMN `done_as` VARCHAR(10) NULL DEFAULT NULL AFTER `done_by`");
+        }
 
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->inspector_table}` (

@@ -51,7 +51,7 @@ export default function Dashboard({ me, onSessionEnd }) {
     apiGet('/locations', { branch_id: branchId }).then((d) => setLocations(d.rows)).catch(() => {});
   }, [branchId]);
 
-  const canRespond = (row) => me.is_admin || Number(row.pj_user_id) === Number(me.id);
+  const canRespond = (row) => me.is_admin || me.role === 'supervisor' || Number(row.pj_user_id) === Number(me.id);
 
   const take = async (row) => {
     if (!window.confirm(`Kerjakan temuan di ${row.location_name}?`)) return;
@@ -114,8 +114,8 @@ export default function Dashboard({ me, onSessionEnd }) {
               <div className="tcard-meta">
                 Pelapor: <b>{row.reporter_name}</b> · {fmtTime(row.created_at)}<br />
                 {row.pj_name && <>PJ: <b>{row.pj_name}</b><br /></>}
-                {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b> · {fmtTime(row.taken_at)}<br /></>}
-                {row.done_by_name && <>Selesai oleh <b>{row.done_by_name}</b> · {fmtTime(row.done_at)}</>}
+                {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className={`badge badge-actor`}> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
+                {row.done_by_name && <>Selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className={`badge badge-actor`}> {row.done_as}</span> : null} · {fmtTime(row.done_at)}</>}
               </div>
             </div>
             {row.status !== 'selesai' && canRespond(row) && (
