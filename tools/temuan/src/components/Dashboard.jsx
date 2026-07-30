@@ -51,7 +51,7 @@ export default function Dashboard({ me, onSessionEnd }) {
     apiGet('/locations', { branch_id: branchId }).then((d) => setLocations(d.rows)).catch(() => {});
   }, [branchId]);
 
-  const canRespond = (row) => me.is_admin || me.role === 'supervisor' || Number(row.pj_user_id) === Number(me.id);
+  const canRespond = (row) => me.is_admin || me.is_spv || Number(row.pj_user_id) === Number(me.id);
 
   const take = async (row) => {
     if (!window.confirm(`Kerjakan temuan di ${row.location_name}?`)) return;

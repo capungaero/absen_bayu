@@ -139,6 +139,7 @@ class Temuan extends CI_Controller {
             'role'         => $this->role,
             'is_admin'     => $this->_is_admin(),
             'is_inspector' => $this->temuan->is_inspector($u['id']),
+            'is_spv'       => $this->temuan->in_roster('spv', $u['id']),
             'branch_id'    => (int)$u['branch_id'],
             'branch'       => $u['branch_name'],
             'position'     => $u['position_name'],
@@ -170,40 +171,44 @@ class Temuan extends CI_Controller {
     }
 
     // ====================================================================
-    // INSPECTOR (master)
+    // ROSTER: INSPECTOR & SPV (master, pilih manual)
     // ====================================================================
 
-    // GET temuan/inspectors
-    public function inspectors() {
+    private function _roster_list($type) {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
-        $this->_json(['status' => true, 'rows' => $this->temuan->get_inspectors()]);
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_roster($type)]);
     }
 
-    // POST temuan/inspector_add {user_id}
-    public function inspector_add() {
+    private function _roster_add($type, $label) {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $p = $this->_body();
         $user_id = (int)($p['user_id'] ?? 0);
         $u = $this->db->select('users.id')->where('users.id', $user_id)->where('users.active', 1)->get('users')->row_array();
         if (!$u) { $this->_json(['status' => false, 'message' => 'Karyawan tidak ditemukan'], 404); return; }
-        if (!$this->temuan->add_inspector($user_id)) {
-            $this->_json(['status' => false, 'message' => 'Karyawan sudah terdaftar sebagai inspector'], 422); return;
+        if (!$this->temuan->add_to_roster($type, $user_id)) {
+            $this->_json(['status' => false, 'message' => "Karyawan sudah terdaftar sebagai {$label}"], 422); return;
         }
         $this->_json(['status' => true]);
     }
 
-    // POST temuan/inspector_delete {id}
-    public function inspector_delete() {
+    private function _roster_delete($type, $label) {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $p = $this->_body();
-        if (!$this->temuan->remove_inspector((int)($p['id'] ?? 0))) {
-            $this->_json(['status' => false, 'message' => 'Inspector tidak ditemukan'], 404); return;
+        if (!$this->temuan->remove_from_roster($type, (int)($p['id'] ?? 0))) {
+            $this->_json(['status' => false, 'message' => "{$label} tidak ditemukan"], 404); return;
         }
         $this->_json(['status' => true]);
     }
+
+    public function inspectors()       { $this->_roster_list('inspector'); }
+    public function inspector_add()    { $this->_roster_add('inspector', 'inspector'); }
+    public function inspector_delete() { $this->_roster_delete('inspector', 'Inspector'); }
+    public function spvs()             { $this->_roster_list('spv'); }
+    public function spv_add()          { $this->_roster_add('spv', 'SPV'); }
+    public function spv_delete()       { $this->_roster_delete('spv', 'SPV'); }
 
     // ====================================================================
     // LOKASI / KODE AREA (master)
@@ -385,8 +390,8 @@ class Temuan extends CI_Controller {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
-        // SPV: boleh merespon semua temuan di cabangnya, setara PJ area
-        if ($this->role === 'supervisor') {
+        // SPV terdaftar: boleh merespon semua temuan di cabangnya, setara PJ area
+        if ($this->temuan->in_roster('spv', $this->user['id'])) {
             return (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
         return (int)$row['pj_user_id'] === (int)$this->user['id'];
@@ -395,7 +400,7 @@ class Temuan extends CI_Controller {
     /** Label pelaku respon: PJ (PJ area lokasi tsb), SPV, atau Admin. */
     private function _actor_label($row) {
         if ((int)$row['pj_user_id'] === (int)$this->user['id']) { return 'PJ'; }
-        if ($this->role === 'supervisor') { return 'SPV'; }
+        if ($this->temuan->in_roster('spv', $this->user['id'])) { return 'SPV'; }
         return 'Admin';
     }
 

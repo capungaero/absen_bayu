@@ -4,15 +4,26 @@ import { apiGet, apiPost } from '../api.js';
 export default function Admin({ me, onSessionEnd }) {
   return (
     <div>
-      <InspectorAdmin onSessionEnd={onSessionEnd} />
+      <RosterAdmin
+        icon="🕵️" title="Inspector" label="inspector"
+        desc="Hanya karyawan yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan."
+        listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
+        onSessionEnd={onSessionEnd}
+      />
+      <RosterAdmin
+        icon="👔" title="SPV" label="SPV"
+        desc="SPV terdaftar bisa merespon (Kerjakan/Selesai) semua temuan di cabangnya, setara PJ area."
+        listPath="/spvs" addPath="/spv_add" delPath="/spv_delete"
+        onSessionEnd={onSessionEnd}
+      />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
     </div>
   );
 }
 
-function InspectorAdmin({ onSessionEnd }) {
-  const [inspectors, setInspectors] = useState([]);
+function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onSessionEnd }) {
+  const [rows, setRows] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [pick, setPick] = useState('');
   const [error, setError] = useState('');
@@ -21,16 +32,16 @@ function InspectorAdmin({ onSessionEnd }) {
   const load = useCallback(async () => {
     try {
       const [i, e] = await Promise.all([
-        apiGet('/inspectors'),
+        apiGet(listPath),
         apiGet('/employees'),
       ]);
-      setInspectors(i.rows);
+      setRows(i.rows);
       setEmployees(e.rows);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
     }
-  }, [onSessionEnd]);
+  }, [listPath, onSessionEnd]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -39,7 +50,7 @@ function InspectorAdmin({ onSessionEnd }) {
     setBusy(true);
     setError('');
     try {
-      await apiPost('/inspector_add', { user_id: pick });
+      await apiPost(addPath, { user_id: pick });
       setPick('');
       load();
     } catch (err) {
@@ -51,9 +62,9 @@ function InspectorAdmin({ onSessionEnd }) {
   };
 
   const remove = async (row) => {
-    if (!window.confirm(`Hapus ${row.name} dari daftar inspector?`)) return;
+    if (!window.confirm(`Hapus ${row.name} dari daftar ${label}?`)) return;
     try {
-      await apiPost('/inspector_delete', { id: row.id });
+      await apiPost(delPath, { id: row.id });
       load();
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -61,14 +72,12 @@ function InspectorAdmin({ onSessionEnd }) {
     }
   };
 
-  const registered = new Set(inspectors.map((i) => Number(i.user_id)));
+  const registered = new Set(rows.map((i) => Number(i.user_id)));
 
   return (
     <div className="admin-section">
-      <h3>🕵️ Inspector</h3>
-      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-        Hanya karyawan yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan.
-      </p>
+      <h3>{icon} {title}</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>{desc}</p>
       {error && <div className="alert alert-error">{error}</div>}
       <div className="filter-row">
         <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ flex: 1, minWidth: 200 }}>
@@ -77,7 +86,7 @@ function InspectorAdmin({ onSessionEnd }) {
             <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>
           ))}
         </select>
-        <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || !pick}>+ Tambah Inspector</button>
+        <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || !pick}>+ Tambah {title}</button>
       </div>
       <div className="table-wrap">
         <table className="loc-table">
@@ -85,7 +94,7 @@ function InspectorAdmin({ onSessionEnd }) {
             <tr><th>Nama</th><th>Posisi</th><th>Cabang</th><th></th></tr>
           </thead>
           <tbody>
-            {inspectors.map((row) => (
+            {rows.map((row) => (
               <tr key={row.id}>
                 <td>{row.name}</td>
                 <td>{row.position_name || '-'}</td>
@@ -93,8 +102,8 @@ function InspectorAdmin({ onSessionEnd }) {
                 <td><button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button></td>
               </tr>
             ))}
-            {inspectors.length === 0 && (
-              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada inspector terdaftar.</td></tr>
+            {rows.length === 0 && (
+              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
             )}
           </tbody>
         </table>

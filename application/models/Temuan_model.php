@@ -11,6 +11,7 @@ class Temuan_model extends CI_Model {
     protected $temuan_table    = 'temuan';
     protected $config_table    = 'temuan_config';
     protected $inspector_table = 'temuan_inspector';
+    protected $spv_table       = 'temuan_spv';
 
     public function __construct() {
         parent::__construct();
@@ -86,6 +87,16 @@ class Temuan_model extends CI_Model {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->spv_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `user_id` INT NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -115,14 +126,19 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
-    // INSPECTOR
+    // ROSTER (INSPECTOR & SPV — daftar user pilih manual)
     // ====================================================================
 
-    public function get_inspectors() {
+    private function _roster_table($type) {
+        return $type === 'spv' ? $this->spv_table : $this->inspector_table;
+    }
+
+    public function get_roster($type) {
+        $table = $this->_roster_table($type);
         return $this->db
             ->select("i.id, i.user_id, TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) AS name,
                       p.position_name, b.branch_name")
-            ->from("{$this->inspector_table} i")
+            ->from("{$table} i")
             ->join('users u', 'u.id = i.user_id', 'left')
             ->join('position p', 'p.id = u.position_id', 'left')
             ->join('branch b', 'b.id = p.branch_id', 'left')
@@ -130,24 +146,27 @@ class Temuan_model extends CI_Model {
             ->get()->result_array();
     }
 
-    public function is_inspector($user_id) {
+    public function in_roster($type, $user_id) {
         return (int)$this->db->where('user_id', (int)$user_id)
-                             ->count_all_results($this->inspector_table) > 0;
+                             ->count_all_results($this->_roster_table($type)) > 0;
     }
 
-    public function add_inspector($user_id) {
-        if ($this->is_inspector($user_id)) { return false; }
-        $this->db->insert($this->inspector_table, [
+    public function add_to_roster($type, $user_id) {
+        if ($this->in_roster($type, $user_id)) { return false; }
+        $this->db->insert($this->_roster_table($type), [
             'user_id'    => (int)$user_id,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
         return true;
     }
 
-    public function remove_inspector($id) {
-        $this->db->where('id', (int)$id)->delete($this->inspector_table);
+    public function remove_from_roster($type, $id) {
+        $this->db->where('id', (int)$id)->delete($this->_roster_table($type));
         return $this->db->affected_rows() > 0;
     }
+
+    // Kompatibilitas pemanggil lama
+    public function is_inspector($user_id) { return $this->in_roster('inspector', $user_id); }
 
     // ====================================================================
     // LOKASI (KODE AREA)
