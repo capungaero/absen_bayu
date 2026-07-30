@@ -1,9 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost, apiUpload } from '../api.js';
 
-const STATUS_LABEL = { baru: 'Baru', dikerjakan: 'Dikerjakan', selesai: 'Selesai' };
+export const STATUS_LABEL = {
+  baru: 'Baru',
+  dikerjakan: 'Dikerjakan',
+  menunggu_acc: 'Menunggu ACC',
+  selesai: 'Selesai',
+  ditolak: 'Ditolak',
+};
 
-function fmtTime(s) {
+export function fmtTime(s) {
   if (!s) return '-';
   const d = new Date(s.replace(' ', 'T'));
   return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -23,6 +29,7 @@ export default function Dashboard({ me, onSessionEnd }) {
   const [busy, setBusy] = useState(false);
   const [viewPhoto, setViewPhoto] = useState(null);
   const [doneTarget, setDoneTarget] = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
 
   const load = useCallback(async (p = 1, append = false) => {
     setBusy(true);
@@ -53,11 +60,11 @@ export default function Dashboard({ me, onSessionEnd }) {
 
   const canRespond = (row) => me.is_admin || me.is_spv || Number(row.pj_user_id) === Number(me.id);
 
-  const take = async (row) => {
-    if (!window.confirm(`Kerjakan temuan di ${row.location_name}?`)) return;
+  const doAction = async (path, body, confirmMsg) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
     try {
-      const data = await apiPost('/take', { id: row.id });
-      setRows((prev) => prev.map((r) => (r.id === row.id ? data.row : r)));
+      const data = await apiPost(path, body);
+      if (data.row) setRows((prev) => prev.map((r) => (r.id === data.row.id ? data.row : r)));
       load(1);
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -65,12 +72,14 @@ export default function Dashboard({ me, onSessionEnd }) {
     }
   };
 
+  const canAcc = (row) => me.is_admin || Number(row.reporter_id) === Number(me.id);
+
   return (
     <div>
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="summary-row">
-        {['baru', 'dikerjakan', 'selesai'].map((s) => (
+        {['baru', 'dikerjakan', 'menunggu_acc', 'selesai', 'ditolak'].map((s) => (
           <div key={s} className={`summary-card s-${s}`} onClick={() => setStatus(status === s ? '' : s)} style={{ cursor: 'pointer', outline: status === s ? '2px solid var(--teal)' : 'none' }}>
             <div className="num">{summary[s]}</div>
             <div className="lbl">{STATUS_LABEL[s]}</div>
@@ -81,9 +90,7 @@ export default function Dashboard({ me, onSessionEnd }) {
       <div className="filter-row">
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Semua status</option>
-          <option value="baru">Baru</option>
-          <option value="dikerjakan">Dikerjakan</option>
-          <option value="selesai">Selesai</option>
+          {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         {branches.length > 1 && (
           <select value={branchId} onChange={(e) => { setBranchId(e.target.value); setLocationId(''); }}>
@@ -114,18 +121,32 @@ export default function Dashboard({ me, onSessionEnd }) {
               <div className="tcard-meta">
                 Pelapor: <b>{row.reporter_name}</b> · {fmtTime(row.created_at)}<br />
                 {row.pj_name && <>PJ: <b>{row.pj_name}</b><br /></>}
-                {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className={`badge badge-actor`}> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
-                {row.done_by_name && <>Selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className={`badge badge-actor`}> {row.done_as}</span> : null} · {fmtTime(row.done_at)}</>}
+                {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className="badge badge-actor"> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
+                {row.done_by_name && <>Dilaporkan selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className="badge badge-actor"> {row.done_as}</span> : null} · {fmtTime(row.done_at)}<br /></>}
+                {row.acc_by_name && <>ACC oleh <b>{row.acc_by_name}</b> · {fmtTime(row.acc_at)}<br /></>}
+                {row.status === 'ditolak' && (
+                  <>Ditolak oleh <b>{row.reject_by_name}</b>{row.reject_as ? <span className="badge badge-actor"> {row.reject_as}</span> : null} · {fmtTime(row.reject_at)}<br />
+                  Alasan: <i>{row.reject_reason}</i></>
+                )}
               </div>
             </div>
-            {row.status !== 'selesai' && canRespond(row) && (
-              <div className="tcard-actions">
-                {row.status === 'baru' && (
-                  <button className="btn btn-primary btn-sm" onClick={() => take(row)}>🛠 Kerjakan</button>
-                )}
-                <button className="btn btn-outline btn-sm" onClick={() => setDoneTarget(row)}>✅ Selesai</button>
-              </div>
-            )}
+            {(() => {
+              const btns = [];
+              if (row.status === 'baru' && canRespond(row)) {
+                btns.push(<button key="take" className="btn btn-primary btn-sm" onClick={() => doAction('/take', { id: row.id }, `Kerjakan temuan di ${row.location_name}?`)}>🛠 Kerjakan</button>);
+                btns.push(<button key="rej" className="btn btn-danger" onClick={() => setRejectTarget(row)}>✖ Tolak</button>);
+              }
+              if (row.status === 'dikerjakan' && canRespond(row)) {
+                btns.push(<button key="done" className="btn btn-primary btn-sm" onClick={() => setDoneTarget(row)}>📷 Lapor Selesai</button>);
+              }
+              if (row.status === 'menunggu_acc' && canAcc(row)) {
+                btns.push(<button key="acc" className="btn btn-primary btn-sm" onClick={() => doAction('/acc', { id: row.id }, 'ACC — pengerjaan sudah sesuai dan temuan ditutup?')}>🆗 ACC Selesai</button>);
+              }
+              if (row.status === 'ditolak' && me.is_admin) {
+                btns.push(<button key="del" className="btn btn-danger" onClick={() => doAction('/delete', { id: row.id }, 'Hapus temuan ditolak ini dari dashboard? (tetap tercatat di Laporan)')}>🗑 Hapus</button>);
+              }
+              return btns.length ? <div className="tcard-actions">{btns}</div> : null;
+            })()}
           </div>
         ))}
       </div>
@@ -162,6 +183,59 @@ export default function Dashboard({ me, onSessionEnd }) {
           onSessionEnd={onSessionEnd}
         />
       )}
+
+      {rejectTarget && (
+        <RejectModal
+          row={rejectTarget}
+          onClose={() => setRejectTarget(null)}
+          onSaved={(fresh) => {
+            setRejectTarget(null);
+            setRows((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)));
+            load(1);
+          }}
+          onSessionEnd={onSessionEnd}
+        />
+      )}
+    </div>
+  );
+}
+
+function RejectModal({ row, onClose, onSaved, onSessionEnd }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (reason.trim().length < 5) { setError('Alasan penolakan minimal 5 karakter'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const data = await apiPost('/reject', { id: row.id, reason: reason.trim() });
+      onSaved(data.row);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>✖ Tolak Temuan</h3>
+        <div className="tcard-meta" style={{ marginBottom: 12 }}>
+          📍 {row.location_name} — {row.description}
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label>Alasan penolakan</label>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contoh: salah data, temuan sudah tidak relevan, dll" />
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+          <button className="btn btn-danger" onClick={submit} disabled={busy}>{busy ? 'Menyimpan…' : 'Tolak Temuan'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -198,7 +272,7 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>✅ Selesaikan Temuan</h3>
+        <h3>📷 Lapor Pengerjaan Selesai</h3>
         <div className="tcard-meta" style={{ marginBottom: 12 }}>
           📍 {row.location_name} — {row.description}
         </div>
@@ -211,7 +285,7 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
         <div className="modal-actions">
           <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
           <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy}>
-            {busy ? 'Menyimpan…' : 'Tandai Selesai'}
+            {busy ? 'Menyimpan…' : 'Lapor Selesai'}
           </button>
         </div>
       </div>

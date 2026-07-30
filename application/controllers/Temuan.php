@@ -358,23 +358,49 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'row' => $this->_row_out($this->temuan->get_temuan($row['id']))]);
     }
 
-    // POST temuan/done (multipart: id, photo) — PJ lokasi / admin
+    // POST temuan/reject {id, reason} — PJ/SPV/admin, hanya status baru
+    public function reject() {
+        if (!$this->_auth()) return;
+        $p = $this->_body();
+        $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
+        if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
+        if (!$this->_can_respond($row)) {
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, atau admin yang boleh merespon'], 403); return;
+        }
+        if ($row['status'] !== 'baru') {
+            $this->_json(['status' => false, 'message' => 'Hanya temuan berstatus baru yang bisa ditolak'], 422); return;
+        }
+        $reason = trim((string)($p['reason'] ?? ''));
+        if (strlen($reason) < 5) {
+            $this->_json(['status' => false, 'message' => 'Alasan penolakan minimal 5 karakter'], 422); return;
+        }
+        $this->temuan->update_temuan($row['id'], [
+            'status'        => 'ditolak',
+            'reject_by'     => (int)$this->user['id'],
+            'reject_as'     => $this->_actor_label($row),
+            'reject_reason' => $reason,
+            'reject_at'     => date('Y-m-d H:i:s'),
+        ]);
+        $this->_json(['status' => true, 'row' => $this->_row_out($this->temuan->get_temuan($row['id']))]);
+    }
+
+    // POST temuan/done (multipart: id, photo) — lapor pengerjaan → menunggu ACC inspector
     public function done() {
         if (!$this->_auth()) return;
         $row = $this->temuan->get_temuan((int)$this->input->post('id'));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ lokasi atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, atau admin yang boleh merespon'], 403); return;
         }
-        if ($row['status'] === 'selesai') {
-            $this->_json(['status' => false, 'message' => 'Temuan sudah selesai'], 422); return;
+        if (!in_array($row['status'], ['baru', 'dikerjakan'], true)) {
+            $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status']], 422); return;
         }
 
         $up = $this->_upload_photo('photo', 'selesai');
         if (isset($up['error'])) { $this->_json(['status' => false, 'message' => $up['error']], 422); return; }
 
         $this->temuan->update_temuan($row['id'], [
-            'status'          => 'selesai',
+            'status'          => 'menunggu_acc',
             'done_by'         => (int)$this->user['id'],
             'done_as'         => $this->_actor_label($row),
             'done_at'         => date('Y-m-d H:i:s'),
@@ -382,8 +408,69 @@ class Temuan extends CI_Controller {
         ]);
 
         $fresh = $this->temuan->get_temuan($row['id']);
+        $this->_notify_wa('temuan_lapor', $fresh);
+        $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
+    }
+
+    // POST temuan/acc {id} — inspector pelapor (atau admin) menutup temuan
+    public function acc() {
+        if (!$this->_auth()) return;
+        $p = $this->_body();
+        $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
+        if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
+        if (!$this->_is_admin() && (int)$row['reporter_id'] !== (int)$this->user['id']) {
+            $this->_json(['status' => false, 'message' => 'Hanya inspector pelapor atau admin yang boleh ACC'], 403); return;
+        }
+        if ($row['status'] !== 'menunggu_acc') {
+            $this->_json(['status' => false, 'message' => 'Temuan belum dilaporkan selesai'], 422); return;
+        }
+        $this->temuan->update_temuan($row['id'], [
+            'status' => 'selesai',
+            'acc_by' => (int)$this->user['id'],
+            'acc_at' => date('Y-m-d H:i:s'),
+        ]);
+        $fresh = $this->temuan->get_temuan($row['id']);
         $this->_notify_wa('temuan_selesai', $fresh);
         $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
+    }
+
+    // POST temuan/delete {id} — admin, hanya temuan ditolak (soft delete, tetap terekap)
+    public function delete() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
+        if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
+        if ($this->role !== 'admin' && (int)$row['branch_id'] !== (int)$this->user['branch_id']) {
+            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
+        }
+        if ($row['status'] !== 'ditolak') {
+            $this->_json(['status' => false, 'message' => 'Hanya temuan ditolak yang bisa dihapus'], 422); return;
+        }
+        $this->temuan->update_temuan($row['id'], ['is_deleted' => 1]);
+        $this->_json(['status' => true]);
+    }
+
+    // GET temuan/report?branch_id=&from=&to= — rekap temuan + penanganan (termasuk yang dihapus)
+    public function report() {
+        if (!$this->_auth()) return;
+        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $from = $this->input->get('from') ?: date('Y-m-01');
+        $to   = $this->input->get('to') ?: date('Y-m-d');
+        $filters = [
+            'branch_id'       => $branch_id,
+            'from'            => $from,
+            'to'              => $to,
+            'include_deleted' => true,
+        ];
+        $rows = $this->temuan->list_temuan($filters, 500, 0);
+        $this->_json([
+            'status'  => true,
+            'from'    => $from,
+            'to'      => $to,
+            'rows'    => array_map([$this, '_row_out'], $rows),
+            'summary' => $this->temuan->status_summary($branch_id, true, $from, $to),
+        ]);
     }
 
     private function _can_respond($row) {
@@ -440,7 +527,7 @@ class Temuan extends CI_Controller {
         $cfg = $this->temuan->get_config();
         if (!$cfg) return;
         if ($type === 'temuan_baru' && empty($cfg['notify_enabled'])) return;
-        if ($type === 'temuan_selesai' && empty($cfg['notify_done_enabled'])) return;
+        if (in_array($type, ['temuan_lapor', 'temuan_selesai'], true) && empty($cfg['notify_done_enabled'])) return;
 
         $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
         if (empty($phones)) return;
@@ -488,13 +575,27 @@ class Temuan extends CI_Controller {
             $msg .= "\n_Pesan otomatis dari Aplikasi Temuan_";
             return $msg;
         }
-        $msg  = "✅ *TEMUAN SELESAI*\n";
+        $done_label = !empty($row['done_as']) ? " ({$row['done_as']})" : '';
+        if ($type === 'temuan_lapor') {
+            $msg  = "🔔 *TEMUAN DILAPORKAN SELESAI*\n";
+            $msg .= str_repeat("─", 30) . "\n";
+            $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
+            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= "📝 Keterangan: {$row['description']}\n";
+            $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
+            $msg .= "⏳ Menunggu ACC inspector: {$row['reporter_name']}\n";
+            $msg .= "🕐 {$when}\n";
+            $msg .= str_repeat("─", 30);
+            $msg .= "\n_Pesan otomatis dari Aplikasi Temuan_";
+            return $msg;
+        }
+        $msg  = "✅ *TEMUAN SELESAI (ACC)*\n";
         $msg .= str_repeat("─", 30) . "\n";
         $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
         $msg .= "📍 Lokasi    : {$row['location_name']}\n";
         $msg .= "📝 Keterangan: {$row['description']}\n";
-        $done_label = !empty($row['done_as']) ? " ({$row['done_as']})" : '';
         $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
+        $msg .= "🆗 ACC oleh  : {$row['acc_by_name']}\n";
         $msg .= "🕐 {$when}\n";
         $msg .= str_repeat("─", 30);
         $msg .= "\n_Pesan otomatis dari Aplikasi Temuan_";

@@ -42,7 +42,7 @@ class Temuan_model extends CI_Model {
                 `reporter_id` INT NOT NULL,
                 `description` TEXT NULL,
                 `photo_path` VARCHAR(255) NULL,
-                `status` ENUM('baru','dikerjakan','selesai') NOT NULL DEFAULT 'baru',
+                `status` ENUM('baru','dikerjakan','menunggu_acc','selesai','ditolak') NOT NULL DEFAULT 'baru',
                 `taken_by` INT NULL DEFAULT NULL,
                 `taken_as` VARCHAR(10) NULL DEFAULT NULL,
                 `taken_at` DATETIME NULL,
@@ -50,6 +50,13 @@ class Temuan_model extends CI_Model {
                 `done_as` VARCHAR(10) NULL DEFAULT NULL,
                 `done_at` DATETIME NULL,
                 `done_photo_path` VARCHAR(255) NULL,
+                `reject_by` INT NULL DEFAULT NULL,
+                `reject_as` VARCHAR(10) NULL DEFAULT NULL,
+                `reject_reason` TEXT NULL,
+                `reject_at` DATETIME NULL,
+                `acc_by` INT NULL DEFAULT NULL,
+                `acc_at` DATETIME NULL,
+                `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 PRIMARY KEY (`id`),
@@ -75,6 +82,19 @@ class Temuan_model extends CI_Model {
             $this->db->query("ALTER TABLE `{$this->temuan_table}`
                 ADD COLUMN `taken_as` VARCHAR(10) NULL DEFAULT NULL AFTER `taken_by`,
                 ADD COLUMN `done_as` VARCHAR(10) NULL DEFAULT NULL AFTER `done_by`");
+        }
+
+        // Migrasi alur tolak/ACC: status baru + kolom reject/acc/soft-delete
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'reject_reason'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                MODIFY COLUMN `status` ENUM('baru','dikerjakan','menunggu_acc','selesai','ditolak') NOT NULL DEFAULT 'baru',
+                ADD COLUMN `reject_by` INT NULL DEFAULT NULL AFTER `done_photo_path`,
+                ADD COLUMN `reject_as` VARCHAR(10) NULL DEFAULT NULL AFTER `reject_by`,
+                ADD COLUMN `reject_reason` TEXT NULL AFTER `reject_as`,
+                ADD COLUMN `reject_at` DATETIME NULL AFTER `reject_reason`,
+                ADD COLUMN `acc_by` INT NULL DEFAULT NULL AFTER `reject_at`,
+                ADD COLUMN `acc_at` DATETIME NULL AFTER `acc_by`,
+                ADD COLUMN `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `acc_at`");
         }
 
         $this->db->query("
@@ -225,13 +245,15 @@ class Temuan_model extends CI_Model {
         return $this->db->insert_id();
     }
 
-    public function get_temuan($id) {
-        return $this->db
+    private function _select_full() {
+        $this->db
             ->select("t.*, l.name AS location_name, l.pj_user_id, b.branch_name,
                       TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
                       TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
                       TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
-                      TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name")
+                      TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name,
+                      TRIM(CONCAT(rj.first_name,' ',COALESCE(rj.last_name,''))) AS reject_by_name,
+                      TRIM(CONCAT(ac.first_name,' ',COALESCE(ac.last_name,''))) AS acc_by_name")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
@@ -239,24 +261,17 @@ class Temuan_model extends CI_Model {
             ->join('users pj', 'pj.id = l.pj_user_id', 'left')
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
-            ->where('t.id', $id)
-            ->get()->row_array();
+            ->join('users rj', 'rj.id = t.reject_by', 'left')
+            ->join('users ac', 'ac.id = t.acc_by', 'left');
+    }
+
+    public function get_temuan($id) {
+        $this->_select_full();
+        return $this->db->where('t.id', $id)->get()->row_array();
     }
 
     public function list_temuan($filters = [], $limit = 100, $offset = 0) {
-        $this->db
-            ->select("t.*, l.name AS location_name, l.pj_user_id, b.branch_name,
-                      TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
-                      TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
-                      TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
-                      TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name")
-            ->from("{$this->temuan_table} t")
-            ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
-            ->join('branch b', 'b.id = t.branch_id', 'left')
-            ->join('users r', 'r.id = t.reporter_id', 'left')
-            ->join('users pj', 'pj.id = l.pj_user_id', 'left')
-            ->join('users tk', 'tk.id = t.taken_by', 'left')
-            ->join('users dn', 'dn.id = t.done_by', 'left');
+        $this->_select_full();
         $this->_apply_filters($filters);
         return $this->db->order_by('t.created_at', 'DESC')
                         ->limit($limit, $offset)
@@ -270,6 +285,9 @@ class Temuan_model extends CI_Model {
     }
 
     private function _apply_filters($filters) {
+        if (empty($filters['include_deleted'])) {
+            $this->db->where('t.is_deleted', 0);
+        }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
         }
@@ -287,16 +305,17 @@ class Temuan_model extends CI_Model {
         }
     }
 
-    /** Rekap jumlah per status (untuk kartu dashboard). */
-    public function status_summary($branch_id = null) {
+    /** Rekap jumlah per status. $include_deleted utk halaman Laporan. */
+    public function status_summary($branch_id = null, $include_deleted = false, $from = null, $to = null) {
         $this->db->select("status, COUNT(*) AS total")
                  ->from($this->temuan_table)
                  ->group_by('status');
-        if ($branch_id !== null) {
-            $this->db->where('branch_id', $branch_id);
-        }
+        if (!$include_deleted) { $this->db->where('is_deleted', 0); }
+        if ($branch_id !== null) { $this->db->where('branch_id', $branch_id); }
+        if ($from) { $this->db->where('created_at >=', $from . ' 00:00:00'); }
+        if ($to)   { $this->db->where('created_at <=', $to . ' 23:59:59'); }
         $rows = $this->db->get()->result_array();
-        $out = ['baru' => 0, 'dikerjakan' => 0, 'selesai' => 0];
+        $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'selesai' => 0, 'ditolak' => 0];
         foreach ($rows as $r) {
             $out[$r['status']] = (int)$r['total'];
         }

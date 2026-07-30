@@ -323,7 +323,11 @@ $route['temuan/location_delete'] = 'Temuan/location_delete';
 $route['temuan/list']            = 'Temuan/list';
 $route['temuan/create']          = 'Temuan/create';
 $route['temuan/take']            = 'Temuan/take';
+$route['temuan/reject']          = 'Temuan/reject';
 $route['temuan/done']            = 'Temuan/done';
+$route['temuan/acc']             = 'Temuan/acc';
+$route['temuan/delete']          = 'Temuan/delete';
+$route['temuan/report']          = 'Temuan/report';
 $route['temuan/config']          = 'Temuan/config';
 $route['temuan/save_config']     = 'Temuan/save_config';
 

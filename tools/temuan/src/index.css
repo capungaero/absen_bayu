@@ -104,7 +104,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .alert-success { background: #f0fdf4; color: var(--green); border: 1px solid #bbf7d0; }
 
 /* ------ dashboard ------ */
-.summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-bottom: 16px; }
 .summary-card {
   background: var(--card); border-radius: var(--radius);
   padding: 14px 12px; text-align: center;
@@ -114,7 +114,9 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .summary-card .lbl { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .summary-card.s-baru .num { color: var(--red); }
 .summary-card.s-dikerjakan .num { color: var(--amber); }
+.summary-card.s-menunggu_acc .num { color: #7c3aed; }
 .summary-card.s-selesai .num { color: var(--green); }
+.summary-card.s-ditolak .num { color: var(--muted); }
 
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .filter-row select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }
@@ -145,6 +147,11 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .badge-dikerjakan { background: #fffbeb; color: var(--amber); }
 .badge-selesai { background: #f0fdf4; color: var(--green); }
 .badge-actor { background: #eef2ff; color: #4338ca; padding: 1px 7px; font-size: 11px; margin-left: 4px; }
+.badge-menunggu_acc { background: #f5f3ff; color: #7c3aed; }
+.badge-ditolak { background: #f1f5f9; color: #475569; }
+.date-input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }
+.report-table td { vertical-align: top; }
+.report-table a { color: var(--teal); font-size: 12px; }
 
 .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 14px; }
 
