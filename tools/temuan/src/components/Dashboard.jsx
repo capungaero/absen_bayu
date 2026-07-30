@@ -58,7 +58,9 @@ export default function Dashboard({ me, onSessionEnd }) {
     apiGet('/locations', { branch_id: branchId }).then((d) => setLocations(d.rows)).catch(() => {});
   }, [branchId]);
 
-  const canRespond = (row) => me.is_admin || me.is_spv || Number(row.pj_user_id) === Number(me.id);
+  const canRespond = (row) => me.is_admin
+    || Number(row.pj_user_id) === Number(me.id)
+    || Number(row.spv_user_id) === Number(me.id);
 
   const doAction = async (path, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
@@ -120,7 +122,9 @@ export default function Dashboard({ me, onSessionEnd }) {
               <div className="tcard-desc">{row.description}</div>
               <div className="tcard-meta">
                 Pelapor: <b>{row.reporter_name}</b> · {fmtTime(row.created_at)}<br />
-                {row.pj_name && <>PJ: <b>{row.pj_name}</b><br /></>}
+                {(row.pj_name || row.spv_name) && (
+                  <>{row.pj_name && <>PJ: <b>{row.pj_name}</b></>}{row.pj_name && row.spv_name && ' · '}{row.spv_name && <>SPV: <b>{row.spv_name}</b></>}<br /></>
+                )}
                 {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className="badge badge-actor"> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
                 {row.done_by_name && <>Dilaporkan selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className="badge badge-actor"> {row.done_as}</span> : null} · {fmtTime(row.done_at)}<br /></>}
                 {row.acc_by_name && <>ACC oleh <b>{row.acc_by_name}</b> · {fmtTime(row.acc_at)}<br /></>}

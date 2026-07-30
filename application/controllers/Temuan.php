@@ -139,7 +139,8 @@ class Temuan extends CI_Controller {
             'role'         => $this->role,
             'is_admin'     => $this->_is_admin(),
             'is_inspector' => $this->temuan->is_inspector($u['id']),
-            'is_spv'       => $this->temuan->in_roster('spv', $u['id']),
+            'is_spv'       => $this->temuan->has_spv_area($u['id']),
+            'is_pj'        => $this->temuan->has_pj_area($u['id']),
             'branch_id'    => (int)$u['branch_id'],
             'branch'       => $u['branch_name'],
             'position'     => $u['position_name'],
@@ -206,9 +207,6 @@ class Temuan extends CI_Controller {
     public function inspectors()       { $this->_roster_list('inspector'); }
     public function inspector_add()    { $this->_roster_add('inspector', 'inspector'); }
     public function inspector_delete() { $this->_roster_delete('inspector', 'Inspector'); }
-    public function spvs()             { $this->_roster_list('spv'); }
-    public function spv_add()          { $this->_roster_add('spv', 'SPV'); }
-    public function spv_delete()       { $this->_roster_delete('spv', 'SPV'); }
 
     // ====================================================================
     // LOKASI / KODE AREA (master)
@@ -237,10 +235,11 @@ class Temuan extends CI_Controller {
         if (!$branch_id) { $this->_json(['status' => false, 'message' => 'Cabang wajib dipilih'], 422); return; }
 
         $data = [
-            'branch_id'  => $branch_id,
-            'name'       => $name,
-            'pj_user_id' => !empty($p['pj_user_id']) ? (int)$p['pj_user_id'] : null,
-            'is_active'  => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
+            'branch_id'   => $branch_id,
+            'name'        => $name,
+            'pj_user_id'  => !empty($p['pj_user_id']) ? (int)$p['pj_user_id'] : null,
+            'spv_user_id' => !empty($p['spv_user_id']) ? (int)$p['spv_user_id'] : null,
+            'is_active'   => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
         ];
 
         $id = !empty($p['id']) ? (int)$p['id'] : null;
@@ -278,12 +277,14 @@ class Temuan extends CI_Controller {
     public function list() {
         if (!$this->_auth()) return;
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $vis = $this->_visibility_uid();
         $filters = [
             'branch_id'   => $branch_id,
             'status'      => $this->input->get('status'),
             'location_id' => $this->input->get('location_id'),
             'from'        => $this->input->get('from'),
             'to'          => $this->input->get('to'),
+            'visible_to'  => $vis,
         ];
         $page  = max(1, (int)($this->input->get('page') ?: 1));
         $limit = 50;
@@ -294,7 +295,7 @@ class Temuan extends CI_Controller {
             'total'   => $this->temuan->count_temuan($filters),
             'page'    => $page,
             'per_page'=> $limit,
-            'summary' => $this->temuan->status_summary($branch_id),
+            'summary' => $this->temuan->status_summary($branch_id, false, null, null, $vis),
             'me'      => ['id' => (int)$this->user['id'], 'is_admin' => $this->_is_admin()],
         ]);
     }
@@ -455,6 +456,7 @@ class Temuan extends CI_Controller {
     public function report() {
         if (!$this->_auth()) return;
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $vis = $this->_visibility_uid();
         $from = $this->input->get('from') ?: date('Y-m-01');
         $to   = $this->input->get('to') ?: date('Y-m-d');
         $filters = [
@@ -462,6 +464,7 @@ class Temuan extends CI_Controller {
             'from'            => $from,
             'to'              => $to,
             'include_deleted' => true,
+            'visible_to'      => $vis,
         ];
         $rows = $this->temuan->list_temuan($filters, 500, 0);
         $this->_json([
@@ -469,7 +472,7 @@ class Temuan extends CI_Controller {
             'from'    => $from,
             'to'      => $to,
             'rows'    => array_map([$this, '_row_out'], $rows),
-            'summary' => $this->temuan->status_summary($branch_id, true, $from, $to),
+            'summary' => $this->temuan->status_summary($branch_id, true, $from, $to, $vis),
         ]);
     }
 
@@ -477,18 +480,24 @@ class Temuan extends CI_Controller {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
-        // SPV terdaftar: boleh merespon semua temuan di cabangnya, setara PJ area
-        if ($this->temuan->in_roster('spv', $this->user['id'])) {
-            return (int)$row['branch_id'] === (int)$this->user['branch_id'];
-        }
-        return (int)$row['pj_user_id'] === (int)$this->user['id'];
+        // PJ / SPV area lokasi tsb (keduanya melekat per area)
+        $uid = (int)$this->user['id'];
+        return (int)$row['pj_user_id'] === $uid || (int)$row['spv_user_id'] === $uid;
     }
 
-    /** Label pelaku respon: PJ (PJ area lokasi tsb), SPV, atau Admin. */
+    /** Label pelaku respon: PJ / SPV (area lokasi tsb), atau Admin. */
     private function _actor_label($row) {
-        if ((int)$row['pj_user_id'] === (int)$this->user['id']) { return 'PJ'; }
-        if ($this->temuan->in_roster('spv', $this->user['id'])) { return 'SPV'; }
+        $uid = (int)$this->user['id'];
+        if ((int)$row['pj_user_id'] === $uid) { return 'PJ'; }
+        if ((int)$row['spv_user_id'] === $uid) { return 'SPV'; }
         return 'Admin';
+    }
+
+    /** Filter visibilitas: PJ/SPV non-admin non-inspector hanya lihat areanya. */
+    private function _visibility_uid() {
+        if ($this->_is_admin()) { return null; }
+        if ($this->temuan->is_inspector($this->user['id'])) { return null; }
+        return (int)$this->user['id'];
     }
 
     // ====================================================================

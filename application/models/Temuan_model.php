@@ -11,7 +11,6 @@ class Temuan_model extends CI_Model {
     protected $temuan_table    = 'temuan';
     protected $config_table    = 'temuan_config';
     protected $inspector_table = 'temuan_inspector';
-    protected $spv_table       = 'temuan_spv';
 
     public function __construct() {
         parent::__construct();
@@ -25,6 +24,7 @@ class Temuan_model extends CI_Model {
                 `branch_id` INT NOT NULL,
                 `name` VARCHAR(120) NOT NULL,
                 `pj_user_id` INT NULL DEFAULT NULL,
+                `spv_user_id` INT NULL DEFAULT NULL,
                 `is_active` TINYINT(1) NOT NULL DEFAULT 1,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
@@ -84,6 +84,12 @@ class Temuan_model extends CI_Model {
                 ADD COLUMN `done_as` VARCHAR(10) NULL DEFAULT NULL AFTER `done_by`");
         }
 
+        // Migrasi: SPV melekat per area (1 PJ + 1 SPV per area)
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->location_table}` LIKE 'spv_user_id'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->location_table}`
+                ADD COLUMN `spv_user_id` INT NULL DEFAULT NULL AFTER `pj_user_id`");
+        }
+
         // Migrasi alur tolak/ACC: status baru + kolom reject/acc/soft-delete
         if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'reject_reason'")->num_rows() === 0) {
             $this->db->query("ALTER TABLE `{$this->temuan_table}`
@@ -99,16 +105,6 @@ class Temuan_model extends CI_Model {
 
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->inspector_table}` (
-                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `user_id` INT NOT NULL,
-                `created_at` DATETIME NULL,
-                PRIMARY KEY (`id`),
-                UNIQUE KEY `uniq_user` (`user_id`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        ");
-
-        $this->db->query("
-            CREATE TABLE IF NOT EXISTS `{$this->spv_table}` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `user_id` INT NOT NULL,
                 `created_at` DATETIME NULL,
@@ -146,11 +142,11 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
-    // ROSTER (INSPECTOR & SPV — daftar user pilih manual)
+    // ROSTER (INSPECTOR — daftar user pilih manual)
     // ====================================================================
 
     private function _roster_table($type) {
-        return $type === 'spv' ? $this->spv_table : $this->inspector_table;
+        return $this->inspector_table;
     }
 
     public function get_roster($type) {
@@ -188,15 +184,30 @@ class Temuan_model extends CI_Model {
     // Kompatibilitas pemanggil lama
     public function is_inspector($user_id) { return $this->in_roster('inspector', $user_id); }
 
+    /** Apakah user jadi SPV di minimal satu area aktif. */
+    public function has_spv_area($user_id) {
+        return (int)$this->db->where('spv_user_id', (int)$user_id)
+                             ->count_all_results($this->location_table) > 0;
+    }
+
+    /** Apakah user jadi PJ di minimal satu area aktif. */
+    public function has_pj_area($user_id) {
+        return (int)$this->db->where('pj_user_id', (int)$user_id)
+                             ->count_all_results($this->location_table) > 0;
+    }
+
     // ====================================================================
     // LOKASI (KODE AREA)
     // ====================================================================
 
     public function get_locations($branch_id = null, $active_only = false) {
-        $this->db->select("l.*, b.branch_name, TRIM(CONCAT(u.first_name, ' ', COALESCE(u.last_name,''))) AS pj_name")
+        $this->db->select("l.*, b.branch_name,
+                           TRIM(CONCAT(u.first_name, ' ', COALESCE(u.last_name,''))) AS pj_name,
+                           TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name,''))) AS spv_name")
                  ->from("{$this->location_table} l")
                  ->join('branch b', 'b.id = l.branch_id', 'left')
-                 ->join('users u', 'u.id = l.pj_user_id', 'left');
+                 ->join('users u', 'u.id = l.pj_user_id', 'left')
+                 ->join('users s', 's.id = l.spv_user_id', 'left');
         if ($branch_id !== null) {
             $this->db->where('l.branch_id', $branch_id);
         }
@@ -247,9 +258,10 @@ class Temuan_model extends CI_Model {
 
     private function _select_full() {
         $this->db
-            ->select("t.*, l.name AS location_name, l.pj_user_id, b.branch_name,
+            ->select("t.*, l.name AS location_name, l.pj_user_id, l.spv_user_id, b.branch_name,
                       TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
                       TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
+                      TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
                       TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
                       TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name,
                       TRIM(CONCAT(rj.first_name,' ',COALESCE(rj.last_name,''))) AS reject_by_name,
@@ -259,6 +271,7 @@ class Temuan_model extends CI_Model {
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users r', 'r.id = t.reporter_id', 'left')
             ->join('users pj', 'pj.id = l.pj_user_id', 'left')
+            ->join('users sv', 'sv.id = l.spv_user_id', 'left')
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
             ->join('users rj', 'rj.id = t.reject_by', 'left')
@@ -288,6 +301,11 @@ class Temuan_model extends CI_Model {
         if (empty($filters['include_deleted'])) {
             $this->db->where('t.is_deleted', 0);
         }
+        // Pembatasan visibilitas PJ/SPV: hanya temuan di area yang dia pegang
+        if (!empty($filters['visible_to'])) {
+            $uid = (int)$filters['visible_to'];
+            $this->db->where("(l.pj_user_id = {$uid} OR l.spv_user_id = {$uid})", null, false);
+        }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
         }
@@ -306,14 +324,19 @@ class Temuan_model extends CI_Model {
     }
 
     /** Rekap jumlah per status. $include_deleted utk halaman Laporan. */
-    public function status_summary($branch_id = null, $include_deleted = false, $from = null, $to = null) {
-        $this->db->select("status, COUNT(*) AS total")
-                 ->from($this->temuan_table)
-                 ->group_by('status');
-        if (!$include_deleted) { $this->db->where('is_deleted', 0); }
-        if ($branch_id !== null) { $this->db->where('branch_id', $branch_id); }
-        if ($from) { $this->db->where('created_at >=', $from . ' 00:00:00'); }
-        if ($to)   { $this->db->where('created_at <=', $to . ' 23:59:59'); }
+    public function status_summary($branch_id = null, $include_deleted = false, $from = null, $to = null, $visible_to = null) {
+        $this->db->select("t.status, COUNT(*) AS total")
+                 ->from("{$this->temuan_table} t")
+                 ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+                 ->group_by('t.status');
+        if (!$include_deleted) { $this->db->where('t.is_deleted', 0); }
+        if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
+        if ($from) { $this->db->where('t.created_at >=', $from . ' 00:00:00'); }
+        if ($to)   { $this->db->where('t.created_at <=', $to . ' 23:59:59'); }
+        if ($visible_to) {
+            $uid = (int)$visible_to;
+            $this->db->where("(l.pj_user_id = {$uid} OR l.spv_user_id = {$uid})", null, false);
+        }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'selesai' => 0, 'ditolak' => 0];
         foreach ($rows as $r) {

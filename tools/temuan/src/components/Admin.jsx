@@ -10,12 +10,6 @@ export default function Admin({ me, onSessionEnd }) {
         listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
         onSessionEnd={onSessionEnd}
       />
-      <RosterAdmin
-        icon="👔" title="SPV" label="SPV"
-        desc="SPV terdaftar bisa merespon (Kerjakan/Selesai) semua temuan di cabangnya, setara PJ area."
-        listPath="/spvs" addPath="/spv_add" delPath="/spv_delete"
-        onSessionEnd={onSessionEnd}
-      />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
     </div>
@@ -147,19 +141,20 @@ function LocationAdmin({ me, onSessionEnd }) {
 
   return (
     <div className="admin-section">
-      <h3>📍 Kode Area &amp; PJ Area</h3>
+      <h3>📍 Kode Area, PJ &amp; SPV Area</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-        Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). PJ area yang merespon temuan lewat aplikasi.
+        Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). Tiap area punya 1 PJ dan 1 SPV —
+        keduanya merespon temuan area itu, dan hanya melihat progres areanya sendiri.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_id: '', is_active: 1 })}>
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_id: '', spv_user_id: '', is_active: 1 })}>
         + Tambah Kode Area
       </button>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>Status</th><th></th></tr>
+            <tr><th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>SPV Area</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {locations.map((l) => (
@@ -167,15 +162,16 @@ function LocationAdmin({ me, onSessionEnd }) {
                 <td>{l.name}</td>
                 <td>{l.branch_name}</td>
                 <td>{l.pj_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
+                <td>{l.spv_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
                 <td>{Number(l.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...l, pj_user_id: l.pj_user_id || '' })}>Edit</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...l, pj_user_id: l.pj_user_id || '', spv_user_id: l.spv_user_id || '' })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
                 </td>
               </tr>
             ))}
             {locations.length === 0 && (
-              <tr><td colSpan="5" style={{ color: 'var(--muted)' }}>Belum ada lokasi.</td></tr>
+              <tr><td colSpan="6" style={{ color: 'var(--muted)' }}>Belum ada lokasi.</td></tr>
             )}
           </tbody>
         </table>
@@ -217,6 +213,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         branch_id: form.branch_id,
         name: form.name.trim(),
         pj_user_id: form.pj_user_id || null,
+        spv_user_id: form.spv_user_id || null,
         is_active: form.is_active ? 1 : 0,
       });
       onSaved();
@@ -245,6 +242,13 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         <div className="field">
           <label>PJ Area (penanggung jawab)</label>
           <select value={form.pj_user_id} onChange={(e) => set('pj_user_id', e.target.value)}>
+            <option value="">— belum ditentukan —</option>
+            {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>SPV Area (supervisor)</label>
+          <select value={form.spv_user_id} onChange={(e) => set('spv_user_id', e.target.value)}>
             <option value="">— belum ditentukan —</option>
             {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
           </select>
