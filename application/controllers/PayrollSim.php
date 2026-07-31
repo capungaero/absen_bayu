@@ -132,8 +132,13 @@ class PayrollSim extends CI_Controller {
     // Tulis komisi otomatis (5 jenis) ke payroll_insentif untuk seluruh karyawan
     // di branch & periode. Auto = sumber kebenaran → row yang sudah ada di-update.
     // Dipanggil dari Payroll::generate sebelum payroll_detail dibuat.
+    // $skip_manual: kalau true, row payroll_insentif yang is_manual=1 (pernah
+    // di-edit sengaja lewat save_insentif/importer) TIDAK ditimpa. Dipakai oleh
+    // Lock Gaji generate() supaya tidak diam-diam menghapus koreksi manual.
+    // recalc_auto_insentif() (tombol "Hitung Ulang") pakai false -- itu memang
+    // force-overwrite by design, admin klik sadar.
     // Return: jumlah baris payroll_insentif yang di-tulis/update.
-    public function apply_auto_to_payroll($branch_id, $month, $year) {
+    public function apply_auto_to_payroll($branch_id, $month, $year, $skip_manual = false) {
         $branch_id = (int)$branch_id;
         $month     = (int)$month;
         $year      = (int)$year;
@@ -187,7 +192,10 @@ class PayrollSim extends CI_Controller {
         $existing_by_key = [];
         foreach ($existing_rows as $r) {
             $this->pi_batch_cache[$branch_id.'-'.$r['user_id'].'-'.$month.'-'.$year][] = $r;
-            $existing_by_key[$r['user_id'].'-'.$r['insentif_id']] = (int)$r['id'];
+            $existing_by_key[$r['user_id'].'-'.$r['insentif_id']] = [
+                'id' => (int)$r['id'],
+                'is_manual' => !empty($r['is_manual']),
+            ];
         }
 
         $count = 0;
@@ -206,7 +214,8 @@ class PayrollSim extends CI_Controller {
                 $amt = (int)$by_id[$mid];
                 $key = $eid.'-'.$mid;
                 if (isset($existing_by_key[$key])) {
-                    $to_update[] = ['id' => $existing_by_key[$key], 'insentif_amount' => $amt];
+                    if ($skip_manual && $existing_by_key[$key]['is_manual']) { continue; }
+                    $to_update[] = ['id' => $existing_by_key[$key]['id'], 'insentif_amount' => $amt];
                 } else {
                     $to_insert[] = [
                         'user_id'        => $eid,

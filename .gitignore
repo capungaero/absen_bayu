@@ -131,6 +131,7 @@ test_db3.php
 !database/backfill_sakit_presence_get_paid.sql
 !database/add_provenance_triggers.sql
 !database/add_cleared_fields.sql
+!database/add_payroll_insentif_is_manual.sql
 
 # Allow kode tool rekap sholat (override *.csv & config.json di atas)
 !tools/sholat_recap/config.json

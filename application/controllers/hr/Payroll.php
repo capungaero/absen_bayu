@@ -219,7 +219,9 @@ class Payroll extends CI_Controller{
 				$sim->db    = $this->db;
 				$sim->input = $this->input;
 				$sim->load  = $this->load;
-				$sim->apply_auto_to_payroll($branch_id, $month, $year);
+				// skip_manual=true: Lock Gaji jangan diam-diam timpa komisi yang sudah
+				// di-edit sengaja lewat save_insentif() (lihat is_manual di sana).
+				$sim->apply_auto_to_payroll($branch_id, $month, $year, true);
 				$profile('apply_auto_to_payroll selesai');
 
 				$attendance    = $this->presence->get_attendance_by_branch($branch_id, $month, $year, true);
@@ -523,15 +525,48 @@ class Payroll extends CI_Controller{
 
 			if($employee->num_rows() > 0){
 				if(!empty($p['insentif'])){
+					// Komisi otomatis (disiplin/transport/beras/soskes/sholat, id paralel
+					// dgn PayrollSim::$AUTO_COMM) ditimpa apply_auto_to_payroll() tiap Lock
+					// Gaji. Row yg nilainya di-set beda dari nilai lama lewat form ini
+					// ditandai is_manual=1 supaya Lock Gaji (skip_manual=true) tidak
+					// diam-diam menimpanya balik ke hasil rule (lihat komisi disiplin
+					// Ellisa Putri 150000->100000, investigasi Jul 2026). Field yang
+					// nilainya TIDAK berubah di save ini mewarisi is_manual lama --
+					// bukan otomatis 0/1 cuma karena ikut ke-submit form.
+					$auto_comm_ids = [12, 18, 28, 27, 5, 24, 29, 33, 9, 21];
+					$old_by_id = [];
+					$old_rows = $this->db->select('insentif_id, insentif_amount, is_manual')
+						->where([
+							'user_id' => $p['employee_id'],
+							'insentif_month' => $this->input->get('month'),
+							'insentif_year'  => $this->input->get('year')
+						])->get('payroll_insentif')->result_array();
+					foreach($old_rows as $o){
+						$old_by_id[(int)$o['insentif_id']] = $o;
+					}
+
 					$total = 0;
 					foreach ($p['insentif'] as $key => $val){
-						$total += format_angka($val);
+						$amount = format_angka($val);
+						$total += $amount;
+
+						$is_manual = 0;
+						if(in_array((int)$key, $auto_comm_ids, true)){
+							$old = isset($old_by_id[(int)$key]) ? $old_by_id[(int)$key] : null;
+							if($old === null || (int)$old['insentif_amount'] !== $amount){
+								$is_manual = 1;
+							}else{
+								$is_manual = (int)$old['is_manual'];
+							}
+						}
+
 						$data[] = [
 							'user_id' 		=> $p['employee_id'],
 							'insentif_id'	=> $key,
 							'insentif_year' => $this->input->get('year'),
 							'insentif_month'=> $this->input->get('month'),
-							'insentif_amount' => format_angka($val),
+							'insentif_amount' => $amount,
+							'is_manual'		=> $is_manual,
 							'created_at'	=> $time
 						];
 					}
@@ -791,12 +826,17 @@ class Payroll extends CI_Controller{
 					$amount = $this->_payroll_import_amount(isset($row[$index]) ? $row[$index] : 0);
 					if($amount <= 0){ continue; }
 					if($column['type'] == 'insentif'){
+						// Import Excel = data eksplisit dari HR utk kolom ini -- tandai
+						// manual (paralel dgn save_insentif()) supaya Lock Gaji tidak
+						// menimpanya balik kalau kolom ini kebetulan salah satu komisi
+						// otomatis (disiplin/transport/beras/soskes/sholat).
 						$insentif_rows[] = [
 							'user_id' => $employee['id'],
 							'insentif_id' => $column['id'],
 							'insentif_year' => $year,
 							'insentif_month' => $month,
 							'insentif_amount' => $amount,
+							'is_manual' => in_array((int)$column['id'], [12, 18, 28, 27, 5, 24, 29, 33, 9, 21], true) ? 1 : 0,
 							'created_at' => $time
 						];
 					}else{
@@ -1192,6 +1232,8 @@ class Payroll extends CI_Controller{
 		$sim->db    = $this->db;
 		$sim->input = $this->input;
 		$sim->load  = $this->load;
+		// skip_manual=false (default): tombol ini MEMANG force-overwrite semua
+		// komisi otomatis termasuk yang pernah di-edit manual -- admin klik sadar.
 		$updated = $sim->apply_auto_to_payroll($branch_id, $month, $year);
 
 		// 2. Bila payroll sudah ada (TAHAP LOCK): recompute payroll_detail
