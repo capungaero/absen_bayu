@@ -345,7 +345,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ lokasi atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, inspector, atau admin yang boleh merespon'], 403); return;
         }
         if ($row['status'] !== 'baru') {
             $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status']], 422); return;
@@ -366,7 +366,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, inspector, atau admin yang boleh merespon'], 403); return;
         }
         if ($row['status'] !== 'baru') {
             $this->_json(['status' => false, 'message' => 'Hanya temuan berstatus baru yang bisa ditolak'], 422); return;
@@ -391,7 +391,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)$this->input->post('id'));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, inspector, atau admin yang boleh merespon'], 403); return;
         }
         if (!in_array($row['status'], ['baru', 'dikerjakan'], true)) {
             $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status']], 422); return;
@@ -413,14 +413,16 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
     }
 
-    // POST temuan/acc {id} — inspector pelapor (atau admin) menutup temuan
+    // POST temuan/acc {id} — inspector terdaftar (siapapun, scope cabang) atau admin menutup temuan
     public function acc() {
         if (!$this->_auth()) return;
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        if (!$this->_is_admin() && (int)$row['reporter_id'] !== (int)$this->user['id']) {
-            $this->_json(['status' => false, 'message' => 'Hanya inspector pelapor atau admin yang boleh ACC'], 403); return;
+        $can_acc = $this->_is_admin()
+            || ($this->temuan->is_inspector($this->user['id']) && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        if (!$can_acc) {
+            $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh ACC'], 403); return;
         }
         if ($row['status'] !== 'menunggu_acc') {
             $this->_json(['status' => false, 'message' => 'Temuan belum dilaporkan selesai'], 422); return;
@@ -480,16 +482,22 @@ class Temuan extends CI_Controller {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
-        // PJ / SPV area lokasi tsb (keduanya melekat per area)
         $uid = (int)$this->user['id'];
-        return (int)$row['pj_user_id'] === $uid || (int)$row['spv_user_id'] === $uid;
+        // PJ / SPV area lokasi tsb (keduanya melekat per area)
+        if ((int)$row['pj_user_id'] === $uid || (int)$row['spv_user_id'] === $uid) { return true; }
+        // Inspector: boleh bertindak sebagai PJ/SPV cadangan, scope cabangnya
+        if ($this->temuan->is_inspector($uid)) {
+            return (int)$row['branch_id'] === (int)$this->user['branch_id'];
+        }
+        return false;
     }
 
-    /** Label pelaku respon: PJ / SPV (area lokasi tsb), atau Admin. */
+    /** Label pelaku respon: PJ / SPV (area lokasi tsb), Inspector, atau Admin. */
     private function _actor_label($row) {
         $uid = (int)$this->user['id'];
         if ((int)$row['pj_user_id'] === $uid) { return 'PJ'; }
         if ((int)$row['spv_user_id'] === $uid) { return 'SPV'; }
+        if (!$this->_is_admin() && $this->temuan->is_inspector($uid)) { return 'Inspector'; }
         return 'Admin';
     }
 
