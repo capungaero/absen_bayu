@@ -122,7 +122,21 @@ class Temuan extends CI_Controller {
         $r['photo_url']      = $this->_photo_url($r['photo_path']);
         $r['done_photo_url'] = $this->_photo_url($r['done_photo_path']);
         unset($r['photo_path'], $r['done_photo_path']);
+
+        $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
+        $r['effective_due_at'] = $effective_due;
+        $r['is_late'] = $this->_compute_is_late($r, $effective_due);
+
         return $r;
+    }
+
+    /** Telat = lapor selesai lewat deadline, atau masih terbuka & sudah lewat deadline sekarang. */
+    private function _compute_is_late($r, $effective_due) {
+        if (!$effective_due || $r['status'] === 'ditolak') { return false; }
+        if ($r['status'] === 'selesai') {
+            return !empty($r['done_at']) && strtotime($r['done_at']) > strtotime($effective_due);
+        }
+        return time() > strtotime($effective_due);
     }
 
     // ====================================================================
@@ -437,6 +451,76 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
     }
 
+    // POST temuan/extend_request {id, reason} — SPV area / SPV backup / admin
+    public function extend_request() {
+        if (!$this->_auth()) return;
+        $p = $this->_body();
+        $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
+        if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
+        if (!$this->_can_request_extension($row)) {
+            $this->_json(['status' => false, 'message' => 'Hanya SPV area, SPV backup, atau admin yang boleh mengajukan tambahan waktu'], 403); return;
+        }
+        if (!in_array($row['status'], ['baru', 'dikerjakan'], true)) {
+            $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status'] . ', tidak bisa mengajukan tambahan waktu'], 422); return;
+        }
+        if ($row['extension_status'] === 'pending') {
+            $this->_json(['status' => false, 'message' => 'Masih ada pengajuan tambahan waktu yang menunggu keputusan'], 422); return;
+        }
+        $reason = trim((string)($p['reason'] ?? ''));
+        if (strlen($reason) < 5) {
+            $this->_json(['status' => false, 'message' => 'Alasan pengajuan minimal 5 karakter'], 422); return;
+        }
+        $this->temuan->update_temuan($row['id'], [
+            'extension_status'        => 'pending',
+            'extension_reason'        => $reason,
+            'extension_requested_by'  => (int)$this->user['id'],
+            'extension_requested_as'  => $this->_actor_label($row),
+            'extension_requested_at'  => date('Y-m-d H:i:s'),
+            'extension_decided_by'    => null,
+            'extension_decided_at'    => null,
+            'extension_decision_note' => null,
+        ]);
+        $fresh = $this->temuan->get_temuan($row['id']);
+        $this->_notify_wa('temuan_extend_request', $fresh);
+        $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
+    }
+
+    // POST temuan/extend_decide {id, approve, new_due_at?, note?} — inspector / admin
+    public function extend_decide() {
+        if (!$this->_auth()) return;
+        $p = $this->_body();
+        $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
+        if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
+        if (!$this->_can_decide_extension($row)) {
+            $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh memutuskan pengajuan'], 403); return;
+        }
+        if ($row['extension_status'] !== 'pending') {
+            $this->_json(['status' => false, 'message' => 'Tidak ada pengajuan tambahan waktu yang menunggu'], 422); return;
+        }
+        $approve = !empty($p['approve']);
+        $note = trim((string)($p['note'] ?? ''));
+        $update = [
+            'extension_decided_by'    => (int)$this->user['id'],
+            'extension_decided_at'    => date('Y-m-d H:i:s'),
+            'extension_decision_note' => $note !== '' ? $note : null,
+        ];
+        if ($approve) {
+            $new_due = trim((string)($p['new_due_at'] ?? ''));
+            if ($new_due === '' || strtotime($new_due) === false) {
+                $this->_json(['status' => false, 'message' => 'Tanggal deadline baru wajib diisi dan valid'], 422); return;
+            }
+            if (strlen($new_due) <= 10) { $new_due .= ' 23:59:59'; } // tanggal saja -> akhir hari
+            $update['extension_status'] = 'approved';
+            $update['due_extended_at']  = date('Y-m-d H:i:s', strtotime($new_due));
+        } else {
+            $update['extension_status'] = 'rejected';
+        }
+        $this->temuan->update_temuan($row['id'], $update);
+        $fresh = $this->temuan->get_temuan($row['id']);
+        $this->_notify_wa($approve ? 'temuan_extend_approved' : 'temuan_extend_rejected', $fresh);
+        $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
+    }
+
     // POST temuan/delete {id} — admin, hanya temuan ditolak (soft delete, tetap terekap)
     public function delete() {
         if (!$this->_auth()) return;
@@ -478,6 +562,84 @@ class Temuan extends CI_Controller {
         ]);
     }
 
+    // GET temuan/report_summary?branch_id=&from=&to= — rekap per PJ/SPV area (utk tabel Laporan)
+    public function report_summary() {
+        if (!$this->_auth()) return;
+        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $from = $this->input->get('from') ?: date('Y-m-01');
+        $to   = $this->input->get('to') ?: date('Y-m-d');
+        $this->_json([
+            'status' => true, 'from' => $from, 'to' => $to,
+            'rows'   => $this->_aggregate_report($branch_id, $from, $to),
+        ]);
+    }
+
+    // GET temuan/report_excel?branch_id=&from=&to=&token= — unduh rekap bulanan .xlsx
+    public function report_excel() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
+            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
+        }
+        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $from = $this->input->get('from') ?: date('Y-m-01');
+        $to   = $this->input->get('to') ?: date('Y-m-d');
+        $rows = $this->_aggregate_report($branch_id, $from, $to);
+
+        require_once FCPATH . 'lib/vendor/autoload.php';
+        $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $ss->getActiveSheet();
+        $sheet->setTitle('Rekap Temuan');
+        $headers = ['No', 'Kode Area', 'Cabang', 'PJ Area', 'SPV Area', 'Jumlah Temuan', 'Selesai Tepat Waktu', 'Tidak Selesai'];
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->getStyle('A1:H1')->getFont()->setBold(true);
+        $r = 2;
+        foreach ($rows as $i => $row) {
+            $sheet->fromArray([
+                $i + 1, $row['location_name'], $row['branch_name'], $row['pj_name'], $row['spv_name'],
+                $row['total'], $row['selesai_tepat_waktu'], $row['tidak_selesai'],
+            ], null, 'A' . $r);
+            $r++;
+        }
+        foreach (range('A', 'H') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+
+        $filename = 'Rekap_Temuan_' . $from . '_sd_' . $to . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($ss))->save('php://output');
+        exit;
+    }
+
+    /** Agregasi per kode area: jumlah temuan, selesai tepat waktu, tidak selesai (telat/masih terbuka). */
+    private function _aggregate_report($branch_id, $from, $to) {
+        $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
+        $groups = [];
+        foreach ($rows as $r) {
+            $key = $r['location_id'];
+            if (!isset($groups[$key])) {
+                $groups[$key] = [
+                    'location_id'         => (int)$r['location_id'],
+                    'location_name'       => $r['location_name'],
+                    'branch_name'         => $r['branch_name'],
+                    'pj_name'             => $r['pj_name'] ?: '-',
+                    'spv_name'            => $r['spv_name'] ?: '-',
+                    'total'               => 0,
+                    'selesai_tepat_waktu' => 0,
+                    'tidak_selesai'       => 0,
+                ];
+            }
+            $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
+            $is_late = $this->_compute_is_late($r, $effective_due);
+            $groups[$key]['total']++;
+            if ($r['status'] === 'selesai' && !$is_late) {
+                $groups[$key]['selesai_tepat_waktu']++;
+            } else {
+                $groups[$key]['tidak_selesai']++;
+            }
+        }
+        return array_values($groups);
+    }
+
     private function _can_respond($row) {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
@@ -489,23 +651,50 @@ class Temuan extends CI_Controller {
         if ($this->temuan->is_inspector($uid)) {
             return (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
+        // Backup SPV: SPV area lain di cabang yg sama boleh bantu saat SPV asli libur
+        if ($this->temuan->has_spv_area($uid)) {
+            return (int)$row['branch_id'] === (int)$this->user['branch_id'];
+        }
         return false;
     }
 
-    /** Label pelaku respon: PJ / SPV (area lokasi tsb), Inspector, atau Admin. */
+    /** Label pelaku respon: PJ / SPV (area tsb atau backup), Inspector, atau Admin. */
     private function _actor_label($row) {
         $uid = (int)$this->user['id'];
         if ((int)$row['pj_user_id'] === $uid) { return 'PJ'; }
         if ((int)$row['spv_user_id'] === $uid) { return 'SPV'; }
-        if (!$this->_is_admin() && $this->temuan->is_inspector($uid)) { return 'Inspector'; }
+        if (!$this->_is_admin()) {
+            if ($this->temuan->has_spv_area($uid)) { return 'SPV'; } // backup SPV
+            if ($this->temuan->is_inspector($uid)) { return 'Inspector'; }
+        }
         return 'Admin';
     }
 
-    /** Filter visibilitas: PJ/SPV non-admin non-inspector hanya lihat areanya. */
+    /** Filter visibilitas: PJ murni (bukan SPV/inspector/admin) hanya lihat area miliknya. */
     private function _visibility_uid() {
         if ($this->_is_admin()) { return null; }
         if ($this->temuan->is_inspector($this->user['id'])) { return null; }
+        if ($this->temuan->has_spv_area($this->user['id'])) { return null; } // SPV: cakupan cabang, utk backup
         return (int)$this->user['id'];
+    }
+
+    /** Ajukan tambahan waktu: SPV area tsb / SPV backup cabang / admin. */
+    private function _can_request_extension($row) {
+        if ($this->_is_admin()) {
+            return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
+        }
+        $uid = (int)$this->user['id'];
+        if ((int)$row['spv_user_id'] === $uid) { return true; }
+        if ($this->temuan->has_spv_area($uid)) { return (int)$row['branch_id'] === (int)$this->user['branch_id']; }
+        return false;
+    }
+
+    /** Putuskan pengajuan tambahan waktu: inspector (scope cabang) / admin. */
+    private function _can_decide_extension($row) {
+        if ($this->_is_admin()) {
+            return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
+        }
+        return $this->temuan->is_inspector($this->user['id']) && (int)$row['branch_id'] === (int)$this->user['branch_id'];
     }
 
     // ====================================================================
@@ -544,7 +733,8 @@ class Temuan extends CI_Controller {
         $cfg = $this->temuan->get_config();
         if (!$cfg) return;
         if ($type === 'temuan_baru' && empty($cfg['notify_enabled'])) return;
-        if (in_array($type, ['temuan_lapor', 'temuan_selesai'], true) && empty($cfg['notify_done_enabled'])) return;
+        $progress_types = ['temuan_lapor', 'temuan_selesai', 'temuan_extend_request', 'temuan_extend_approved', 'temuan_extend_rejected'];
+        if (in_array($type, $progress_types, true) && empty($cfg['notify_done_enabled'])) return;
 
         $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
         if (empty($phones)) return;
@@ -586,6 +776,41 @@ class Temuan extends CI_Controller {
             $msg .= "👤 Pelapor   : {$row['reporter_name']}\n";
             if (!empty($row['pj_name'])) {
                 $msg .= "🛠 PJ        : {$row['pj_name']}\n";
+            }
+            $msg .= "🕐 {$when}\n";
+            $msg .= str_repeat("─", 30);
+            $msg .= "\n_Pesan otomatis dari Aplikasi Temuan_";
+            return $msg;
+        }
+        if ($type === 'temuan_extend_request') {
+            $msg  = "⏳ *PENGAJUAN TAMBAHAN WAKTU*\n";
+            $msg .= str_repeat("─", 30) . "\n";
+            $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
+            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= "📝 Keterangan: {$row['description']}\n";
+            $req_label = !empty($row['extension_requested_as']) ? " ({$row['extension_requested_as']})" : '';
+            $msg .= "🙋 Diajukan  : {$row['extension_requested_by_name']}{$req_label}\n";
+            $msg .= "💬 Alasan    : {$row['extension_reason']}\n";
+            $msg .= "⏰ Deadline saat ini: " . date('d/m/Y H:i', strtotime($row['due_at'])) . "\n";
+            $msg .= "🕐 {$when}\n";
+            $msg .= str_repeat("─", 30);
+            $msg .= "\n_Pesan otomatis dari Aplikasi Temuan_";
+            return $msg;
+        }
+        if ($type === 'temuan_extend_approved' || $type === 'temuan_extend_rejected') {
+            $approved = $type === 'temuan_extend_approved';
+            $msg  = $approved ? "✅ *TAMBAHAN WAKTU DISETUJUI*\n" : "❌ *TAMBAHAN WAKTU DITOLAK*\n";
+            $msg .= str_repeat("─", 30) . "\n";
+            $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
+            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= "📝 Keterangan: {$row['description']}\n";
+            $msg .= "🙋 Diajukan  : {$row['extension_requested_by_name']}\n";
+            if ($approved) {
+                $msg .= "⏰ Deadline baru: " . date('d/m/Y H:i', strtotime($row['due_extended_at'])) . "\n";
+            }
+            $msg .= "🆗 Diputuskan: {$row['extension_decided_by_name']}\n";
+            if (!empty($row['extension_decision_note'])) {
+                $msg .= "💬 Catatan   : {$row['extension_decision_note']}\n";
             }
             $msg .= "🕐 {$when}\n";
             $msg .= str_repeat("─", 30);

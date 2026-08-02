@@ -324,7 +324,11 @@ $route['temuan/reject']          = 'Temuan/reject';
 $route['temuan/done']            = 'Temuan/done';
 $route['temuan/acc']             = 'Temuan/acc';
 $route['temuan/delete']          = 'Temuan/delete';
+$route['temuan/extend_request']  = 'Temuan/extend_request';
+$route['temuan/extend_decide']   = 'Temuan/extend_decide';
 $route['temuan/report']          = 'Temuan/report';
+$route['temuan/report_summary']  = 'Temuan/report_summary';
+$route['temuan/report_excel']    = 'Temuan/report_excel';
 $route['temuan/config']          = 'Temuan/config';
 $route['temuan/save_config']     = 'Temuan/save_config';
 

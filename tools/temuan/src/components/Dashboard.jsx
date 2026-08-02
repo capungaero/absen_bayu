@@ -15,6 +15,20 @@ export function fmtTime(s) {
   return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+const EXT_LABEL = { pending: 'Menunggu Keputusan', approved: 'Disetujui', rejected: 'Ditolak' };
+
+function dueCountdown(row, nowMs) {
+  if (!row.effective_due_at || row.status === 'selesai' || row.status === 'ditolak') return null;
+  const due = new Date(row.effective_due_at.replace(' ', 'T')).getTime();
+  const diffMs = due - nowMs;
+  if (diffMs <= 0) {
+    const h = Math.floor(-diffMs / 3600000);
+    return h < 24 ? `⏰ TELAT ${h} jam` : `⏰ TELAT ${Math.floor(h / 24)} hari`;
+  }
+  const h = Math.floor(diffMs / 3600000);
+  return h < 24 ? `⏳ Sisa ${h} jam` : `⏳ Sisa ${Math.floor(h / 24)} hari ${h % 24} jam`;
+}
+
 export default function Dashboard({ me, onSessionEnd }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({ baru: 0, dikerjakan: 0, selesai: 0 });
@@ -30,6 +44,14 @@ export default function Dashboard({ me, onSessionEnd }) {
   const [viewPhoto, setViewPhoto] = useState(null);
   const [doneTarget, setDoneTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [extendTarget, setExtendTarget] = useState(null);
+  const [extendDecideTarget, setExtendDecideTarget] = useState(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = useCallback(async (p = 1, append = false) => {
     setBusy(true);
@@ -59,6 +81,8 @@ export default function Dashboard({ me, onSessionEnd }) {
   }, [branchId]);
 
   const canRespond = (row) => me.is_admin
+    || me.is_inspector
+    || me.is_spv
     || Number(row.pj_user_id) === Number(me.id)
     || Number(row.spv_user_id) === Number(me.id);
 
@@ -74,7 +98,10 @@ export default function Dashboard({ me, onSessionEnd }) {
     }
   };
 
-  const canAcc = (row) => me.is_admin || Number(row.reporter_id) === Number(me.id);
+  const canAcc = (row) => me.is_admin || me.is_inspector;
+  const canRequestExtension = (row) => (me.is_admin || me.is_spv)
+    && ['baru', 'dikerjakan'].includes(row.status) && row.extension_status !== 'pending';
+  const canDecideExtension = (row) => (me.is_admin || me.is_inspector) && row.extension_status === 'pending';
 
   return (
     <div>
@@ -118,12 +145,19 @@ export default function Dashboard({ me, onSessionEnd }) {
             </div>
             <div className="tcard-body">
               <span className={`badge badge-${row.status}`}>{STATUS_LABEL[row.status]}</span>
+              {row.status === 'selesai' && row.is_late && <span className="badge badge-telat"> Telat</span>}
+              {dueCountdown(row, nowMs) && (
+                <span className={`badge ${row.is_late ? 'badge-telat' : 'badge-countdown'}`}> {dueCountdown(row, nowMs)}</span>
+              )}
               <div className="tcard-loc" style={{ marginTop: 6 }}>📍 {row.location_name} · {row.branch_name}</div>
               <div className="tcard-desc">{row.description}</div>
               <div className="tcard-meta">
                 Pelapor: <b>{row.reporter_name}</b> · {fmtTime(row.created_at)}<br />
                 {(row.pj_name || row.spv_name) && (
                   <>{row.pj_name && <>PJ: <b>{row.pj_name}</b></>}{row.pj_name && row.spv_name && ' · '}{row.spv_name && <>SPV: <b>{row.spv_name}</b></>}<br /></>
+                )}
+                {row.status !== 'selesai' && row.status !== 'ditolak' && (
+                  <>Deadline: <b>{fmtTime(row.effective_due_at)}</b>{row.due_extended_at ? ' (diperpanjang)' : ''}<br /></>
                 )}
                 {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className="badge badge-actor"> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
                 {row.done_by_name && <>Dilaporkan selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className="badge badge-actor"> {row.done_as}</span> : null} · {fmtTime(row.done_at)}<br /></>}
@@ -133,6 +167,20 @@ export default function Dashboard({ me, onSessionEnd }) {
                   Alasan: <i>{row.reject_reason}</i></>
                 )}
               </div>
+              {row.extension_status !== 'none' && (
+                <div className="ext-info">
+                  <div>⏳ Tambahan waktu: <b className={`ext-${row.extension_status}`}>{EXT_LABEL[row.extension_status]}</b></div>
+                  <div>Diajukan oleh {row.extension_requested_by_name}{row.extension_requested_as ? ` (${row.extension_requested_as})` : ''} · {fmtTime(row.extension_requested_at)}</div>
+                  <div>Alasan: <i>{row.extension_reason}</i></div>
+                  {row.extension_status !== 'pending' && (
+                    <div>
+                      Diputuskan oleh {row.extension_decided_by_name} · {fmtTime(row.extension_decided_at)}
+                      {row.extension_status === 'approved' && <> — deadline baru {fmtTime(row.due_extended_at)}</>}
+                      {row.extension_decision_note && <> — Catatan: <i>{row.extension_decision_note}</i></>}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {(() => {
               const btns = [];
@@ -148,6 +196,12 @@ export default function Dashboard({ me, onSessionEnd }) {
               }
               if (row.status === 'ditolak' && me.is_admin) {
                 btns.push(<button key="del" className="btn btn-danger" onClick={() => doAction('/delete', { id: row.id }, 'Hapus temuan ditolak ini dari dashboard? (tetap tercatat di Laporan)')}>🗑 Hapus</button>);
+              }
+              if (canRequestExtension(row)) {
+                btns.push(<button key="extreq" className="btn btn-outline btn-sm" onClick={() => setExtendTarget(row)}>⏳ Ajukan Tambahan Waktu</button>);
+              }
+              if (canDecideExtension(row)) {
+                btns.push(<button key="extdec" className="btn btn-primary btn-sm" onClick={() => setExtendDecideTarget(row)}>⚖ Putuskan Perpanjangan</button>);
               }
               return btns.length ? <div className="tcard-actions">{btns}</div> : null;
             })()}
@@ -200,6 +254,135 @@ export default function Dashboard({ me, onSessionEnd }) {
           onSessionEnd={onSessionEnd}
         />
       )}
+
+      {extendTarget && (
+        <ExtendRequestModal
+          row={extendTarget}
+          onClose={() => setExtendTarget(null)}
+          onSaved={(fresh) => {
+            setExtendTarget(null);
+            setRows((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)));
+            load(1);
+          }}
+          onSessionEnd={onSessionEnd}
+        />
+      )}
+
+      {extendDecideTarget && (
+        <ExtendDecideModal
+          row={extendDecideTarget}
+          onClose={() => setExtendDecideTarget(null)}
+          onSaved={(fresh) => {
+            setExtendDecideTarget(null);
+            setRows((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)));
+            load(1);
+          }}
+          onSessionEnd={onSessionEnd}
+        />
+      )}
+    </div>
+  );
+}
+
+function ExtendRequestModal({ row, onClose, onSaved, onSessionEnd }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (reason.trim().length < 5) { setError('Alasan pengajuan minimal 5 karakter'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const data = await apiPost('/extend_request', { id: row.id, reason: reason.trim() });
+      onSaved(data.row);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>⏳ Ajukan Tambahan Waktu</h3>
+        <div className="tcard-meta" style={{ marginBottom: 12 }}>
+          📍 {row.location_name} — {row.description}<br />
+          Deadline saat ini: <b>{fmtTime(row.effective_due_at)}</b>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label>Alasan pengajuan</label>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contoh: stok masih dalam proses restock, butuh waktu tambahan" />
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--muted)' }}>Inspector atau admin akan menentukan deadline baru saat menyetujui.</p>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy}>{busy ? 'Mengirim…' : 'Ajukan'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExtendDecideModal({ row, onClose, onSaved, onSessionEnd }) {
+  const [approve, setApprove] = useState(true);
+  const [newDue, setNewDue] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (approve && !newDue) { setError('Tanggal deadline baru wajib diisi'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const data = await apiPost('/extend_decide', {
+        id: row.id, approve, new_due_at: approve ? newDue : undefined, note: note.trim() || undefined,
+      });
+      onSaved(data.row);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>⚖ Putuskan Pengajuan Tambahan Waktu</h3>
+        <div className="tcard-meta" style={{ marginBottom: 12 }}>
+          📍 {row.location_name} — {row.description}<br />
+          Diajukan oleh <b>{row.extension_requested_by_name}</b>: <i>{row.extension_reason}</i><br />
+          Deadline saat ini: <b>{fmtTime(row.effective_due_at)}</b>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label>Keputusan</label>
+          <select value={approve ? '1' : '0'} onChange={(e) => setApprove(e.target.value === '1')}>
+            <option value="1">Setujui</option>
+            <option value="0">Tolak</option>
+          </select>
+        </div>
+        {approve && (
+          <div className="field">
+            <label>Deadline baru</label>
+            <input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} className="date-input" />
+          </div>
+        )}
+        <div className="field">
+          <label>Catatan (opsional)</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan tambahan" />
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+          <button className={approve ? 'btn btn-primary btn-sm' : 'btn btn-danger'} onClick={submit} disabled={busy}>
+            {busy ? 'Menyimpan…' : approve ? 'Setujui' : 'Tolak'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

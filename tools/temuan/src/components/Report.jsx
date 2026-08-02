@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { apiGet } from '../api.js';
+import { apiGet, API, getToken } from '../api.js';
 import { STATUS_LABEL, fmtTime } from './Dashboard.jsx';
 
 export default function Report({ me, onSessionEnd }) {
@@ -11,6 +11,7 @@ export default function Report({ me, onSessionEnd }) {
   const [branches, setBranches] = useState([]);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [summaryRows, setSummaryRows] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -22,9 +23,13 @@ export default function Report({ me, onSessionEnd }) {
     setBusy(true);
     setError('');
     try {
-      const data = await apiGet('/report', { from, to, branch_id: branchId });
+      const [data, sum] = await Promise.all([
+        apiGet('/report', { from, to, branch_id: branchId }),
+        apiGet('/report_summary', { from, to, branch_id: branchId }),
+      ]);
       setRows(data.rows);
       setSummary(data.summary);
+      setSummaryRows(sum.rows);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
@@ -35,12 +40,19 @@ export default function Report({ me, onSessionEnd }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const canExportExcel = me.is_admin || me.is_inspector;
+  const excelUrl = `${API}/report_excel?from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
+
   const handling = (r) => {
     const parts = [];
     if (r.taken_by_name) parts.push(`Dikerjakan: ${r.taken_by_name}${r.taken_as ? ` (${r.taken_as})` : ''} ${fmtTime(r.taken_at)}`);
     if (r.done_by_name) parts.push(`Lapor selesai: ${r.done_by_name}${r.done_as ? ` (${r.done_as})` : ''} ${fmtTime(r.done_at)}`);
     if (r.acc_by_name) parts.push(`ACC: ${r.acc_by_name} ${fmtTime(r.acc_at)}`);
     if (r.status === 'ditolak') parts.push(`Ditolak: ${r.reject_by_name}${r.reject_as ? ` (${r.reject_as})` : ''} ${fmtTime(r.reject_at)} — ${r.reject_reason}`);
+    if (r.extension_status && r.extension_status !== 'none') {
+      const label = { pending: 'menunggu', approved: 'disetujui', rejected: 'ditolak' }[r.extension_status];
+      parts.push(`Perpanjangan waktu: ${label} (oleh ${r.extension_requested_by_name})`);
+    }
     return parts.length ? parts : ['—'];
   };
 
@@ -59,6 +71,9 @@ export default function Report({ me, onSessionEnd }) {
           </select>
         )}
         <button className="btn btn-outline btn-sm" onClick={load} disabled={busy}>↻ Muat ulang</button>
+        {canExportExcel && (
+          <a className="btn btn-primary btn-sm" href={excelUrl}>⬇ Unduh Excel</a>
+        )}
       </div>
 
       {summary && (
@@ -73,6 +88,37 @@ export default function Report({ me, onSessionEnd }) {
       )}
 
       <div className="admin-section">
+        <h3>📋 Ringkasan per Kode Area</h3>
+        <div className="table-wrap">
+          <table className="loc-table">
+            <thead>
+              <tr>
+                <th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>SPV Area</th>
+                <th>Jumlah Temuan</th><th>Selesai Tepat Waktu</th><th>Tidak Selesai</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summaryRows.map((s) => (
+                <tr key={s.location_id}>
+                  <td>{s.location_name}</td>
+                  <td>{s.branch_name}</td>
+                  <td>{s.pj_name}</td>
+                  <td>{s.spv_name}</td>
+                  <td>{s.total}</td>
+                  <td>{s.selesai_tepat_waktu}</td>
+                  <td>{s.tidak_selesai}</td>
+                </tr>
+              ))}
+              {summaryRows.length === 0 && !busy && (
+                <tr><td colSpan="7" style={{ color: 'var(--muted)' }}>Tidak ada data pada rentang ini.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="admin-section">
+        <h3>📄 Detail Temuan</h3>
         <div className="table-wrap">
           <table className="loc-table report-table">
             <thead>
@@ -97,6 +143,7 @@ export default function Report({ me, onSessionEnd }) {
                   <td>{r.reporter_name}</td>
                   <td>
                     <span className={`badge badge-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+                    {r.is_late && <div><span className="badge badge-telat">Telat</span></div>}
                     {Number(r.is_deleted) ? <div style={{ fontSize: 11, color: 'var(--muted)' }}>dihapus admin</div> : null}
                   </td>
                   <td style={{ fontSize: 13 }}>

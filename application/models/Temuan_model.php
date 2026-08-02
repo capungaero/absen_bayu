@@ -57,6 +57,16 @@ class Temuan_model extends CI_Model {
                 `acc_by` INT NULL DEFAULT NULL,
                 `acc_at` DATETIME NULL,
                 `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
+                `due_at` DATETIME NULL,
+                `due_extended_at` DATETIME NULL,
+                `extension_status` ENUM('none','pending','approved','rejected') NOT NULL DEFAULT 'none',
+                `extension_reason` TEXT NULL,
+                `extension_requested_by` INT NULL DEFAULT NULL,
+                `extension_requested_as` VARCHAR(10) NULL DEFAULT NULL,
+                `extension_requested_at` DATETIME NULL,
+                `extension_decided_by` INT NULL DEFAULT NULL,
+                `extension_decided_at` DATETIME NULL,
+                `extension_decision_note` TEXT NULL,
                 `created_at` DATETIME NULL,
                 `updated_at` DATETIME NULL,
                 PRIMARY KEY (`id`),
@@ -101,6 +111,25 @@ class Temuan_model extends CI_Model {
                 ADD COLUMN `acc_by` INT NULL DEFAULT NULL AFTER `reject_at`,
                 ADD COLUMN `acc_at` DATETIME NULL AFTER `acc_by`,
                 ADD COLUMN `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `acc_at`");
+        }
+
+        // Migrasi: timer H+1 + pengajuan tambahan waktu
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'due_at'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                ADD COLUMN `due_at` DATETIME NULL AFTER `is_deleted`,
+                ADD COLUMN `due_extended_at` DATETIME NULL AFTER `due_at`,
+                ADD COLUMN `extension_status` ENUM('none','pending','approved','rejected') NOT NULL DEFAULT 'none' AFTER `due_extended_at`,
+                ADD COLUMN `extension_reason` TEXT NULL AFTER `extension_status`,
+                ADD COLUMN `extension_requested_by` INT NULL DEFAULT NULL AFTER `extension_reason`,
+                ADD COLUMN `extension_requested_as` VARCHAR(10) NULL DEFAULT NULL AFTER `extension_requested_by`,
+                ADD COLUMN `extension_requested_at` DATETIME NULL AFTER `extension_requested_as`,
+                ADD COLUMN `extension_decided_by` INT NULL DEFAULT NULL AFTER `extension_requested_at`,
+                ADD COLUMN `extension_decided_at` DATETIME NULL AFTER `extension_decided_by`,
+                ADD COLUMN `extension_decision_note` TEXT NULL AFTER `extension_decided_at`");
+            // Backfill deadline utk temuan lama: created_at + 1 hari, akhir hari (23:59:59)
+            $this->db->query("UPDATE `{$this->temuan_table}`
+                SET `due_at` = CONCAT(DATE_ADD(DATE(`created_at`), INTERVAL 1 DAY), ' 23:59:59')
+                WHERE `due_at` IS NULL");
         }
 
         $this->db->query("
@@ -251,7 +280,10 @@ class Temuan_model extends CI_Model {
     // ====================================================================
 
     public function create_temuan($data) {
-        $data['created_at'] = date('Y-m-d H:i:s');
+        $now = date('Y-m-d H:i:s');
+        $data['created_at'] = $now;
+        // Timer H+1: batas akhir hari kerja besoknya (23:59:59)
+        $data['due_at'] = date('Y-m-d', strtotime($now . ' +1 day')) . ' 23:59:59';
         $this->db->insert($this->temuan_table, $data);
         return $this->db->insert_id();
     }
@@ -265,7 +297,9 @@ class Temuan_model extends CI_Model {
                       TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
                       TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name,
                       TRIM(CONCAT(rj.first_name,' ',COALESCE(rj.last_name,''))) AS reject_by_name,
-                      TRIM(CONCAT(ac.first_name,' ',COALESCE(ac.last_name,''))) AS acc_by_name")
+                      TRIM(CONCAT(ac.first_name,' ',COALESCE(ac.last_name,''))) AS acc_by_name,
+                      TRIM(CONCAT(exr.first_name,' ',COALESCE(exr.last_name,''))) AS extension_requested_by_name,
+                      TRIM(CONCAT(exd.first_name,' ',COALESCE(exd.last_name,''))) AS extension_decided_by_name")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
@@ -275,7 +309,9 @@ class Temuan_model extends CI_Model {
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
             ->join('users rj', 'rj.id = t.reject_by', 'left')
-            ->join('users ac', 'ac.id = t.acc_by', 'left');
+            ->join('users ac', 'ac.id = t.acc_by', 'left')
+            ->join('users exr', 'exr.id = t.extension_requested_by', 'left')
+            ->join('users exd', 'exd.id = t.extension_decided_by', 'left');
     }
 
     public function get_temuan($id) {
@@ -301,10 +337,10 @@ class Temuan_model extends CI_Model {
         if (empty($filters['include_deleted'])) {
             $this->db->where('t.is_deleted', 0);
         }
-        // Pembatasan visibilitas PJ/SPV: hanya temuan di area yang dia pegang
+        // Pembatasan visibilitas: PJ murni (bukan SPV/inspector/admin) hanya lihat area miliknya.
+        // SPV tetap lihat seluruh cabang (perlu untuk backup SPV lain yang libur).
         if (!empty($filters['visible_to'])) {
-            $uid = (int)$filters['visible_to'];
-            $this->db->where("(l.pj_user_id = {$uid} OR l.spv_user_id = {$uid})", null, false);
+            $this->db->where('l.pj_user_id', (int)$filters['visible_to']);
         }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
@@ -334,8 +370,7 @@ class Temuan_model extends CI_Model {
         if ($from) { $this->db->where('t.created_at >=', $from . ' 00:00:00'); }
         if ($to)   { $this->db->where('t.created_at <=', $to . ' 23:59:59'); }
         if ($visible_to) {
-            $uid = (int)$visible_to;
-            $this->db->where("(l.pj_user_id = {$uid} OR l.spv_user_id = {$uid})", null, false);
+            $this->db->where('l.pj_user_id', (int)$visible_to);
         }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'selesai' => 0, 'ditolak' => 0];
@@ -343,6 +378,26 @@ class Temuan_model extends CI_Model {
             $out[$r['status']] = (int)$r['total'];
         }
         return $out;
+    }
+
+    /** Baris mentah utk rekap bulanan (exclude soft-delete & ditolak; join info PJ/SPV area). */
+    public function get_report_rows($branch_id, $from, $to) {
+        $this->db
+            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
+                      l.id AS location_id, l.name AS location_name, b.branch_name,
+                      TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
+                      TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name")
+            ->from("{$this->temuan_table} t")
+            ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+            ->join('branch b', 'b.id = t.branch_id', 'left')
+            ->join('users pj', 'pj.id = l.pj_user_id', 'left')
+            ->join('users sv', 'sv.id = l.spv_user_id', 'left')
+            ->where('t.is_deleted', 0)
+            ->where('t.status !=', 'ditolak')
+            ->where('t.created_at >=', $from . ' 00:00:00')
+            ->where('t.created_at <=', $to . ' 23:59:59');
+        if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
+        return $this->db->get()->result_array();
     }
 
     public function update_temuan($id, $data) {
