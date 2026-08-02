@@ -194,14 +194,14 @@ export default function Dashboard({ me, onSessionEnd }) {
               if (row.status === 'menunggu_acc' && canAcc(row)) {
                 btns.push(<button key="acc" className="btn btn-primary btn-sm" onClick={() => doAction('/acc', { id: row.id }, 'ACC — pengerjaan sudah sesuai dan temuan ditutup?')}>🆗 ACC Selesai</button>);
               }
-              if (row.status === 'ditolak' && me.is_admin) {
-                btns.push(<button key="del" className="btn btn-danger" onClick={() => doAction('/delete', { id: row.id }, 'Hapus temuan ditolak ini dari dashboard? (tetap tercatat di Laporan)')}>🗑 Hapus</button>);
-              }
               if (canRequestExtension(row)) {
                 btns.push(<button key="extreq" className="btn btn-outline btn-sm" onClick={() => setExtendTarget(row)}>⏳ Ajukan Tambahan Waktu</button>);
               }
               if (canDecideExtension(row)) {
                 btns.push(<button key="extdec" className="btn btn-primary btn-sm" onClick={() => setExtendDecideTarget(row)}>⚖ Putuskan Perpanjangan</button>);
+              }
+              if (me.is_admin) {
+                btns.push(<button key="del" className="btn btn-danger" onClick={() => doAction('/delete', { id: row.id }, `Hapus temuan di ${row.location_name} ini? (tetap tercatat di Laporan)`)}>🗑 Hapus</button>);
               }
               return btns.length ? <div className="tcard-actions">{btns}</div> : null;
             })()}

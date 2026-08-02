@@ -521,7 +521,7 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'row' => $this->_row_out($fresh)]);
     }
 
-    // POST temuan/delete {id} — admin, hanya temuan ditolak (soft delete, tetap terekap)
+    // POST temuan/delete {id} — admin, status apapun (soft delete, tetap terekap di Laporan)
     public function delete() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
@@ -530,9 +530,6 @@ class Temuan extends CI_Controller {
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if ($this->role !== 'admin' && (int)$row['branch_id'] !== (int)$this->user['branch_id']) {
             $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
-        }
-        if ($row['status'] !== 'ditolak') {
-            $this->_json(['status' => false, 'message' => 'Hanya temuan ditolak yang bisa dihapus'], 422); return;
         }
         $this->temuan->update_temuan($row['id'], ['is_deleted' => 1]);
         $this->_json(['status' => true]);
