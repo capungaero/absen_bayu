@@ -11,6 +11,17 @@ class Temuan extends CI_Controller {
     const UPLOAD_DIR   = 'assets/images/temuan/';
     const ADMIN_ROLES  = ['admin', 'admin-branch'];
 
+    /**
+     * Cabang di TEMUAN mengikuti penempatan fisik (users.location), BUKAN
+     * position.branch_id — semua karyawan administratif tercatat SDR di
+     * users/position, sedangkan lokasi kerja sungguhan (termasuk GBR)
+     * hanya tercatat di kolom bebas users.location. Keyword match.
+     */
+    const LOCATION_BRANCH_KEYWORDS = [
+        1 => 'SUDIRMAN',
+        2 => 'GAMBIR',
+    ];
+
     private $user = null;
     private $role = null;
 
@@ -49,6 +60,15 @@ class Temuan extends CI_Controller {
             ->where('users.id', $uid)->where('users.active', 1)
             ->get('users')->row_array();
         if (!$u) { $this->_json(['status' => false, 'message' => 'Akun tidak aktif'], 401); return false; }
+
+        // Cabang efektif TEMUAN: dari lokasi fisik (users.location), fallback ke branch posisi kalau lokasi tak dikenal.
+        $effective_branch_id = $this->_location_branch_id($u['location'] ?? null, $u['branch_id']);
+        if ((int)$effective_branch_id !== (int)$u['branch_id']) {
+            $eff = $this->db->select('branch_name')->where('id', $effective_branch_id)->get('branch')->row_array();
+            if ($eff) { $u['branch_name'] = $eff['branch_name']; }
+        }
+        $u['branch_id'] = $effective_branch_id;
+
         $this->user = $u;
         $g = $this->db->select('groups.name')
             ->join('groups', 'groups.id = users_groups.group_id')
@@ -60,6 +80,16 @@ class Temuan extends CI_Controller {
 
     private function _is_admin() {
         return in_array($this->role, self::ADMIN_ROLES, true);
+    }
+
+    /** Cocokkan keyword lokasi fisik ke id branch; fallback ke branch posisi kalau tak dikenal (mis. Kanvas). */
+    private function _location_branch_id($location, $fallback_branch_id) {
+        if ($location) {
+            foreach (self::LOCATION_BRANCH_KEYWORDS as $bid => $keyword) {
+                if (stripos($location, $keyword) !== false) { return $bid; }
+            }
+        }
+        return (int)$fallback_branch_id;
     }
 
     /** Cabang yang boleh diakses: admin bebas, lainnya cabang sendiri. */
@@ -172,15 +202,22 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'rows' => $rows]);
     }
 
-    // GET temuan/employees?branch_id= — kandidat PJ (admin only)
+    // GET temuan/employees?branch_id= — kandidat PJ/SPV/Inspector, disaring per lokasi fisik (admin only)
     public function employees() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
-        $this->db->select("users.id, TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS name, position.position_name")
+        $this->db->select("users.id, TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS name, position.position_name, users.location")
                  ->join('position', 'position.id = users.position_id', 'left')
                  ->where('users.active', 1);
-        if ($branch_id !== null) { $this->db->where('position.branch_id', $branch_id); }
+        if ($branch_id !== null) {
+            $keyword = self::LOCATION_BRANCH_KEYWORDS[$branch_id] ?? null;
+            if ($keyword) {
+                $this->db->like('users.location', $keyword);
+            } else {
+                $this->db->where('position.branch_id', $branch_id);
+            }
+        }
         $rows = $this->db->order_by('name')->get('users')->result_array();
         $this->_json(['status' => true, 'rows' => $rows]);
     }
