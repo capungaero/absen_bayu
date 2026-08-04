@@ -41,7 +41,7 @@
     <div class="col-lg-7">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="mdi mdi-webhook me-1"></i>Pengaturan Kirimi.id Webhook</h5>
+                <h5 class="card-title mb-0"><i class="mdi mdi-webhook me-1"></i>Pengaturan Hermes WA Gateway</h5>
             </div>
             <div class="card-body">
                 <form method="post" action="<?= site_url('wa/save_config') ?>">
@@ -60,38 +60,19 @@
 
                     <hr>
 
-                    <!-- User Code -->
+                    <!-- API Key -->
                     <div class="mb-3">
-                        <label class="form-label">User Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="user_code"
-                               value="<?= htmlspecialchars($cfg['user_code'] ?? '') ?>"
-                               placeholder="Contoh: USER_CODE_ANDA"
-                               required>
-                        <div class="form-text">User code dari dashboard kirimi.id (menu Profile / API).</div>
-                    </div>
-
-                    <!-- Secret Key -->
-                    <div class="mb-3">
-                        <label class="form-label">Secret Key <span class="text-danger">*</span></label>
+                        <label class="form-label">API Key <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <input type="password" class="form-control" id="api_key" name="secret"
                                    value="<?= htmlspecialchars($cfg['secret'] ?? '') ?>"
-                                   placeholder="Secret key dari dashboard kirimi.id"
+                                   placeholder="X-API-Key dari server Hermes"
                                    required>
                             <button class="btn btn-outline-secondary" type="button" onclick="toggleApiKey()">
                                 <i class="mdi mdi-eye" id="eye_icon"></i>
                             </button>
                         </div>
-                        <div class="form-text">Dapatkan secret key dari <a href="https://dash.kirimi.id" target="_blank">dash.kirimi.id</a> &rarr; menu API.</div>
-                    </div>
-
-                    <!-- Device ID -->
-                    <div class="mb-3">
-                        <label class="form-label">Device ID <small class="text-muted">(opsional)</small></label>
-                        <input type="text" class="form-control" name="device_id"
-                               value="<?= htmlspecialchars($cfg['device_id'] ?? '') ?>"
-                               placeholder="Contoh: DEVICE_ID_ANDA">
-                        <div class="form-text">ID device dari dashboard kirimi.id. Kosongkan jika hanya punya 1 device.</div>
+                        <div class="form-text">Dikirim sebagai header <code>X-API-Key</code> ke <code>wa-api.4dm1n.my.id/send</code>.</div>
                     </div>
 
                     <!-- Nomor Target Rekap -->
@@ -208,31 +189,27 @@
             </div>
         </div>
 
-        <!-- Panduan kirimi.id -->
+        <!-- Panduan Hermes -->
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="mdi mdi-help-circle me-1"></i>Cara Setup Kirimi.id</h5>
+                <h5 class="card-title mb-0"><i class="mdi mdi-help-circle me-1"></i>Cara Setup Hermes WA Gateway</h5>
             </div>
             <div class="card-body">
                 <ol class="small text-muted ps-3">
-                    <li class="mb-2">Daftar di <a href="https://kirimi.id" target="_blank">kirimi.id</a></li>
-                    <li class="mb-2">Buat device baru, scan QR dengan WhatsApp</li>
-                    <li class="mb-2">Copy <strong>User Code</strong> dan <strong>Secret Key</strong> dari menu API</li>
-                    <li class="mb-2">Isi Device ID dari dashboard kirimi.id</li>
+                    <li class="mb-2">Minta <strong>API Key</strong> (X-API-Key) dari admin server Hermes</li>
+                    <li class="mb-2">Tempel API Key di field di samping, lalu Simpan Konfigurasi</li>
                     <li class="mb-2">Endpoint yang digunakan otomatis:<br>
-                        <code class="small">POST https://api.kirimi.id/v1/send-message</code>
+                        <code class="small">POST https://wa-api.4dm1n.my.id/send</code>
                     </li>
                     <li class="mb-2">Test kirim untuk memastikan koneksi berjalan</li>
                 </ol>
                 <hr>
                 <p class="small text-muted mb-1"><strong>Format Request Body:</strong></p>
                 <pre class="small bg-light p-2 rounded"><code>{
-  "user_code": "USER_CODE_ANDA",
-  "secret": "...",
-  "device_id": "DEVICE_ID_ANDA",
-  "phone": "628xxx",
+  "chatId": "628xxx@c.us",
   "message": "Teks pesan"
 }</code></pre>
+                <p class="small text-muted mb-0">Header: <code>X-API-Key: &lt;api key&gt;</code></p>
             </div>
         </div>
     </div>

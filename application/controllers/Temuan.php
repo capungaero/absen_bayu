@@ -760,7 +760,7 @@ class Temuan extends CI_Controller {
     }
 
     // ====================================================================
-    // NOTIFIKASI WA (kirimi.id — reuse kredensial WA Agent)
+    // NOTIFIKASI WA (Hermes wa-api — reuse kredensial WA Agent)
     // ====================================================================
 
     private function _notify_wa($type, $row) {
@@ -775,14 +775,10 @@ class Temuan extends CI_Controller {
 
         $this->load->model('wa_model', 'wa');
         $wa_cfg = $this->wa->get_config();
-        if (empty($wa_cfg) || empty($wa_cfg['user_code']) || empty($wa_cfg['is_active'])) return;
+        if (empty($wa_cfg) || empty($wa_cfg['secret']) || empty($wa_cfg['is_active'])) return;
 
-        $this->load->library('kirimi_wa');
-        $wa = new Kirimi_wa([
-            'user_code' => $wa_cfg['user_code'],
-            'secret'    => $wa_cfg['secret'],
-            'device_id' => $wa_cfg['device_id'],
-        ]);
+        $this->load->library('hermes_wa');
+        $wa = new Hermes_wa(['api_key' => $wa_cfg['secret']]);
 
         $message = $this->_build_message($type, $row);
         foreach ($phones as $phone) {

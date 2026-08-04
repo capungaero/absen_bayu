@@ -8,7 +8,7 @@ class Wa extends CI_Controller {
         $this->load->model('wa_model', 'wa');
         $this->load->model('branch_model', 'branch');
         $this->load->model('sync_model', 'sync');
-        $this->load->library('kirimi_wa');
+        $this->load->library('hermes_wa');
         $this->load->library('attendance_employee_resolver');
         $this->load->library('cloud_attlog_client');
 
@@ -114,7 +114,7 @@ class Wa extends CI_Controller {
         }
 
         $config = $this->wa->get_config();
-        if (empty($config) || empty($config['user_code'])) {
+        if (empty($config) || empty($config['secret'])) {
             if ($is_ajax) {
                 $this->output->set_content_type('application/json')
                              ->set_output(json_encode(['success' => false, 'message' => 'Config WA belum diatur.']));
@@ -124,11 +124,7 @@ class Wa extends CI_Controller {
             redirect('wa/config');
         }
 
-        $wa = new Kirimi_wa([
-            'user_code' => $config['user_code'],
-            'secret'    => $config['secret'],
-            'device_id' => $config['device_id'],
-        ]);
+        $wa = new Hermes_wa(['api_key' => $config['secret']]);
 
         $result = $wa->send($phone, $message);
 
@@ -271,14 +267,10 @@ class Wa extends CI_Controller {
 
     private function _get_wa_instance() {
         $config = $this->wa->get_config();
-        if (empty($config) || empty($config['user_code'])) {
+        if (empty($config) || empty($config['secret'])) {
             return null;
         }
-        return new Kirimi_wa([
-            'user_code' => $config['user_code'],
-            'secret'    => $config['secret'],
-            'device_id' => $config['device_id'],
-        ]);
+        return new Hermes_wa(['api_key' => $config['secret']]);
     }
 
     private function _send_rekap($type) {

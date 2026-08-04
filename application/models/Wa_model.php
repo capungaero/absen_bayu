@@ -51,7 +51,7 @@ Class Wa_model extends CI_Model {
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
-        // Insert empty config; real kirimi.id credentials must be filled from the WA config page.
+        // Insert empty config; real Hermes API key must be filled from the WA config page.
         $count = $this->db->query("SELECT COUNT(*) AS cnt FROM wa_config")->row_array();
         if ((int)$count['cnt'] === 0) {
             $cron_token = $this->db->escape($this->_new_cron_token());
