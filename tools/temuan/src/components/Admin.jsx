@@ -271,6 +271,10 @@ function ConfigAdmin({ onSessionEnd }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [testMsg, setTestMsg] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   useEffect(() => {
     apiGet('/config').then((d) => setCfg(d.config)).catch((err) => {
@@ -302,6 +306,21 @@ function ConfigAdmin({ onSessionEnd }) {
     }
   };
 
+  const testSend = async () => {
+    if (!testPhone.trim()) { setTestResult({ ok: false, message: 'Isi nomor HP dulu' }); return; }
+    setTestBusy(true);
+    setTestResult(null);
+    try {
+      const data = await apiPost('/test_send', { phone: testPhone.trim(), message: testMsg.trim() });
+      setTestResult({ ok: !!data.status, message: data.message });
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setTestResult({ ok: false, message: err.message });
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
   return (
     <div className="admin-section">
       <h3>📱 Notifikasi WA</h3>
@@ -324,6 +343,21 @@ function ConfigAdmin({ onSessionEnd }) {
         <textarea value={cfg.target_phones || ''} onChange={(e) => set('target_phones', e.target.value)} placeholder="6281234567890, 6289876543210" />
       </div>
       <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Menyimpan…' : 'Simpan Konfigurasi'}</button>
+
+      <hr style={{ margin: '18px 0' }} />
+      <h4 style={{ fontSize: 14, marginBottom: 8 }}>🧪 Test Kirim WA</h4>
+      {testResult && (
+        <div className={`alert ${testResult.ok ? 'alert-success' : 'alert-error'}`}>{testResult.message}</div>
+      )}
+      <div className="field">
+        <label>Nomor HP tujuan (628xxx)</label>
+        <input type="text" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="6281234567890" />
+      </div>
+      <div className="field">
+        <label>Pesan (opsional)</label>
+        <textarea value={testMsg} onChange={(e) => setTestMsg(e.target.value)} placeholder="Kosongkan untuk pesan default" />
+      </div>
+      <button className="btn btn-outline btn-sm" onClick={testSend} disabled={testBusy}>{testBusy ? 'Mengirim…' : 'Kirim Test'}</button>
     </div>
   );
 }

@@ -759,6 +759,42 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true]);
     }
 
+    // POST temuan/test_send {phone, message?} — kirim pesan test via gateway WA
+    public function test_send() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $phone = trim((string)($p['phone'] ?? ''));
+        if ($phone === '') { $this->_json(['status' => false, 'message' => 'Nomor HP wajib diisi'], 422); return; }
+
+        $this->load->model('wa_model', 'wa');
+        $wa_cfg = $this->wa->get_config();
+        if (empty($wa_cfg) || empty($wa_cfg['secret'])) {
+            $this->_json(['status' => false, 'message' => 'Gateway WA belum dikonfigurasi (isi API Key di menu WA Agent)'], 422); return;
+        }
+
+        $message = trim((string)($p['message'] ?? '')) ?: ('Halo! Ini pesan test dari Aplikasi Temuan ' . date('d/m/Y H:i') . '.');
+
+        $this->load->library('hermes_wa');
+        $wa = new Hermes_wa(['api_key' => $wa_cfg['secret']]);
+        $result = $wa->send($phone, $message);
+
+        $this->wa->insert_log([
+            'type'       => 'temuan_test',
+            'phone'      => $wa->normalize_phone($phone),
+            'message'    => $message,
+            'status'     => $result['success'] ? 'success' : 'failed',
+            'http_code'  => $result['http_code'],
+            'response'   => $result['response'],
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->_json([
+            'status'  => $result['success'],
+            'message' => $result['success'] ? 'Pesan test terkirim' : ('Gagal: ' . $result['response']),
+        ]);
+    }
+
     // ====================================================================
     // NOTIFIKASI WA (Hermes wa-api — reuse kredensial WA Agent)
     // ====================================================================

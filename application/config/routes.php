@@ -331,6 +331,7 @@ $route['temuan/report_summary']  = 'Temuan/report_summary';
 $route['temuan/report_excel']    = 'Temuan/report_excel';
 $route['temuan/config']          = 'Temuan/config';
 $route['temuan/save_config']     = 'Temuan/save_config';
+$route['temuan/test_send']       = 'Temuan/test_send';
 
 // Export PPh21 (kertas kerja per CV dari payroll, auth via CI3 session)
 $route['pph21_export/periods']    = 'Pph21Export/periods';
