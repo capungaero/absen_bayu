@@ -244,6 +244,7 @@
                                             </div>
 
                                             <a href="<?= site_url('master_data/employee') ?>" class="dropdown-item"><i class="dripicons-user"></i> Mitra Kerja</a>
+                                            <a href="<?= site_url('kertas_kerja_setting') ?>" class="dropdown-item"><i class="mdi mdi-checkbox-marked-outline"></i> Setting Kertas Kerja</a>
                                         </div>
                                     </li>
                                 <?php } ?>
@@ -358,6 +359,36 @@
                                               <i class="mdi mdi-flag-outline"></i> Laporan Mitra Kerja
                                               <?php $rpt_unread=(int)$this->db->where('status','new')->count_all_results('user_reports'); if($rpt_unread>0): ?>
                                               <span class="badge bg-danger ms-1"><?= $rpt_unread ?></span>
+                                              <?php endif; ?>
+                                            </a>
+                                            <a href="<?= site_url('hr/kertas_kerja') ?>" class="dropdown-item">
+                                              <i class="mdi mdi-checkbox-marked-outline"></i> Kertas Kerja
+                                              <?php
+                                                // Scope sesuai role -- duplikat sengaja dari
+                                                // Kertas_kerja_model::count_unread_for_role(), karena
+                                                // model tsb tak selalu ter-load di controller yg render
+                                                // layout ini (pola sama badge Laporan Mitra Kerja di atas).
+                                                $kk_unread = 0;
+                                                if ($role === 'admin') {
+                                                    $kk_unread = (int)$this->db->where('status','new')->count_all_results('kertas_kerja');
+                                                } elseif ($role === 'admin-branch') {
+                                                    $kk_unread = (int)$this->db->where('status','new')
+                                                        ->join('users','users.id = kertas_kerja.user_id')
+                                                        ->join('position','position.id = users.position_id')
+                                                        ->where('position.branch_id', (int)$this->userdata->branch_id)
+                                                        ->count_all_results('kertas_kerja');
+                                                } elseif ($role === 'supervisor') {
+                                                    $kk_spv_ids = array_column($this->db->select('employee_user_id')
+                                                        ->where('spv_user_id', (int)$this->userdata->user_id)
+                                                        ->get('kertas_kerja_spv_assignment')->result_array(), 'employee_user_id');
+                                                    if (!empty($kk_spv_ids)) {
+                                                        $kk_unread = (int)$this->db->where('status','new')
+                                                            ->where_in('user_id', $kk_spv_ids)
+                                                            ->count_all_results('kertas_kerja');
+                                                    }
+                                                }
+                                                if ($kk_unread > 0): ?>
+                                              <span class="badge bg-danger ms-1"><?= $kk_unread ?></span>
                                               <?php endif; ?>
                                             </a>
                                         </div>

@@ -119,6 +119,11 @@ $photo = !empty($emp['photo']) && $emp['photo'] != 'default-photo.jpg';
     <a href="<?= site_url('m/payroll') ?>" class="quick-menu-item">
         <i class="material-icons">account_balance_wallet</i><span>Slip Pembagian Fee</span>
     </a>
+    <?php if (!empty($kertas_kerja_enabled)): ?>
+    <a href="<?= site_url('m/kertas_kerja') ?>" class="quick-menu-item">
+        <i class="material-icons">checklist</i><span>Kertas Kerja</span>
+    </a>
+    <?php endif; ?>
 </div>
 
 <!-- Presensi terakhir -->

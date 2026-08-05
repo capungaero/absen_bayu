@@ -27,12 +27,14 @@ class M extends CI_Controller {
         $this->userdata    = $this->ion_auth->user()->row();
         $this->role        = $this->ion_auth->get_users_groups()->row()->name;
         $this->is_approver = in_array($this->role, $this->approver_roles);
+        $this->wajib_kertas_kerja = !empty($this->userdata->wajib_kertas_kerja);
 
         $this->load->model('user_model', 'employee');
         $this->load->model('shift_model', 'shift');
         $this->load->model('overtime_model', 'overtime');
         $this->load->model('leave_model', 'leave');
         $this->load->model('payroll_model', 'payroll');
+        $this->load->model('kertas_kerja_model', 'kk');
     }
 
     // =====================================================================
@@ -46,6 +48,7 @@ class M extends CI_Controller {
         $data['is_approver'] = $this->is_approver;
         $data['userdata']    = $this->userdata;
         $data['pending_total'] = $this->is_approver ? $this->_pending_count() : 0;
+        $data['kertas_kerja_enabled'] = $this->wajib_kertas_kerja;
         $data['contents']    = $this->load->view('m/' . $view, $data, TRUE);
         $this->load->view('layout/mobile', $data);
     }
@@ -328,6 +331,53 @@ class M extends CI_Controller {
         return $this->_json($ok
             ? ['status' => true, 'message' => 'Pengajuan izin berhasil dikirim']
             : ['status' => false, 'message' => 'Gagal menyimpan pengajuan']);
+    }
+
+    // =====================================================================
+    // KERTAS KERJA (to-do list harian, hanya utk karyawan yg di-flag admin)
+    // =====================================================================
+
+    public function kertas_kerja() {
+        if (!$this->wajib_kertas_kerja) { show_404(); return; }
+
+        $user_id = $this->userdata->user_id;
+        $data['today']   = date('Y-m-d');
+        $data['current'] = $this->kk->get_by_user_date($user_id, $data['today']);
+        $data['history'] = $this->kk->get_history($user_id, 10);
+        $this->_view('kertas_kerja', $data + ['active_menu' => 'kertas_kerja']);
+    }
+
+    public function submit_kertas_kerja() {
+        if (!$this->wajib_kertas_kerja || !$this->input->is_ajax_request() || $this->input->method() !== 'post') {
+            return $this->_json(['status' => false, 'message' => 'Akses ditolak']);
+        }
+
+        $p = $this->input->post();
+        $this->form_validation->set_data($p);
+        $this->form_validation->set_rules('kerja_date', 'Tanggal', 'required|regex_match[/^\d{4}-\d{2}-\d{2}$/]');
+
+        if ($this->form_validation->run() != TRUE) {
+            return $this->_json(['status' => false, 'message' => strip_tags(validation_errors())]);
+        }
+
+        $item_text = isset($p['item_text']) && is_array($p['item_text']) ? $p['item_text'] : [];
+        $is_done   = isset($p['is_done']) && is_array($p['is_done']) ? $p['is_done'] : [];
+
+        $items = [];
+        foreach ($item_text as $i => $text) {
+            if (trim((string)$text) === '') { continue; }
+            $items[] = ['text' => $text, 'is_done' => !empty($is_done[$i])];
+        }
+
+        if (empty($items)) {
+            return $this->_json(['status' => false, 'message' => 'Isi minimal 1 item tugas']);
+        }
+
+        $ok = $this->kk->save($this->userdata->user_id, $p['kerja_date'], isset($p['notes']) ? $p['notes'] : '', $items);
+
+        return $this->_json($ok !== false
+            ? ['status' => true, 'message' => 'Kertas kerja berhasil disimpan']
+            : ['status' => false, 'message' => 'Gagal menyimpan']);
     }
 
     // =====================================================================

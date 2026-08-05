@@ -132,6 +132,8 @@ test_db3.php
 !database/add_provenance_triggers.sql
 !database/add_cleared_fields.sql
 !database/add_payroll_insentif_is_manual.sql
+!database/add_kertas_kerja_flag.sql
+!database/add_kertas_kerja.sql
 
 # Allow kode tool rekap sholat (override *.csv & config.json di atas)
 !tools/sholat_recap/config.json

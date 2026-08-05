@@ -113,6 +113,8 @@ $route['m/submit_leave']        = 'M/submit_leave';
 $route['m/submit_overtime']     = 'M/submit_overtime';
 $route['m/approve_overtime']    = 'M/approve_overtime';
 $route['m/approve_leave']       = 'M/approve_leave';
+$route['m/kertas_kerja']        = 'M/kertas_kerja';
+$route['m/submit_kertas_kerja'] = 'M/submit_kertas_kerja';
 
 // WA Agent
 $route['wa']					= 'Wa/index';
@@ -268,6 +270,11 @@ $route['hr/overtime/acc/detail/(:num)'] = 'hr/Overtime/detail_acc/$1';
 $route['change_status_overtime/(:num)'] = 'hr/Overtime/change_status/$1';
 $route['cancel_status_overtime/(:num)'] = 'hr/Overtime/cancel_status/$1';
 
+// KERTAS KERJA
+$route['hr/kertas_kerja']               = 'hr/KertasKerja/index';
+$route['hr/kertas_kerja/detail/(:num)'] = 'hr/KertasKerja/detail/$1';
+$route['hr/kertas_kerja/mark_read']     = 'hr/KertasKerja/mark_read';
+
 //LEAVE
 $route['hr/leave/list'] = 'hr/Leave/index';
 $route['hr/leave/detail/(:num)'] = 'hr/Leave/detail/$1';
@@ -377,6 +384,11 @@ $route['bpjs/list']           = 'Bpjs/list_payment';
 $route['bpjs/toggle_office']  = 'Bpjs/toggle_office';
 $route['bpjs/acc']            = 'Bpjs/acc';
 $route['bpjs/sync']           = 'Bpjs/sync_period';
+
+$route['kertas_kerja_setting']              = 'KertasKerjaSetting/index';
+$route['kertas_kerja_setting/toggle']       = 'KertasKerjaSetting/toggle_wajib';
+$route['kertas_kerja_setting/spv/assign']   = 'KertasKerjaSetting/assign_spv';
+$route['kertas_kerja_setting/spv/unassign'] = 'KertasKerjaSetting/unassign_spv';
 
 $route['panel/master_data/user'] 	= 'User';
 $route['insert_user']		   		= 'User/insert';
