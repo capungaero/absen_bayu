@@ -51,11 +51,10 @@ class KertasKerjaSetting extends CI_Controller {
 		}
 
 		// Penugasan SPV: admin saja (lintas-cabang), admin-branch tak lihat panel ini.
+		// SPV boleh siapa saja (istilah "yang mengawasi", tak terikat role login di
+		// ion_auth) -- daftarnya sama dgn Mitra Kerja: semua karyawan aktif, semua cabang.
 		if ($this->role === 'admin') {
 			$data['spv_list'] = $this->db->select('users.id, users.first_name, users.employee_code')
-				->join('users_groups', 'users_groups.user_id = users.id')
-				->join('groups', 'groups.id = users_groups.group_id')
-				->where_in('groups.name', ['supervisor', 'admin-branch'])
 				->where('users.active', 1)
 				->order_by('users.first_name', 'ASC')
 				->get('users')->result_array();
