@@ -125,7 +125,13 @@ class Kertas_kerja_model extends CI_Model {
 	public function get_dataTable($find = [], $spv_user_id = null) {
 		$dt = $this->datatables->init();
 
-		$dt->select('kertas_kerja.id, kertas_kerja.user_id, kertas_kerja.kerja_date, kertas_kerja.status,
+		// PENTING: DatatablesBuilder::from()/where() RETURN objek query builder CI
+		// mentah ($this->_db), bukan $dt -- makanya select()->from()->join()->join()
+		// harus tetap SATU chain (ditangkap ke $q) supaya where/where_in/order_by
+		// bisa dipanggil sbg method CI Query Builder asli (DatatablesBuilder sendiri
+		// TIDAK punya where_in()/order_by(); manggil $dt->order_by() di statement
+		// terpisah = fatal error "Call to undefined method DatatablesBuilder::order_by()").
+		$q = $dt->select('kertas_kerja.id, kertas_kerja.user_id, kertas_kerja.kerja_date, kertas_kerja.status,
 				kertas_kerja.created_at, kertas_kerja.updated_at,
 				DATE_FORMAT(kertas_kerja.created_at, "%d %M %Y %H:%i") AS created_at_string,
 				users.first_name, users.employee_code, branch_name, position_name,
@@ -137,15 +143,15 @@ class Kertas_kerja_model extends CI_Model {
 			->join('branch', 'branch.id = position.branch_id');
 
 		if (!empty($find)) {
-			$dt->where($find);
+			$q->where($find);
 		}
 		if ($spv_user_id !== null) {
 			$ids = $this->_spv_employee_ids($spv_user_id);
 			// where_in kosong = tak ada baris sama sekali (SPV belum ditugaskan siapa2).
-			$dt->where_in('kertas_kerja.user_id', empty($ids) ? [0] : $ids);
+			$q->where_in('kertas_kerja.user_id', empty($ids) ? [0] : $ids);
 		}
 
-		$dt->order_by('kertas_kerja.kerja_date', 'DESC');
+		$q->order_by('kertas_kerja.kerja_date', 'DESC');
 
 		$dt->style(['class' => 'table table-striped table-bordered'])
 			->column('<b>NO</b>', 'num_dt id')

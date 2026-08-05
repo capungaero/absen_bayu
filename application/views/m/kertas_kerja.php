@@ -67,7 +67,10 @@ $(function(){
         var tpl = document.getElementById('kk-item-template');
         var $row = $(tpl.content.firstElementChild.cloneNode(true));
         $row.find('.kk-item-text').val(text || '');
-        $row.find('.kk-item-done').prop('checked', !!done);
+        // Bukan !!done -- is_done dari PHP/DB berupa string "0"/"1", dan string
+        // "0" itu truthy di JS (!!"0" === true), jadi checkbox salah render
+        // checked utk item yg belum selesai kalau pakai !!done.
+        $row.find('.kk-item-done').prop('checked', done == 1);
         $('#kk-items').append($row);
         renumber();
     }
