@@ -327,6 +327,7 @@ $route['temuan/type_delete']      = 'Temuan/type_delete';
 $route['temuan/locations']       = 'Temuan/locations';
 $route['temuan/location_save']   = 'Temuan/location_save';
 $route['temuan/location_delete'] = 'Temuan/location_delete';
+$route['temuan/location_pjs']    = 'Temuan/location_pjs';
 $route['temuan/list']            = 'Temuan/list';
 $route['temuan/create']          = 'Temuan/create';
 $route['temuan/take']            = 'Temuan/take';

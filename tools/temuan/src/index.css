@@ -148,6 +148,13 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .badge-selesai { background: #f0fdf4; color: var(--green); }
 .badge-actor { background: #eef2ff; color: #4338ca; padding: 1px 7px; font-size: 11px; margin-left: 4px; }
 .badge-type { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; margin-left: 6px; }
+
+.pj-checklist {
+  max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; background: #fff;
+}
+.pj-checklist .check-row { font-size: 13px; }
 .badge-menunggu_acc { background: #f5f3ff; color: #7c3aed; }
 .badge-ditolak { background: #f1f5f9; color: #475569; }
 .date-input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }

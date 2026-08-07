@@ -12,6 +12,7 @@ class Temuan_model extends CI_Model {
     protected $config_table    = 'temuan_config';
     protected $inspector_table = 'temuan_inspector';
     protected $type_table      = 'temuan_type';
+    protected $location_pj_table = 'temuan_location_pj';
 
     public function __construct() {
         parent::__construct();
@@ -175,6 +176,31 @@ class Temuan_model extends CI_Model {
             $this->db->where('type_id', null)->update($this->temuan_table, ['type_id' => $default_id]);
         }
 
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->location_pj_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `location_id` INT UNSIGNED NOT NULL,
+                `user_id` INT NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_loc_user` (`location_id`, `user_id`),
+                KEY `idx_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        // Migrasi: PJ area jadi banyak-orang; backfill dari pj_user_id lama sekali saja.
+        if ((int)$this->db->count_all($this->location_pj_table) === 0) {
+            $legacy = $this->db->select('id, pj_user_id')->where('pj_user_id IS NOT NULL', null, false)
+                                ->get($this->location_table)->result_array();
+            if (!empty($legacy)) {
+                $now = date('Y-m-d H:i:s');
+                $rows = array_map(function ($l) use ($now) {
+                    return ['location_id' => $l['id'], 'user_id' => $l['pj_user_id'], 'created_at' => $now];
+                }, $legacy);
+                $this->db->insert_batch($this->location_pj_table, $rows);
+            }
+        }
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -252,10 +278,40 @@ class Temuan_model extends CI_Model {
                              ->count_all_results($this->location_table) > 0;
     }
 
-    /** Apakah user jadi PJ di minimal satu area aktif. */
+    /** Apakah user jadi PJ di minimal satu area. */
     public function has_pj_area($user_id) {
-        return (int)$this->db->where('pj_user_id', (int)$user_id)
-                             ->count_all_results($this->location_table) > 0;
+        return (int)$this->db->where('user_id', (int)$user_id)
+                             ->count_all_results($this->location_pj_table) > 0;
+    }
+
+    /** Apakah user salah satu PJ area tsb. */
+    public function is_location_pj($location_id, $user_id) {
+        return (int)$this->db->where(['location_id' => (int)$location_id, 'user_id' => (int)$user_id])
+                             ->count_all_results($this->location_pj_table) > 0;
+    }
+
+    public function get_location_pjs($location_id) {
+        return $this->db
+            ->select("lp.user_id, TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) AS name, p.position_name")
+            ->from("{$this->location_pj_table} lp")
+            ->join('users u', 'u.id = lp.user_id', 'left')
+            ->join('position p', 'p.id = u.position_id', 'left')
+            ->where('lp.location_id', (int)$location_id)
+            ->order_by('name')
+            ->get()->result_array();
+    }
+
+    /** Ganti seluruh daftar PJ area tsb (replace-all dari array user_id). */
+    public function set_location_pjs($location_id, $user_ids) {
+        $location_id = (int)$location_id;
+        $this->db->where('location_id', $location_id)->delete($this->location_pj_table);
+        $user_ids = array_unique(array_filter(array_map('intval', (array)$user_ids)));
+        if (empty($user_ids)) { return; }
+        $now = date('Y-m-d H:i:s');
+        $rows = array_map(function ($uid) use ($location_id, $now) {
+            return ['location_id' => $location_id, 'user_id' => $uid, 'created_at' => $now];
+        }, $user_ids);
+        $this->db->insert_batch($this->location_pj_table, $rows);
     }
 
     // ====================================================================
@@ -303,11 +359,13 @@ class Temuan_model extends CI_Model {
 
     public function get_locations($branch_id = null, $active_only = false) {
         $this->db->select("l.*, b.branch_name,
-                           TRIM(CONCAT(u.first_name, ' ', COALESCE(u.last_name,''))) AS pj_name,
-                           TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name,''))) AS spv_name")
+                           TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name,''))) AS spv_name,
+                           (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
+                           (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
+                              FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
+                             WHERE lp2.location_id = l.id) AS pj_names")
                  ->from("{$this->location_table} l")
                  ->join('branch b', 'b.id = l.branch_id', 'left')
-                 ->join('users u', 'u.id = l.pj_user_id', 'left')
                  ->join('users s', 's.id = l.spv_user_id', 'left');
         if ($branch_id !== null) {
             $this->db->where('l.branch_id', $branch_id);
@@ -362,12 +420,15 @@ class Temuan_model extends CI_Model {
 
     private function _select_full() {
         $this->db
-            ->select("t.*, l.name AS location_name, l.pj_user_id, l.spv_user_id, b.branch_name,
+            ->select("t.*, l.name AS location_name, l.spv_user_id, b.branch_name,
                       ty.name AS type_name, ty.requires_action AS type_requires_action,
                       ty.require_photo_initial AS type_require_photo_initial,
                       ty.require_photo_done AS type_require_photo_done,
                       TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
-                      TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
+                      (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
+                        WHERE lp2.location_id = l.id) AS pj_name,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
                       TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
                       TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name,
@@ -380,7 +441,6 @@ class Temuan_model extends CI_Model {
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users r', 'r.id = t.reporter_id', 'left')
-            ->join('users pj', 'pj.id = l.pj_user_id', 'left')
             ->join('users sv', 'sv.id = l.spv_user_id', 'left')
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
@@ -416,7 +476,8 @@ class Temuan_model extends CI_Model {
         // Pembatasan visibilitas: PJ murni (bukan SPV/inspector/admin) hanya lihat area miliknya.
         // SPV tetap lihat seluruh cabang (perlu untuk backup SPV lain yang libur).
         if (!empty($filters['visible_to'])) {
-            $this->db->where('l.pj_user_id', (int)$filters['visible_to']);
+            $uid = (int)$filters['visible_to'];
+            $this->db->where("EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})", null, false);
         }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
@@ -449,7 +510,8 @@ class Temuan_model extends CI_Model {
         if ($from) { $this->db->where('t.created_at >=', $from . ' 00:00:00'); }
         if ($to)   { $this->db->where('t.created_at <=', $to . ' 23:59:59'); }
         if ($visible_to) {
-            $this->db->where('l.pj_user_id', (int)$visible_to);
+            $uid = (int)$visible_to;
+            $this->db->where("EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})", null, false);
         }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'selesai' => 0, 'ditolak' => 0];
@@ -465,13 +527,14 @@ class Temuan_model extends CI_Model {
             ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
                       ty.name AS type_name,
                       l.id AS location_id, l.name AS location_name, b.branch_name,
-                      TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
+                        WHERE lp2.location_id = l.id) AS pj_name,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
-            ->join('users pj', 'pj.id = l.pj_user_id', 'left')
             ->join('users sv', 'sv.id = l.spv_user_id', 'left')
             ->where('t.is_deleted', 0)
             ->where('t.status !=', 'ditolak')

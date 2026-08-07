@@ -285,12 +285,13 @@ function LocationAdmin({ me, onSessionEnd }) {
     <div className="admin-section">
       <h3>📍 Kode Area, PJ &amp; SPV Area</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-        Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). Tiap area punya 1 PJ dan 1 SPV —
-        keduanya merespon temuan area itu, dan hanya melihat progres areanya sendiri.
+        Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). Tiap area bisa punya lebih dari satu PJ
+        (tanggung jawab tim/bersama) dan 1 SPV — semua merespon temuan area itu, dan hanya melihat
+        progres areanya sendiri.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_id: '', spv_user_id: '', is_active: 1 })}>
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_id: '', is_active: 1 })}>
         + Tambah Kode Area
       </button>
       <div className="table-wrap">
@@ -303,11 +304,15 @@ function LocationAdmin({ me, onSessionEnd }) {
               <tr key={l.id} className={Number(l.is_active) ? '' : 'inactive'}>
                 <td>{l.name}</td>
                 <td>{l.branch_name}</td>
-                <td>{l.pj_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
+                <td>{l.pj_names || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
                 <td>{l.spv_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
                 <td>{Number(l.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...l, pj_user_id: l.pj_user_id || '', spv_user_id: l.spv_user_id || '' })}>Edit</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({
+                    ...l,
+                    pj_user_ids: l.pj_user_ids ? l.pj_user_ids.split(',').map(Number) : [],
+                    spv_user_id: l.spv_user_id || '',
+                  })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
                 </td>
               </tr>
@@ -345,6 +350,14 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  const togglePj = (uid) => {
+    setForm((f) => {
+      const cur = f.pj_user_ids || [];
+      const has = cur.includes(uid);
+      return { ...f, pj_user_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
+    });
+  };
+
   const save = async () => {
     if (!form.name.trim()) { setError('Nama lokasi wajib diisi'); return; }
     setBusy(true);
@@ -354,7 +367,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         id: form.id || null,
         branch_id: form.branch_id,
         name: form.name.trim(),
-        pj_user_id: form.pj_user_id || null,
+        pj_user_ids: form.pj_user_ids || [],
         spv_user_id: form.spv_user_id || null,
         is_active: form.is_active ? 1 : 0,
       });
@@ -382,11 +395,23 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
           <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Rak 1, WC, Gudang" />
         </div>
         <div className="field">
-          <label>PJ Area (penanggung jawab)</label>
-          <select value={form.pj_user_id} onChange={(e) => set('pj_user_id', e.target.value)}>
-            <option value="">— belum ditentukan —</option>
-            {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
-          </select>
+          <label>PJ Area (penanggung jawab — bisa lebih dari satu)</label>
+          <div className="pj-checklist">
+            {employees.map((u) => (
+              <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={(form.pj_user_ids || []).includes(Number(u.id))}
+                  onChange={() => togglePj(Number(u.id))}
+                />
+                {u.name}{u.position_name ? ` (${u.position_name})` : ''}
+              </label>
+            ))}
+            {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
+          </div>
+          {(form.pj_user_ids || []).length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Belum ada PJ dipilih.</div>
+          )}
         </div>
         <div className="field">
           <label>SPV Area (supervisor)</label>

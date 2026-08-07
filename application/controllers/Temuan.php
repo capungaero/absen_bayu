@@ -315,7 +315,7 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'rows' => $rows]);
     }
 
-    // POST temuan/location_save {id?, branch_id, name, pj_user_id, is_active}
+    // POST temuan/location_save {id?, branch_id, name, pj_user_ids[], spv_user_id, is_active}
     public function location_save() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
@@ -331,7 +331,6 @@ class Temuan extends CI_Controller {
         $data = [
             'branch_id'   => $branch_id,
             'name'        => $name,
-            'pj_user_id'  => !empty($p['pj_user_id']) ? (int)$p['pj_user_id'] : null,
             'spv_user_id' => !empty($p['spv_user_id']) ? (int)$p['spv_user_id'] : null,
             'is_active'   => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
         ];
@@ -345,7 +344,15 @@ class Temuan extends CI_Controller {
             }
         }
         $saved_id = $this->temuan->save_location($data, $id);
+        $this->temuan->set_location_pjs($saved_id, $p['pj_user_ids'] ?? []);
         $this->_json(['status' => true, 'id' => (int)$saved_id]);
+    }
+
+    // GET temuan/location_pjs?location_id= — daftar PJ area tsb
+    public function location_pjs() {
+        if (!$this->_auth()) return;
+        $location_id = (int)$this->input->get('location_id');
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_location_pjs($location_id)]);
     }
 
     // POST temuan/location_delete {id}
@@ -736,13 +743,19 @@ class Temuan extends CI_Controller {
         return array_values($groups);
     }
 
+    /** PJ area kini bisa banyak orang; pj_user_ids = string "1,5,9" dari _select_full(). */
+    private function _is_location_pj($row, $uid) {
+        if (empty($row['pj_user_ids'])) { return false; }
+        return in_array((string)$uid, explode(',', (string)$row['pj_user_ids']), true);
+    }
+
     private function _can_respond($row) {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
         $uid = (int)$this->user['id'];
         // PJ / SPV area lokasi tsb (keduanya melekat per area)
-        if ((int)$row['pj_user_id'] === $uid || (int)$row['spv_user_id'] === $uid) { return true; }
+        if ($this->_is_location_pj($row, $uid) || (int)$row['spv_user_id'] === $uid) { return true; }
         // Inspector: boleh bertindak sebagai PJ/SPV cadangan, scope cabangnya
         if ($this->temuan->is_inspector($uid)) {
             return (int)$row['branch_id'] === (int)$this->user['branch_id'];
@@ -757,7 +770,7 @@ class Temuan extends CI_Controller {
     /** Label pelaku respon: PJ / SPV (area tsb atau backup), Inspector, atau Admin. */
     private function _actor_label($row) {
         $uid = (int)$this->user['id'];
-        if ((int)$row['pj_user_id'] === $uid) { return 'PJ'; }
+        if ($this->_is_location_pj($row, $uid)) { return 'PJ'; }
         if ((int)$row['spv_user_id'] === $uid) { return 'SPV'; }
         if (!$this->_is_admin()) {
             if ($this->temuan->has_spv_area($uid)) { return 'SPV'; } // backup SPV

@@ -83,10 +83,12 @@ export default function Dashboard({ me, onSessionEnd }) {
     apiGet('/locations', { branch_id: branchId }).then((d) => setLocations(d.rows)).catch(() => {});
   }, [branchId]);
 
+  const isRowPj = (row) => !!row.pj_user_ids && row.pj_user_ids.split(',').map(Number).includes(Number(me.id));
+
   const canRespond = (row) => me.is_admin
     || me.is_inspector
     || me.is_spv
-    || Number(row.pj_user_id) === Number(me.id)
+    || isRowPj(row)
     || Number(row.spv_user_id) === Number(me.id);
 
   const doAction = async (path, body, confirmMsg) => {
