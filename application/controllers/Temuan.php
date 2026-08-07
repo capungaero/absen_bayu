@@ -735,11 +735,13 @@ class Temuan extends CI_Controller {
         $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $ss->getActiveSheet();
         $sheet->setTitle('Detail Temuan');
-        $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area', 'Cabang', 'Keterangan', 'Inspector', 'Status', 'Terlambat',
+        $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area', 'Cabang', 'Keterangan',
+                    'Link Foto Temuan', 'Link Foto Pengerjaan',
+                    'Inspector (Pembuat Laporan)', 'Status', 'Terlambat',
                     'Dikerjakan Oleh', 'Waktu Dikerjakan', 'Lapor Selesai Oleh', 'Waktu Lapor Selesai',
                     'ACC Oleh', 'Waktu ACC', 'Ditolak Oleh', 'Alasan Ditolak', 'Dihapus Admin'];
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:R1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:T1')->getFont()->setBold(true);
         $status_label = ['baru' => 'Baru', 'dikerjakan' => 'Dikerjakan', 'menunggu_acc' => 'Menunggu ACC', 'selesai' => 'Selesai', 'ditolak' => 'Ditolak'];
         $r = 2;
         foreach ($rows as $row) {
@@ -751,6 +753,8 @@ class Temuan extends CI_Controller {
                 $row['location_name'],
                 $row['branch_name'],
                 $row['description'],
+                $row['photo_url'] ?: '-',
+                $row['done_photo_url'] ?: '-',
                 $row['reporter_name'],
                 $status_label[$row['status']] ?? $row['status'],
                 $telat,
@@ -764,9 +768,11 @@ class Temuan extends CI_Controller {
                 $row['reject_reason'] ?: '-',
                 (int)$row['is_deleted'] ? 'Ya' : 'Tidak',
             ], null, 'A' . $r);
+            if (!empty($row['photo_url'])) { $sheet->getCell('G' . $r)->getHyperlink()->setUrl($row['photo_url']); }
+            if (!empty($row['done_photo_url'])) { $sheet->getCell('H' . $r)->getHyperlink()->setUrl($row['done_photo_url']); }
             $r++;
         }
-        foreach (range('A', 'R') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+        foreach (range('A', 'T') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
 
         $filename = 'Detail_Temuan_' . $from . '_sd_' . $to . '.xlsx';
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
