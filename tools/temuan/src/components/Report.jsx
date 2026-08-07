@@ -123,14 +123,15 @@ export default function Report({ me, onSessionEnd }) {
           <table className="loc-table report-table">
             <thead>
               <tr>
-                <th>Tanggal</th><th>Kode Area</th><th>Cabang</th><th>Temuan</th>
-                <th>Pelapor</th><th>Status</th><th>Penanganan</th>
+                <th>Tanggal</th><th>Jenis</th><th>Kode Area</th><th>Cabang</th><th>Temuan</th>
+                <th>Inspector</th><th>Status</th><th>Terlambat</th><th>Penanganan</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={Number(r.is_deleted) ? 'inactive' : ''}>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
+                  <td>{r.type_name || '-'}</td>
                   <td>{r.location_name}</td>
                   <td>{r.branch_name}</td>
                   <td>
@@ -143,8 +144,14 @@ export default function Report({ me, onSessionEnd }) {
                   <td>{r.reporter_name}</td>
                   <td>
                     <span className={`badge badge-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
-                    {r.is_late && <div><span className="badge badge-telat">Telat</span></div>}
                     {Number(r.is_deleted) ? <div style={{ fontSize: 11, color: 'var(--muted)' }}>dihapus admin</div> : null}
+                  </td>
+                  <td>
+                    {r.status === 'ditolak' ? (
+                      <span style={{ color: 'var(--muted)' }}>—</span>
+                    ) : (
+                      <span className={`badge ${r.is_late ? 'badge-telat' : 'badge-selesai'}`}>{r.is_late ? 'Telat' : 'Tepat waktu'}</span>
+                    )}
                   </td>
                   <td style={{ fontSize: 13 }}>
                     {handling(r).map((p, i) => <div key={i}>{p}</div>)}
@@ -152,7 +159,7 @@ export default function Report({ me, onSessionEnd }) {
                 </tr>
               ))}
               {rows.length === 0 && !busy && (
-                <tr><td colSpan="7" style={{ color: 'var(--muted)' }}>Tidak ada temuan pada rentang ini.</td></tr>
+                <tr><td colSpan="9" style={{ color: 'var(--muted)' }}>Tidak ada temuan pada rentang ini.</td></tr>
               )}
             </tbody>
           </table>
