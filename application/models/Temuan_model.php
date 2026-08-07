@@ -11,6 +11,7 @@ class Temuan_model extends CI_Model {
     protected $temuan_table    = 'temuan';
     protected $config_table    = 'temuan_config';
     protected $inspector_table = 'temuan_inspector';
+    protected $type_table      = 'temuan_type';
 
     public function __construct() {
         parent::__construct();
@@ -40,6 +41,7 @@ class Temuan_model extends CI_Model {
                 `branch_id` INT NOT NULL,
                 `location_id` INT UNSIGNED NOT NULL,
                 `reporter_id` INT NOT NULL,
+                `type_id` INT UNSIGNED NULL DEFAULT NULL,
                 `description` TEXT NULL,
                 `photo_path` VARCHAR(255) NULL,
                 `status` ENUM('baru','dikerjakan','menunggu_acc','selesai','ditolak') NOT NULL DEFAULT 'baru',
@@ -142,6 +144,37 @@ class Temuan_model extends CI_Model {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->type_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `name` VARCHAR(80) NOT NULL,
+                `requires_action` TINYINT(1) NOT NULL DEFAULT 1,
+                `require_photo_initial` TINYINT(1) NOT NULL DEFAULT 1,
+                `require_photo_done` TINYINT(1) NOT NULL DEFAULT 1,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` DATETIME NULL,
+                `updated_at` DATETIME NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        // Migrasi: kolom jenis temuan + seed default + backfill temuan lama
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'type_id'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                ADD COLUMN `type_id` INT UNSIGNED NULL DEFAULT NULL AFTER `reporter_id`");
+        }
+        if ((int)$this->db->count_all($this->type_table) === 0) {
+            $now = date('Y-m-d H:i:s');
+            $this->db->insert_batch($this->type_table, [
+                ['name' => 'Temuan Rak', 'requires_action' => 1, 'require_photo_initial' => 1, 'require_photo_done' => 1, 'is_active' => 1, 'created_at' => $now],
+                ['name' => 'Temuan Kebersihan', 'requires_action' => 1, 'require_photo_initial' => 1, 'require_photo_done' => 1, 'is_active' => 1, 'created_at' => $now],
+                ['name' => 'Temuan Disiplin', 'requires_action' => 0, 'require_photo_initial' => 1, 'require_photo_done' => 0, 'is_active' => 1, 'created_at' => $now],
+                ['name' => 'Salah Input', 'requires_action' => 0, 'require_photo_initial' => 0, 'require_photo_done' => 0, 'is_active' => 1, 'created_at' => $now],
+            ]);
+            $default_id = (int)$this->db->select('id')->where('name', 'Temuan Rak')->get($this->type_table)->row_array()['id'];
+            $this->db->where('type_id', null)->update($this->temuan_table, ['type_id' => $default_id]);
+        }
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -226,6 +259,45 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
+    // JENIS TEMUAN
+    // ====================================================================
+
+    public function get_types($active_only = false) {
+        $this->db->from($this->type_table);
+        if ($active_only) { $this->db->where('is_active', 1); }
+        return $this->db->order_by('name')->get()->result_array();
+    }
+
+    public function get_type($id) {
+        return $this->db->where('id', $id)->get($this->type_table)->row_array();
+    }
+
+    public function save_type($data, $id = null) {
+        if ($id) {
+            $data['updated_at'] = date('Y-m-d H:i:s');
+            $this->db->where('id', $id)->update($this->type_table, $data);
+            return $id;
+        }
+        $data['created_at'] = date('Y-m-d H:i:s');
+        $this->db->insert($this->type_table, $data);
+        return $this->db->insert_id();
+    }
+
+    /** Hapus jenis; kalau sudah dipakai temuan, nonaktifkan saja. */
+    public function delete_type($id) {
+        $used = (int)$this->db->where('type_id', $id)->count_all_results($this->temuan_table);
+        if ($used > 0) {
+            $this->db->where('id', $id)->update($this->type_table, [
+                'is_active'  => 0,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            return 'deactivated';
+        }
+        $this->db->where('id', $id)->delete($this->type_table);
+        return 'deleted';
+    }
+
+    // ====================================================================
     // LOKASI (KODE AREA)
     // ====================================================================
 
@@ -291,6 +363,9 @@ class Temuan_model extends CI_Model {
     private function _select_full() {
         $this->db
             ->select("t.*, l.name AS location_name, l.pj_user_id, l.spv_user_id, b.branch_name,
+                      ty.name AS type_name, ty.requires_action AS type_requires_action,
+                      ty.require_photo_initial AS type_require_photo_initial,
+                      ty.require_photo_done AS type_require_photo_done,
                       TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
                       TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
@@ -302,6 +377,7 @@ class Temuan_model extends CI_Model {
                       TRIM(CONCAT(exd.first_name,' ',COALESCE(exd.last_name,''))) AS extension_decided_by_name")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users r', 'r.id = t.reporter_id', 'left')
             ->join('users pj', 'pj.id = l.pj_user_id', 'left')
@@ -351,6 +427,9 @@ class Temuan_model extends CI_Model {
         if (!empty($filters['location_id'])) {
             $this->db->where('t.location_id', $filters['location_id']);
         }
+        if (!empty($filters['type_id'])) {
+            $this->db->where('t.type_id', $filters['type_id']);
+        }
         if (!empty($filters['from'])) {
             $this->db->where('t.created_at >=', $filters['from'] . ' 00:00:00');
         }
@@ -384,11 +463,13 @@ class Temuan_model extends CI_Model {
     public function get_report_rows($branch_id, $from, $to) {
         $this->db
             ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
+                      ty.name AS type_name,
                       l.id AS location_id, l.name AS location_name, b.branch_name,
                       TRIM(CONCAT(pj.first_name,' ',COALESCE(pj.last_name,''))) AS pj_name,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users pj', 'pj.id = l.pj_user_id', 'left')
             ->join('users sv', 'sv.id = l.spv_user_id', 'left')

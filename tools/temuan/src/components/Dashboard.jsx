@@ -37,8 +37,10 @@ export default function Dashboard({ me, onSessionEnd }) {
   const [status, setStatus] = useState('');
   const [branchId, setBranchId] = useState('');
   const [locationId, setLocationId] = useState('');
+  const [typeId, setTypeId] = useState('');
   const [branches, setBranches] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [types, setTypes] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [viewPhoto, setViewPhoto] = useState(null);
@@ -57,7 +59,7 @@ export default function Dashboard({ me, onSessionEnd }) {
     setBusy(true);
     setError('');
     try {
-      const data = await apiGet('/list', { status, branch_id: branchId, location_id: locationId, page: p });
+      const data = await apiGet('/list', { status, branch_id: branchId, location_id: locationId, type_id: typeId, page: p });
       setRows((prev) => (append ? [...prev, ...data.rows] : data.rows));
       setSummary(data.summary);
       setTotal(data.total);
@@ -68,12 +70,13 @@ export default function Dashboard({ me, onSessionEnd }) {
     } finally {
       setBusy(false);
     }
-  }, [status, branchId, locationId, onSessionEnd]);
+  }, [status, branchId, locationId, typeId, onSessionEnd]);
 
   useEffect(() => { load(1); }, [load]);
 
   useEffect(() => {
     apiGet('/branches').then((d) => setBranches(d.rows)).catch(() => {});
+    apiGet('/types').then((d) => setTypes(d.rows)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -127,6 +130,10 @@ export default function Dashboard({ me, onSessionEnd }) {
             {branches.map((b) => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
           </select>
         )}
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+          <option value="">Semua jenis</option>
+          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
         <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
           <option value="">Semua lokasi</option>
           {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -149,6 +156,7 @@ export default function Dashboard({ me, onSessionEnd }) {
               {dueCountdown(row, nowMs) && (
                 <span className={`badge ${row.is_late ? 'badge-telat' : 'badge-countdown'}`}> {dueCountdown(row, nowMs)}</span>
               )}
+              {row.type_name && <span className="badge badge-type"> {row.type_name}</span>}
               <div className="tcard-loc" style={{ marginTop: 6 }}>📍 {row.location_name} · {row.branch_name}</div>
               <div className="tcard-desc">{row.description}</div>
               <div className="tcard-meta">
@@ -439,8 +447,11 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
     setPreview(f ? URL.createObjectURL(f) : null);
   };
 
+  const photoRequired = row.type_require_photo_done === null || row.type_require_photo_done === undefined
+    ? true : !!Number(row.type_require_photo_done);
+
   const submit = async () => {
-    if (!file) { setError('Foto hasil pengerjaan wajib dilampirkan'); return; }
+    if (photoRequired && !file) { setError('Foto hasil pengerjaan wajib dilampirkan'); return; }
     setBusy(true);
     setError('');
     try {
@@ -465,8 +476,8 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
         </div>
         {error && <div className="alert alert-error">{error}</div>}
         <div className="field">
-          <label>Foto hasil pengerjaan</label>
-          <input type="file" accept="image/*" capture="environment" onChange={pick} />
+          <label>Foto hasil pengerjaan{!photoRequired && ' (opsional)'}</label>
+          <input type="file" accept="image/*" capture="environment" onChange={pick} required={photoRequired} />
           {preview && <img className="preview-img" src={preview} alt="Preview" />}
         </div>
         <div className="modal-actions">

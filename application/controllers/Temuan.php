@@ -106,10 +106,10 @@ class Temuan extends CI_Controller {
         return is_array($j) ? $j : ($this->input->post() ?: []);
     }
 
-    /** Upload + resize foto. Return path relatif atau ['error'=>...]. */
-    private function _upload_photo($field, $prefix) {
+    /** Upload + resize foto. Return path relatif, ['path'=>null] kalau kosong & tak wajib, atau ['error'=>...]. */
+    private function _upload_photo($field, $prefix, $required = true) {
         if (empty($_FILES[$field]['name'])) {
-            return ['error' => 'Foto wajib dilampirkan'];
+            return $required ? ['error' => 'Foto wajib dilampirkan'] : ['path' => null];
         }
         $dir = FCPATH . self::UPLOAD_DIR;
         if (!is_dir($dir)) { mkdir($dir, 0755, true); }
@@ -260,6 +260,49 @@ class Temuan extends CI_Controller {
     public function inspector_delete() { $this->_roster_delete('inspector', 'Inspector'); }
 
     // ====================================================================
+    // JENIS TEMUAN (master)
+    // ====================================================================
+
+    // GET temuan/types?all=1
+    public function types() {
+        if (!$this->_auth()) return;
+        $active_only = !($this->_is_admin() && $this->input->get('all'));
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_types($active_only)]);
+    }
+
+    // POST temuan/type_save {id?, name, requires_action, require_photo_initial, require_photo_done, is_active}
+    public function type_save() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $name = isset($p['name']) ? trim($p['name']) : '';
+        if ($name === '') { $this->_json(['status' => false, 'message' => 'Nama jenis wajib diisi'], 422); return; }
+
+        $data = [
+            'name'                   => $name,
+            'requires_action'        => isset($p['requires_action']) ? (int)!!$p['requires_action'] : 1,
+            'require_photo_initial'  => isset($p['require_photo_initial']) ? (int)!!$p['require_photo_initial'] : 1,
+            'require_photo_done'     => isset($p['require_photo_done']) ? (int)!!$p['require_photo_done'] : 1,
+            'is_active'              => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
+        ];
+        $id = !empty($p['id']) ? (int)$p['id'] : null;
+        $saved_id = $this->temuan->save_type($data, $id);
+        $this->_json(['status' => true, 'id' => (int)$saved_id]);
+    }
+
+    // POST temuan/type_delete {id}
+    public function type_delete() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $id = (int)($p['id'] ?? 0);
+        $existing = $this->temuan->get_type($id);
+        if (!$existing) { $this->_json(['status' => false, 'message' => 'Jenis tidak ditemukan'], 404); return; }
+        $result = $this->temuan->delete_type($id);
+        $this->_json(['status' => true, 'result' => $result]);
+    }
+
+    // ====================================================================
     // LOKASI / KODE AREA (master)
     // ====================================================================
 
@@ -333,6 +376,7 @@ class Temuan extends CI_Controller {
             'branch_id'   => $branch_id,
             'status'      => $this->input->get('status'),
             'location_id' => $this->input->get('location_id'),
+            'type_id'     => $this->input->get('type_id'),
             'from'        => $this->input->get('from'),
             'to'          => $this->input->get('to'),
             'visible_to'  => $vis,
@@ -359,6 +403,7 @@ class Temuan extends CI_Controller {
             $this->_json(['status' => false, 'message' => 'Hanya inspector yang boleh memposting temuan'], 403); return;
         }
         $location_id = (int)$this->input->post('location_id');
+        $type_id     = (int)$this->input->post('type_id');
         $description = trim((string)$this->input->post('description'));
 
         $loc = $this->temuan->get_location($location_id);
@@ -368,21 +413,37 @@ class Temuan extends CI_Controller {
         if ($this->role !== 'admin' && (int)$loc['branch_id'] !== (int)$this->user['branch_id']) {
             $this->_json(['status' => false, 'message' => 'Lokasi bukan di cabang Anda'], 403); return;
         }
+        $type = $this->temuan->get_type($type_id);
+        if (!$type || !(int)$type['is_active']) {
+            $this->_json(['status' => false, 'message' => 'Jenis temuan tidak valid'], 422); return;
+        }
         if (strlen($description) < 5) {
             $this->_json(['status' => false, 'message' => 'Keterangan minimal 5 karakter'], 422); return;
         }
 
-        $up = $this->_upload_photo('photo', 'temuan');
+        $up = $this->_upload_photo('photo', 'temuan', (bool)$type['require_photo_initial']);
         if (isset($up['error'])) { $this->_json(['status' => false, 'message' => $up['error']], 422); return; }
 
-        $id = $this->temuan->create_temuan([
+        $requires_action = (bool)$type['requires_action'];
+        $data = [
             'branch_id'   => (int)$loc['branch_id'],
             'location_id' => $location_id,
+            'type_id'     => $type_id,
             'reporter_id' => (int)$this->user['id'],
             'description' => $description,
             'photo_path'  => $up['path'],
-            'status'      => 'baru',
-        ]);
+            'status'      => $requires_action ? 'baru' : 'selesai',
+        ];
+        if (!$requires_action) {
+            // Jenis satu arah: tak butuh timer/deadline, langsung tercatat selesai.
+            $data['acc_by'] = (int)$this->user['id'];
+            $data['acc_at'] = date('Y-m-d H:i:s');
+        }
+        $id = $this->temuan->create_temuan($data);
+        if (!$requires_action) {
+            // create_temuan() selalu set due_at H+1; jenis satu arah tak perlu, kosongkan lagi.
+            $this->temuan->update_temuan($id, ['due_at' => null]);
+        }
 
         $row = $this->temuan->get_temuan($id);
         $this->_notify_wa('temuan_baru', $row);
@@ -448,7 +509,8 @@ class Temuan extends CI_Controller {
             $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status']], 422); return;
         }
 
-        $up = $this->_upload_photo('photo', 'selesai');
+        $require_photo = $row['type_require_photo_done'] === null ? true : (bool)$row['type_require_photo_done'];
+        $up = $this->_upload_photo('photo', 'selesai', $require_photo);
         if (isset($up['error'])) { $this->_json(['status' => false, 'message' => $up['error']], 422); return; }
 
         $this->temuan->update_temuan($row['id'], [

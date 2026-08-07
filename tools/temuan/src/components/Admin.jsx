@@ -10,6 +10,7 @@ export default function Admin({ me, onSessionEnd }) {
         listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
         onSessionEnd={onSessionEnd}
       />
+      <TypeAdmin onSessionEnd={onSessionEnd} />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
     </div>
@@ -101,6 +102,147 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function TypeAdmin({ onSessionEnd }) {
+  const [types, setTypes] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const d = await apiGet('/types', { all: 1 });
+      setTypes(d.rows);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (t) => {
+    if (!window.confirm(`Hapus jenis "${t.name}"? (kalau sudah dipakai temuan, hanya dinonaktifkan)`)) return;
+    try {
+      await apiPost('/type_delete', { id: t.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="admin-section">
+      <h3>🏷️ Jenis Temuan</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Kategori temuan (mis. Temuan Rak, Kebersihan, Disiplin, Salah Input). Tiap jenis bisa diatur:
+        apakah perlu ditindaklanjuti PJ/SPV (atau satu arah/langsung tercatat selesai), dan wajib-tidaknya
+        foto saat lapor & saat lapor selesai.
+      </p>
+      {error && <div className="alert alert-error">{error}</div>}
+      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
+        onClick={() => setEditing({ name: '', requires_action: 1, require_photo_initial: 1, require_photo_done: 1, is_active: 1 })}>
+        + Tambah Jenis
+      </button>
+      <div className="table-wrap">
+        <table className="loc-table">
+          <thead>
+            <tr><th>Nama</th><th>Bisa Dikerjakan</th><th>Foto Lapor</th><th>Foto Selesai</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {types.map((t) => (
+              <tr key={t.id} className={Number(t.is_active) ? '' : 'inactive'}>
+                <td>{t.name}</td>
+                <td>{Number(t.requires_action) ? 'Ya' : 'Satu arah'}</td>
+                <td>{Number(t.require_photo_initial) ? 'Wajib' : 'Opsional'}</td>
+                <td>{Number(t.require_photo_done) ? 'Wajib' : 'Opsional'}</td>
+                <td>{Number(t.is_active) ? 'Aktif' : 'Nonaktif'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(t)}>Edit</button>{' '}
+                  <button className="btn btn-danger" onClick={() => remove(t)}>Hapus</button>
+                </td>
+              </tr>
+            ))}
+            {types.length === 0 && (
+              <tr><td colSpan="6" style={{ color: 'var(--muted)' }}>Belum ada jenis temuan.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <TypeModal
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+          onSessionEnd={onSessionEnd}
+        />
+      )}
+    </div>
+  );
+}
+
+function TypeModal({ initial, onClose, onSaved, onSessionEnd }) {
+  const [form, setForm] = useState(initial);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    if (!form.name.trim()) { setError('Nama jenis wajib diisi'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await apiPost('/type_save', {
+        id: form.id || null,
+        name: form.name.trim(),
+        requires_action: form.requires_action ? 1 : 0,
+        require_photo_initial: form.require_photo_initial ? 1 : 0,
+        require_photo_done: form.require_photo_done ? 1 : 0,
+        is_active: form.is_active ? 1 : 0,
+      });
+      onSaved();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{form.id ? 'Edit Jenis Temuan' : 'Tambah Jenis Temuan'}</h3>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label>Nama jenis</label>
+          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Temuan Rak" />
+        </div>
+        <label className="check-row">
+          <input type="checkbox" checked={!!Number(form.requires_action)} onChange={(e) => set('requires_action', e.target.checked ? 1 : 0)} />
+          Perlu ditindaklanjuti PJ/SPV (matikan = satu arah, langsung tercatat selesai)
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={!!Number(form.require_photo_initial)} onChange={(e) => set('require_photo_initial', e.target.checked ? 1 : 0)} />
+          Wajib foto saat lapor
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={!!Number(form.require_photo_done)} onChange={(e) => set('require_photo_done', e.target.checked ? 1 : 0)} />
+          Wajib foto saat Lapor Selesai
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={!!Number(form.is_active)} onChange={(e) => set('is_active', e.target.checked ? 1 : 0)} />
+          Aktif
+        </label>
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? 'Menyimpan…' : 'Simpan'}</button>
+        </div>
       </div>
     </div>
   );

@@ -6,6 +6,8 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
   const [branchId, setBranchId] = useState('');
   const [locations, setLocations] = useState([]);
   const [locationId, setLocationId] = useState('');
+  const [types, setTypes] = useState([]);
+  const [typeId, setTypeId] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -19,6 +21,7 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       if (d.rows.length === 1) setBranchId(String(d.rows[0].id));
       else if (me.branch_id) setBranchId(String(me.branch_id));
     }).catch((err) => { if (err.auth) onSessionEnd(); });
+    apiGet('/types').then((d) => setTypes(d.rows)).catch(() => {});
   }, [me, onSessionEnd]);
 
   useEffect(() => {
@@ -26,6 +29,9 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
     apiGet('/locations', { branch_id: branchId }).then((d) => setLocations(d.rows)).catch(() => {});
     setLocationId('');
   }, [branchId]);
+
+  const selectedType = types.find((t) => String(t.id) === String(typeId));
+  const photoRequired = !selectedType || !!Number(selectedType.require_photo_initial);
 
   const pick = (e) => {
     const f = e.target.files[0];
@@ -38,20 +44,23 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
     setError('');
     setSuccess('');
     if (!locationId) { setError('Pilih lokasi terlebih dahulu'); return; }
+    if (!typeId) { setError('Pilih jenis temuan terlebih dahulu'); return; }
     if (description.trim().length < 5) { setError('Keterangan minimal 5 karakter'); return; }
-    if (!file) { setError('Foto temuan wajib dilampirkan'); return; }
+    if (photoRequired && !file) { setError('Foto temuan wajib dilampirkan untuk jenis ini'); return; }
     setBusy(true);
     try {
       const fd = new FormData();
       fd.append('location_id', locationId);
+      fd.append('type_id', typeId);
       fd.append('description', description.trim());
-      fd.append('photo', file);
+      if (file) fd.append('photo', file);
       await apiUpload('/create', fd);
       setSuccess('Temuan berhasil dilaporkan. Notifikasi terkirim.');
       setDescription('');
       setFile(null);
       setPreview(null);
       setLocationId('');
+      setTypeId('');
       setTimeout(onDone, 1200);
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -78,6 +87,19 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       )}
 
       <div className="field">
+        <label>Jenis Temuan</label>
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
+          <option value="">— pilih jenis —</option>
+          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        {selectedType && !Number(selectedType.requires_action) && (
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+            Jenis ini satu arah — begitu dilaporkan, langsung tercatat selesai tanpa perlu ditindaklanjuti PJ/SPV.
+          </div>
+        )}
+      </div>
+
+      <div className="field">
         <label>Lokasi</label>
         <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
           <option value="">— pilih lokasi —</option>
@@ -101,8 +123,8 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       </div>
 
       <div className="field">
-        <label>Foto temuan</label>
-        <input type="file" accept="image/*" capture="environment" onChange={pick} required />
+        <label>Foto temuan{!photoRequired && ' (opsional)'}</label>
+        <input type="file" accept="image/*" capture="environment" onChange={pick} required={photoRequired} />
         {preview && <img className="preview-img" src={preview} alt="Preview" />}
       </div>
 
