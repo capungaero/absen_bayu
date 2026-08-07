@@ -205,7 +205,6 @@ class Temuan extends CI_Controller {
     // GET temuan/employees?branch_id= — kandidat PJ/SPV/Inspector, disaring per lokasi fisik (admin only)
     public function employees() {
         if (!$this->_auth()) return;
-        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
         $this->db->select("users.id, TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS name, position.position_name, users.location")
                  ->join('position', 'position.id = users.position_id', 'left')
@@ -238,9 +237,9 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $user_id = (int)($p['user_id'] ?? 0);
         $u = $this->db->select('users.id')->where('users.id', $user_id)->where('users.active', 1)->get('users')->row_array();
-        if (!$u) { $this->_json(['status' => false, 'message' => 'Karyawan tidak ditemukan'], 404); return; }
+        if (!$u) { $this->_json(['status' => false, 'message' => 'Mitra tidak ditemukan'], 404); return; }
         if (!$this->temuan->add_to_roster($type, $user_id)) {
-            $this->_json(['status' => false, 'message' => "Karyawan sudah terdaftar sebagai {$label}"], 422); return;
+            $this->_json(['status' => false, 'message' => "Mitra sudah terdaftar sebagai {$label}"], 422); return;
         }
         $this->_json(['status' => true]);
     }
@@ -260,7 +259,43 @@ class Temuan extends CI_Controller {
     public function inspector_delete() { $this->_roster_delete('inspector', 'Inspector'); }
 
     // ====================================================================
-    // JENIS TEMUAN (master)
+    // JENIS (KATEGORI, master)
+    // ====================================================================
+
+    // GET temuan/categories?all=1
+    public function categories() {
+        if (!$this->_auth()) return;
+        $active_only = !($this->_is_admin() && $this->input->get('all'));
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_categories($active_only)]);
+    }
+
+    // POST temuan/category_save {id?, name, is_active}
+    public function category_save() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $name = isset($p['name']) ? trim($p['name']) : '';
+        if ($name === '') { $this->_json(['status' => false, 'message' => 'Nama jenis wajib diisi'], 422); return; }
+        $data = ['name' => $name, 'is_active' => isset($p['is_active']) ? (int)!!$p['is_active'] : 1];
+        $id = !empty($p['id']) ? (int)$p['id'] : null;
+        $saved_id = $this->temuan->save_category($data, $id);
+        $this->_json(['status' => true, 'id' => (int)$saved_id]);
+    }
+
+    // POST temuan/category_delete {id}
+    public function category_delete() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $id = (int)($p['id'] ?? 0);
+        $existing = $this->temuan->get_category($id);
+        if (!$existing) { $this->_json(['status' => false, 'message' => 'Jenis tidak ditemukan'], 404); return; }
+        $result = $this->temuan->delete_category($id);
+        $this->_json(['status' => true, 'result' => $result]);
+    }
+
+    // ====================================================================
+    // NAMA TEMUAN (master)
     // ====================================================================
 
     // GET temuan/types?all=1
@@ -270,16 +305,21 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'rows' => $this->temuan->get_types($active_only)]);
     }
 
-    // POST temuan/type_save {id?, name, requires_action, require_photo_initial, require_photo_done, is_active}
+    // POST temuan/type_save {id?, category_id, name, target_mode, requires_action, require_photo_initial, require_photo_done, is_active}
     public function type_save() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $p = $this->_body();
         $name = isset($p['name']) ? trim($p['name']) : '';
-        if ($name === '') { $this->_json(['status' => false, 'message' => 'Nama jenis wajib diisi'], 422); return; }
+        if ($name === '') { $this->_json(['status' => false, 'message' => 'Nama temuan wajib diisi'], 422); return; }
+        $category_id = !empty($p['category_id']) ? (int)$p['category_id'] : null;
+        if (!$category_id) { $this->_json(['status' => false, 'message' => 'Jenis (kategori) wajib dipilih'], 422); return; }
+        $target_mode = ($p['target_mode'] ?? 'objek') === 'individu' ? 'individu' : 'objek';
 
         $data = [
+            'category_id'            => $category_id,
             'name'                   => $name,
+            'target_mode'            => $target_mode,
             'requires_action'        => isset($p['requires_action']) ? (int)!!$p['requires_action'] : 1,
             'require_photo_initial'  => isset($p['require_photo_initial']) ? (int)!!$p['require_photo_initial'] : 1,
             'require_photo_done'     => isset($p['require_photo_done']) ? (int)!!$p['require_photo_done'] : 1,
@@ -402,24 +442,16 @@ class Temuan extends CI_Controller {
         ]);
     }
 
-    // POST temuan/create (multipart: location_id, description, photo)
+    // POST temuan/create (multipart: type_id, description, photo, + objek:location_id ATAU individu:branch_id,subject_user_ids[],spv_user_id?)
     // Hanya inspector terdaftar atau admin yang boleh memposting temuan.
     public function create() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector yang boleh memposting temuan'], 403); return;
         }
-        $location_id = (int)$this->input->post('location_id');
         $type_id     = (int)$this->input->post('type_id');
         $description = trim((string)$this->input->post('description'));
 
-        $loc = $this->temuan->get_location($location_id);
-        if (!$loc || !(int)$loc['is_active']) {
-            $this->_json(['status' => false, 'message' => 'Lokasi tidak valid'], 422); return;
-        }
-        if ($this->role !== 'admin' && (int)$loc['branch_id'] !== (int)$this->user['branch_id']) {
-            $this->_json(['status' => false, 'message' => 'Lokasi bukan di cabang Anda'], 403); return;
-        }
         $type = $this->temuan->get_type($type_id);
         if (!$type || !(int)$type['is_active']) {
             $this->_json(['status' => false, 'message' => 'Jenis temuan tidak valid'], 422); return;
@@ -428,18 +460,51 @@ class Temuan extends CI_Controller {
             $this->_json(['status' => false, 'message' => 'Keterangan minimal 5 karakter'], 422); return;
         }
 
+        $requires_action = (bool)$type['requires_action'];
+        $subject_ids = [];
+        $individu_spv_id = null;
+
+        if ($type['target_mode'] === 'individu') {
+            $branch_id = (int)$this->input->post('branch_id');
+            if (!$branch_id) { $this->_json(['status' => false, 'message' => 'Cabang wajib dipilih'], 422); return; }
+            if ($this->role !== 'admin' && $branch_id !== (int)$this->user['branch_id']) {
+                $this->_json(['status' => false, 'message' => 'Cabang bukan cabang Anda'], 403); return;
+            }
+            $subject_ids = array_filter(array_map('intval', (array)$this->input->post('subject_user_ids')));
+            if (empty($subject_ids)) { $this->_json(['status' => false, 'message' => 'Pilih minimal satu mitra'], 422); return; }
+            $valid_count = (int)$this->db->where_in('id', $subject_ids)->where('active', 1)->count_all_results('users');
+            if ($valid_count !== count($subject_ids)) { $this->_json(['status' => false, 'message' => 'Ada mitra tidak valid'], 422); return; }
+            $spv_post = (int)$this->input->post('spv_user_id');
+            if ($spv_post) {
+                $spv_row = $this->db->where(['id' => $spv_post, 'active' => 1])->get('users')->row_array();
+                if (!$spv_row) { $this->_json(['status' => false, 'message' => 'SPV tidak valid'], 422); return; }
+                $individu_spv_id = $spv_post;
+            }
+            $location_id = null;
+        } else {
+            $location_id = (int)$this->input->post('location_id');
+            $loc = $this->temuan->get_location($location_id);
+            if (!$loc || !(int)$loc['is_active']) {
+                $this->_json(['status' => false, 'message' => 'Lokasi tidak valid'], 422); return;
+            }
+            if ($this->role !== 'admin' && (int)$loc['branch_id'] !== (int)$this->user['branch_id']) {
+                $this->_json(['status' => false, 'message' => 'Lokasi bukan di cabang Anda'], 403); return;
+            }
+            $branch_id = (int)$loc['branch_id'];
+        }
+
         $up = $this->_upload_photo('photo', 'temuan', (bool)$type['require_photo_initial']);
         if (isset($up['error'])) { $this->_json(['status' => false, 'message' => $up['error']], 422); return; }
 
-        $requires_action = (bool)$type['requires_action'];
         $data = [
-            'branch_id'   => (int)$loc['branch_id'],
-            'location_id' => $location_id,
-            'type_id'     => $type_id,
-            'reporter_id' => (int)$this->user['id'],
-            'description' => $description,
-            'photo_path'  => $up['path'],
-            'status'      => $requires_action ? 'baru' : 'selesai',
+            'branch_id'       => $branch_id,
+            'location_id'     => $location_id,
+            'individu_spv_id' => $individu_spv_id,
+            'type_id'         => $type_id,
+            'reporter_id'     => (int)$this->user['id'],
+            'description'     => $description,
+            'photo_path'      => $up['path'],
+            'status'          => $requires_action ? 'baru' : 'selesai',
         ];
         if (!$requires_action) {
             // Jenis satu arah: tak butuh timer/deadline, langsung tercatat selesai.
@@ -447,6 +512,9 @@ class Temuan extends CI_Controller {
             $data['acc_at'] = date('Y-m-d H:i:s');
         }
         $id = $this->temuan->create_temuan($data);
+        if (!empty($subject_ids)) {
+            $this->temuan->add_subjects($id, $subject_ids);
+        }
         if (!$requires_action) {
             // create_temuan() selalu set due_at H+1; jenis satu arah tak perlu, kosongkan lagi.
             $this->temuan->update_temuan($id, ['due_at' => null]);
@@ -735,7 +803,7 @@ class Temuan extends CI_Controller {
         $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $ss->getActiveSheet();
         $sheet->setTitle('Detail Temuan');
-        $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area', 'Cabang', 'Keterangan',
+        $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area / Mitra', 'Cabang', 'Keterangan',
                     'Link Foto Temuan', 'Link Foto Pengerjaan',
                     'Inspector (Pembuat Laporan)', 'Status', 'Terlambat',
                     'Dikerjakan Oleh', 'Waktu Dikerjakan', 'Lapor Selesai Oleh', 'Waktu Lapor Selesai',
@@ -750,7 +818,7 @@ class Temuan extends CI_Controller {
                 $r - 1,
                 $row['created_at'],
                 $row['type_name'] ?: '-',
-                $row['location_name'],
+                ($row['type_target_mode'] ?? 'objek') === 'individu' ? ($row['subject_names'] ?: '-') : $row['location_name'],
                 $row['branch_name'],
                 $row['description'],
                 $row['photo_url'] ?: '-',
@@ -787,6 +855,7 @@ class Temuan extends CI_Controller {
         $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
         $groups = [];
         foreach ($rows as $r) {
+            if ($r['type_target_mode'] === 'individu' || empty($r['location_id'])) { continue; } // rekap per area, bukan individu
             $key = $r['location_id'];
             if (!isset($groups[$key])) {
                 $groups[$key] = [
@@ -818,11 +887,23 @@ class Temuan extends CI_Controller {
         return in_array((string)$uid, explode(',', (string)$row['pj_user_ids']), true);
     }
 
+    /** Mode individu: apakah user salah satu karyawan yang ditag di temuan tsb. */
+    private function _is_subject($row, $uid) {
+        if (empty($row['subject_user_ids'])) { return false; }
+        return in_array((string)$uid, explode(',', (string)$row['subject_user_ids']), true);
+    }
+
     private function _can_respond($row) {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
         $uid = (int)$this->user['id'];
+
+        if (($row['type_target_mode'] ?? 'objek') === 'individu') {
+            // Individu: hanya karyawan yang ditag atau SPV ad-hoc yang dipilih saat lapor.
+            return $this->_is_subject($row, $uid) || (int)$row['individu_spv_id'] === $uid;
+        }
+
         // PJ / SPV area lokasi tsb (keduanya melekat per area)
         if ($this->_is_location_pj($row, $uid) || (int)$row['spv_user_id'] === $uid) { return true; }
         // Inspector: boleh bertindak sebagai PJ/SPV cadangan, scope cabangnya
@@ -836,11 +917,12 @@ class Temuan extends CI_Controller {
         return false;
     }
 
-    /** Label pelaku respon: PJ / SPV (area tsb atau backup), Inspector, atau Admin. */
+    /** Label pelaku respon: PJ / SPV (area tsb, backup, atau ad-hoc individu), Inspector, atau Admin. */
     private function _actor_label($row) {
         $uid = (int)$this->user['id'];
+        if ($this->_is_subject($row, $uid)) { return 'PJ'; }
         if ($this->_is_location_pj($row, $uid)) { return 'PJ'; }
-        if ((int)$row['spv_user_id'] === $uid) { return 'SPV'; }
+        if ((int)$row['spv_user_id'] === $uid || (int)$row['individu_spv_id'] === $uid) { return 'SPV'; }
         if (!$this->_is_admin()) {
             if ($this->temuan->has_spv_area($uid)) { return 'SPV'; } // backup SPV
             if ($this->temuan->is_inspector($uid)) { return 'Inspector'; }
@@ -856,13 +938,14 @@ class Temuan extends CI_Controller {
         return (int)$this->user['id'];
     }
 
-    /** Ajukan tambahan waktu: SPV area tsb / SPV backup cabang / admin. */
+    /** Ajukan tambahan waktu: SPV area tsb / SPV ad-hoc individu / SPV backup cabang / admin. */
     private function _can_request_extension($row) {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
         $uid = (int)$this->user['id'];
-        if ((int)$row['spv_user_id'] === $uid) { return true; }
+        if ((int)$row['spv_user_id'] === $uid || (int)$row['individu_spv_id'] === $uid) { return true; }
+        if (($row['type_target_mode'] ?? 'objek') === 'individu') { return false; }
         if ($this->temuan->has_spv_area($uid)) { return (int)$row['branch_id'] === (int)$this->user['branch_id']; }
         return false;
     }
@@ -975,13 +1058,22 @@ class Temuan extends CI_Controller {
         }
     }
 
+    /** Baris lokasi (mode objek) atau nama karyawan yang ditag (mode individu) utk pesan WA. */
+    private function _target_line($row) {
+        if (($row['type_target_mode'] ?? 'objek') === 'individu') {
+            $names = $row['subject_names'] ?? '-';
+            return "👤 Mitra     : {$names}\n";
+        }
+        return "📍 Lokasi    : {$row['location_name']}\n";
+    }
+
     private function _build_message($type, $row) {
         $when = date('d/m/Y H:i');
         if ($type === 'temuan_baru') {
             $msg  = "🚨 *TEMUAN BARU*\n";
             $msg .= str_repeat("─", 30) . "\n";
             $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
-            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= $this->_target_line($row);
             $msg .= "📝 Keterangan: {$row['description']}\n";
             $msg .= "👤 Pelapor   : {$row['reporter_name']}\n";
             if (!empty($row['pj_name'])) {
@@ -996,7 +1088,7 @@ class Temuan extends CI_Controller {
             $msg  = "⏳ *PENGAJUAN TAMBAHAN WAKTU*\n";
             $msg .= str_repeat("─", 30) . "\n";
             $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
-            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= $this->_target_line($row);
             $msg .= "📝 Keterangan: {$row['description']}\n";
             $req_label = !empty($row['extension_requested_as']) ? " ({$row['extension_requested_as']})" : '';
             $msg .= "🙋 Diajukan  : {$row['extension_requested_by_name']}{$req_label}\n";
@@ -1012,7 +1104,7 @@ class Temuan extends CI_Controller {
             $msg  = $approved ? "✅ *TAMBAHAN WAKTU DISETUJUI*\n" : "❌ *TAMBAHAN WAKTU DITOLAK*\n";
             $msg .= str_repeat("─", 30) . "\n";
             $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
-            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= $this->_target_line($row);
             $msg .= "📝 Keterangan: {$row['description']}\n";
             $msg .= "🙋 Diajukan  : {$row['extension_requested_by_name']}\n";
             if ($approved) {
@@ -1032,7 +1124,7 @@ class Temuan extends CI_Controller {
             $msg  = "🔔 *TEMUAN DILAPORKAN SELESAI*\n";
             $msg .= str_repeat("─", 30) . "\n";
             $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
-            $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+            $msg .= $this->_target_line($row);
             $msg .= "📝 Keterangan: {$row['description']}\n";
             $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
             $msg .= "⏳ Menunggu ACC inspector: {$row['reporter_name']}\n";

@@ -130,7 +130,7 @@ export default function Report({ me, onSessionEnd }) {
           <table className="loc-table report-table">
             <thead>
               <tr>
-                <th>Tanggal</th><th>Jenis</th><th>Kode Area</th><th>Cabang</th><th>Temuan</th>
+                <th>Tanggal</th><th>Jenis</th><th>Kode Area / Mitra</th><th>Cabang</th><th>Temuan</th>
                 <th>Inspector</th><th>Status</th><th>Terlambat</th><th>Penanganan</th>
               </tr>
             </thead>
@@ -139,7 +139,7 @@ export default function Report({ me, onSessionEnd }) {
                 <tr key={r.id} className={Number(r.is_deleted) ? 'inactive' : ''}>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
                   <td>{r.type_name || '-'}</td>
-                  <td>{r.location_name}</td>
+                  <td>{r.type_target_mode === 'individu' ? (r.subject_names || '-') : r.location_name}</td>
                   <td>{r.branch_name}</td>
                   <td>
                     {r.description}

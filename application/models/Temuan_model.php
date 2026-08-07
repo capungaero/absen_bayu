@@ -13,6 +13,8 @@ class Temuan_model extends CI_Model {
     protected $inspector_table = 'temuan_inspector';
     protected $type_table      = 'temuan_type';
     protected $location_pj_table = 'temuan_location_pj';
+    protected $category_table  = 'temuan_category';
+    protected $subject_table   = 'temuan_subject';
 
     public function __construct() {
         parent::__construct();
@@ -40,7 +42,8 @@ class Temuan_model extends CI_Model {
             CREATE TABLE IF NOT EXISTS `{$this->temuan_table}` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `branch_id` INT NOT NULL,
-                `location_id` INT UNSIGNED NOT NULL,
+                `location_id` INT UNSIGNED NULL DEFAULT NULL,
+                `individu_spv_id` INT NULL DEFAULT NULL,
                 `reporter_id` INT NOT NULL,
                 `type_id` INT UNSIGNED NULL DEFAULT NULL,
                 `description` TEXT NULL,
@@ -146,9 +149,22 @@ class Temuan_model extends CI_Model {
         ");
 
         $this->db->query("
-            CREATE TABLE IF NOT EXISTS `{$this->type_table}` (
+            CREATE TABLE IF NOT EXISTS `{$this->category_table}` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `name` VARCHAR(80) NOT NULL,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` DATETIME NULL,
+                `updated_at` DATETIME NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->type_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `category_id` INT UNSIGNED NULL DEFAULT NULL,
+                `name` VARCHAR(80) NOT NULL,
+                `target_mode` ENUM('objek','individu') NOT NULL DEFAULT 'objek',
                 `requires_action` TINYINT(1) NOT NULL DEFAULT 1,
                 `require_photo_initial` TINYINT(1) NOT NULL DEFAULT 1,
                 `require_photo_done` TINYINT(1) NOT NULL DEFAULT 1,
@@ -159,6 +175,18 @@ class Temuan_model extends CI_Model {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->subject_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `temuan_id` INT UNSIGNED NOT NULL,
+                `user_id` INT NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_temuan_user` (`temuan_id`, `user_id`),
+                KEY `idx_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
         // Migrasi: kolom jenis temuan + seed default + backfill temuan lama
         if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'type_id'")->num_rows() === 0) {
             $this->db->query("ALTER TABLE `{$this->temuan_table}`
@@ -166,14 +194,37 @@ class Temuan_model extends CI_Model {
         }
         if ((int)$this->db->count_all($this->type_table) === 0) {
             $now = date('Y-m-d H:i:s');
+            $this->db->insert($this->category_table, ['name' => 'Umum', 'is_active' => 1, 'created_at' => $now]);
+            $cat_id = (int)$this->db->insert_id();
             $this->db->insert_batch($this->type_table, [
-                ['name' => 'Temuan Rak', 'requires_action' => 1, 'require_photo_initial' => 1, 'require_photo_done' => 1, 'is_active' => 1, 'created_at' => $now],
-                ['name' => 'Temuan Kebersihan', 'requires_action' => 1, 'require_photo_initial' => 1, 'require_photo_done' => 1, 'is_active' => 1, 'created_at' => $now],
-                ['name' => 'Temuan Disiplin', 'requires_action' => 0, 'require_photo_initial' => 1, 'require_photo_done' => 0, 'is_active' => 1, 'created_at' => $now],
-                ['name' => 'Salah Input', 'requires_action' => 0, 'require_photo_initial' => 0, 'require_photo_done' => 0, 'is_active' => 1, 'created_at' => $now],
+                ['category_id' => $cat_id, 'name' => 'Temuan Rak', 'target_mode' => 'objek', 'requires_action' => 1, 'require_photo_initial' => 1, 'require_photo_done' => 1, 'is_active' => 1, 'created_at' => $now],
+                ['category_id' => $cat_id, 'name' => 'Temuan Kebersihan', 'target_mode' => 'objek', 'requires_action' => 1, 'require_photo_initial' => 1, 'require_photo_done' => 1, 'is_active' => 1, 'created_at' => $now],
+                ['category_id' => $cat_id, 'name' => 'Temuan Disiplin', 'target_mode' => 'individu', 'requires_action' => 0, 'require_photo_initial' => 1, 'require_photo_done' => 0, 'is_active' => 1, 'created_at' => $now],
+                ['category_id' => $cat_id, 'name' => 'Salah Input', 'target_mode' => 'objek', 'requires_action' => 0, 'require_photo_initial' => 0, 'require_photo_done' => 0, 'is_active' => 1, 'created_at' => $now],
             ]);
             $default_id = (int)$this->db->select('id')->where('name', 'Temuan Rak')->get($this->type_table)->row_array()['id'];
             $this->db->where('type_id', null)->update($this->temuan_table, ['type_id' => $default_id]);
+        }
+
+        // Migrasi: kategori (Jenis) + target objek/individu utk temuan_type yang sudah ada
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->type_table}` LIKE 'category_id'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->type_table}`
+                ADD COLUMN `category_id` INT UNSIGNED NULL DEFAULT NULL AFTER `id`,
+                ADD COLUMN `target_mode` ENUM('objek','individu') NOT NULL DEFAULT 'objek' AFTER `name`");
+            if ((int)$this->db->count_all($this->category_table) === 0) {
+                $this->db->insert($this->category_table, ['name' => 'Umum', 'is_active' => 1, 'created_at' => date('Y-m-d H:i:s')]);
+            }
+            $cat = $this->db->select('id')->order_by('id')->limit(1)->get($this->category_table)->row_array();
+            if ($cat) {
+                $this->db->where('category_id', null)->update($this->type_table, ['category_id' => $cat['id']]);
+            }
+        }
+
+        // Migrasi: temuan.location_id jadi nullable + kolom individu_spv_id (mode individu)
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'individu_spv_id'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                MODIFY COLUMN `location_id` INT UNSIGNED NULL DEFAULT NULL,
+                ADD COLUMN `individu_spv_id` INT NULL DEFAULT NULL AFTER `location_id`");
         }
 
         $this->db->query("
@@ -315,13 +366,54 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
-    // JENIS TEMUAN
+    // JENIS (KATEGORI)
+    // ====================================================================
+
+    public function get_categories($active_only = false) {
+        $this->db->from($this->category_table);
+        if ($active_only) { $this->db->where('is_active', 1); }
+        return $this->db->order_by('name')->get()->result_array();
+    }
+
+    public function get_category($id) {
+        return $this->db->where('id', $id)->get($this->category_table)->row_array();
+    }
+
+    public function save_category($data, $id = null) {
+        if ($id) {
+            $data['updated_at'] = date('Y-m-d H:i:s');
+            $this->db->where('id', $id)->update($this->category_table, $data);
+            return $id;
+        }
+        $data['created_at'] = date('Y-m-d H:i:s');
+        $this->db->insert($this->category_table, $data);
+        return $this->db->insert_id();
+    }
+
+    /** Hapus kategori; kalau sudah dipakai nama temuan, nonaktifkan saja. */
+    public function delete_category($id) {
+        $used = (int)$this->db->where('category_id', $id)->count_all_results($this->type_table);
+        if ($used > 0) {
+            $this->db->where('id', $id)->update($this->category_table, [
+                'is_active'  => 0,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            return 'deactivated';
+        }
+        $this->db->where('id', $id)->delete($this->category_table);
+        return 'deleted';
+    }
+
+    // ====================================================================
+    // NAMA TEMUAN
     // ====================================================================
 
     public function get_types($active_only = false) {
-        $this->db->from($this->type_table);
-        if ($active_only) { $this->db->where('is_active', 1); }
-        return $this->db->order_by('name')->get()->result_array();
+        $this->db->select("ty.*, cat.name AS category_name")
+                 ->from("{$this->type_table} ty")
+                 ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left');
+        if ($active_only) { $this->db->where('ty.is_active', 1); }
+        return $this->db->order_by('cat.name, ty.name')->get()->result_array();
     }
 
     public function get_type($id) {
@@ -351,6 +443,31 @@ class Temuan_model extends CI_Model {
         }
         $this->db->where('id', $id)->delete($this->type_table);
         return 'deleted';
+    }
+
+    // ====================================================================
+    // SUBJECT (karyawan target — mode individu)
+    // ====================================================================
+
+    public function add_subjects($temuan_id, $user_ids) {
+        $user_ids = array_unique(array_filter(array_map('intval', (array)$user_ids)));
+        if (empty($user_ids)) { return; }
+        $now = date('Y-m-d H:i:s');
+        $rows = array_map(function ($uid) use ($temuan_id, $now) {
+            return ['temuan_id' => (int)$temuan_id, 'user_id' => $uid, 'created_at' => $now];
+        }, $user_ids);
+        $this->db->insert_batch($this->subject_table, $rows);
+    }
+
+    public function get_subjects($temuan_id) {
+        return $this->db
+            ->select("s.user_id, TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) AS name, p.position_name")
+            ->from("{$this->subject_table} s")
+            ->join('users u', 'u.id = s.user_id', 'left')
+            ->join('position p', 'p.id = u.position_id', 'left')
+            ->where('s.temuan_id', (int)$temuan_id)
+            ->order_by('name')
+            ->get()->result_array();
     }
 
     // ====================================================================
@@ -421,15 +538,22 @@ class Temuan_model extends CI_Model {
     private function _select_full() {
         $this->db
             ->select("t.*, l.name AS location_name, l.spv_user_id, b.branch_name,
-                      ty.name AS type_name, ty.requires_action AS type_requires_action,
+                      ty.name AS type_name, ty.target_mode AS type_target_mode,
+                      ty.category_id AS type_category_id, cat.name AS category_name,
+                      ty.requires_action AS type_requires_action,
                       ty.require_photo_initial AS type_require_photo_initial,
                       ty.require_photo_done AS type_require_photo_done,
                       TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
+                      TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
                       (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                         WHERE lp2.location_id = l.id) AS pj_name,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
+                      (SELECT GROUP_CONCAT(sj.user_id) FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id) AS subject_user_ids,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id
+                        WHERE sj2.temuan_id = t.id) AS subject_names,
                       TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
                       TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name,
                       TRIM(CONCAT(rj.first_name,' ',COALESCE(rj.last_name,''))) AS reject_by_name,
@@ -439,8 +563,10 @@ class Temuan_model extends CI_Model {
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
+            ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users r', 'r.id = t.reporter_id', 'left')
+            ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
             ->join('users sv', 'sv.id = l.spv_user_id', 'left')
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
@@ -477,7 +603,11 @@ class Temuan_model extends CI_Model {
         // SPV tetap lihat seluruh cabang (perlu untuk backup SPV lain yang libur).
         if (!empty($filters['visible_to'])) {
             $uid = (int)$filters['visible_to'];
-            $this->db->where("EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})", null, false);
+            $this->db->where("(
+                EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})
+                OR t.individu_spv_id = {$uid}
+                OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
+            )", null, false);
         }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
@@ -511,7 +641,11 @@ class Temuan_model extends CI_Model {
         if ($to)   { $this->db->where('t.created_at <=', $to . ' 23:59:59'); }
         if ($visible_to) {
             $uid = (int)$visible_to;
-            $this->db->where("EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})", null, false);
+            $this->db->where("(
+                EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})
+                OR t.individu_spv_id = {$uid}
+                OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
+            )", null, false);
         }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'selesai' => 0, 'ditolak' => 0];
@@ -525,17 +659,23 @@ class Temuan_model extends CI_Model {
     public function get_report_rows($branch_id, $from, $to) {
         $this->db
             ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
-                      ty.name AS type_name,
+                      ty.name AS type_name, ty.target_mode AS type_target_mode, cat.name AS category_name,
                       l.id AS location_id, l.name AS location_name, b.branch_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                         WHERE lp2.location_id = l.id) AS pj_name,
-                      TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name")
+                      TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
+                      TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id
+                        WHERE sj2.temuan_id = t.id) AS subject_names")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
+            ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users sv', 'sv.id = l.spv_user_id', 'left')
+            ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
             ->where('t.is_deleted', 0)
             ->where('t.status !=', 'ditolak')
             ->where('t.created_at >=', $from . ' 00:00:00')

@@ -84,12 +84,19 @@ export default function Dashboard({ me, onSessionEnd }) {
   }, [branchId]);
 
   const isRowPj = (row) => !!row.pj_user_ids && row.pj_user_ids.split(',').map(Number).includes(Number(me.id));
+  const isRowSubject = (row) => !!row.subject_user_ids && row.subject_user_ids.split(',').map(Number).includes(Number(me.id));
 
-  const canRespond = (row) => me.is_admin
-    || me.is_inspector
-    || me.is_spv
-    || isRowPj(row)
-    || Number(row.spv_user_id) === Number(me.id);
+  const canRespond = (row) => {
+    if (row.type_target_mode === 'individu') {
+      if (me.is_admin) return true;
+      return isRowSubject(row) || Number(row.individu_spv_id) === Number(me.id);
+    }
+    return me.is_admin
+      || me.is_inspector
+      || me.is_spv
+      || isRowPj(row)
+      || Number(row.spv_user_id) === Number(me.id);
+  };
 
   const doAction = async (path, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
@@ -158,13 +165,21 @@ export default function Dashboard({ me, onSessionEnd }) {
               {dueCountdown(row, nowMs) && (
                 <span className={`badge ${row.is_late ? 'badge-telat' : 'badge-countdown'}`}> {dueCountdown(row, nowMs)}</span>
               )}
-              {row.type_name && <span className="badge badge-type"> {row.type_name}</span>}
-              <div className="tcard-loc" style={{ marginTop: 6 }}>📍 {row.location_name} · {row.branch_name}</div>
+              {row.type_name && <span className="badge badge-type"> {row.category_name ? `${row.category_name} — ` : ''}{row.type_name}</span>}
+              <div className="tcard-loc" style={{ marginTop: 6 }}>
+                {row.type_target_mode === 'individu'
+                  ? <>👤 {row.subject_names || '-'} · {row.branch_name}</>
+                  : <>📍 {row.location_name} · {row.branch_name}</>}
+              </div>
               <div className="tcard-desc">{row.description}</div>
               <div className="tcard-meta">
                 Pelapor: <b>{row.reporter_name}</b> · {fmtTime(row.created_at)}<br />
-                {(row.pj_name || row.spv_name) && (
-                  <>{row.pj_name && <>PJ: <b>{row.pj_name}</b></>}{row.pj_name && row.spv_name && ' · '}{row.spv_name && <>SPV: <b>{row.spv_name}</b></>}<br /></>
+                {row.type_target_mode === 'individu' ? (
+                  row.individu_spv_name && <>SPV: <b>{row.individu_spv_name}</b><br /></>
+                ) : (
+                  (row.pj_name || row.spv_name) && (
+                    <>{row.pj_name && <>PJ: <b>{row.pj_name}</b></>}{row.pj_name && row.spv_name && ' · '}{row.spv_name && <>SPV: <b>{row.spv_name}</b></>}<br /></>
+                  )
                 )}
                 {row.status !== 'selesai' && row.status !== 'ditolak' && (
                   <>Deadline: <b>{fmtTime(row.effective_due_at)}</b>{row.due_extended_at ? ' (diperpanjang)' : ''}<br /></>

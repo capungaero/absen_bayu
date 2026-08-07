@@ -6,10 +6,11 @@ export default function Admin({ me, onSessionEnd }) {
     <div>
       <RosterAdmin
         icon="🕵️" title="Inspector" label="inspector"
-        desc="Hanya karyawan yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan."
+        desc="Hanya mitra yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan."
         listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
         onSessionEnd={onSessionEnd}
       />
+      <CategoryAdmin onSessionEnd={onSessionEnd} />
       <TypeAdmin onSessionEnd={onSessionEnd} />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
@@ -76,7 +77,7 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
       {error && <div className="alert alert-error">{error}</div>}
       <div className="filter-row">
         <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ flex: 1, minWidth: 200 }}>
-          <option value="">— pilih karyawan —</option>
+          <option value="">— pilih mitra —</option>
           {employees.filter((u) => !registered.has(Number(u.id))).map((u) => (
             <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>
           ))}
@@ -107,15 +108,116 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
   );
 }
 
-function TypeAdmin({ onSessionEnd }) {
-  const [types, setTypes] = useState([]);
+function CategoryAdmin({ onSessionEnd }) {
+  const [categories, setCategories] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const d = await apiGet('/types', { all: 1 });
-      setTypes(d.rows);
+      const d = await apiGet('/categories', { all: 1 });
+      setCategories(d.rows);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (c) => {
+    if (!window.confirm(`Hapus jenis "${c.name}"? (kalau sudah dipakai nama temuan, hanya dinonaktifkan)`)) return;
+    try {
+      await apiPost('/category_delete', { id: c.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  const save = async () => {
+    if (!editing.name.trim()) return;
+    try {
+      await apiPost('/category_save', { id: editing.id || null, name: editing.name.trim(), is_active: editing.is_active ? 1 : 0 });
+      setEditing(null);
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="admin-section">
+      <h3>🗂️ Jenis (Kategori)</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Kategori besar temuan, mis. Kebersihan, Disiplin, Rak. Tiap Jenis bisa punya beberapa
+        Nama Temuan di bawahnya (lihat bagian berikutnya).
+      </p>
+      {error && <div className="alert alert-error">{error}</div>}
+      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
+        onClick={() => setEditing({ name: '', is_active: 1 })}>
+        + Tambah Jenis
+      </button>
+      <div className="table-wrap">
+        <table className="loc-table">
+          <thead><tr><th>Nama Jenis</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {categories.map((c) => (
+              <tr key={c.id} className={Number(c.is_active) ? '' : 'inactive'}>
+                <td>{c.name}</td>
+                <td>{Number(c.is_active) ? 'Aktif' : 'Nonaktif'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(c)}>Edit</button>{' '}
+                  <button className="btn btn-danger" onClick={() => remove(c)}>Hapus</button>
+                </td>
+              </tr>
+            ))}
+            {categories.length === 0 && (
+              <tr><td colSpan="3" style={{ color: 'var(--muted)' }}>Belum ada jenis.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <div className="modal-back" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing.id ? 'Edit Jenis' : 'Tambah Jenis'}</h3>
+            <div className="field">
+              <label>Nama jenis</label>
+              <input type="text" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Contoh: Kebersihan" />
+            </div>
+            <label className="check-row">
+              <input type="checkbox" checked={!!Number(editing.is_active)} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked ? 1 : 0 })} />
+              Aktif
+            </label>
+            <div className="modal-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Batal</button>
+              <button className="btn btn-primary btn-sm" onClick={save}>Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TypeAdmin({ onSessionEnd }) {
+  const [types, setTypes] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const [t, c] = await Promise.all([
+        apiGet('/types', { all: 1 }),
+        apiGet('/categories', { all: 1 }),
+      ]);
+      setTypes(t.rows);
+      setCategories(c.rows);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
@@ -125,7 +227,7 @@ function TypeAdmin({ onSessionEnd }) {
   useEffect(() => { load(); }, [load]);
 
   const remove = async (t) => {
-    if (!window.confirm(`Hapus jenis "${t.name}"? (kalau sudah dipakai temuan, hanya dinonaktifkan)`)) return;
+    if (!window.confirm(`Hapus nama temuan "${t.name}"? (kalau sudah dipakai temuan, hanya dinonaktifkan)`)) return;
     try {
       await apiPost('/type_delete', { id: t.id });
       load();
@@ -137,38 +239,43 @@ function TypeAdmin({ onSessionEnd }) {
 
   return (
     <div className="admin-section">
-      <h3>🏷️ Jenis Temuan</h3>
+      <h3>🏷️ Nama Temuan</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-        Kategori temuan (mis. Temuan Rak, Kebersihan, Disiplin, Salah Input). Tiap jenis bisa diatur:
-        apakah perlu ditindaklanjuti PJ/SPV (atau satu arah/langsung tercatat selesai), dan wajib-tidaknya
-        foto saat lapor & saat lapor selesai.
+        Label spesifik di bawah sebuah Jenis, mis. "Rak kotor", "WC tidak bersih". Tiap nama temuan diatur:
+        target-nya objek (lokasi) atau individu (mitra), perlu ditindaklanjuti PJ/SPV atau satu arah,
+        dan wajib-tidaknya foto saat lapor & saat lapor selesai.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
-      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ name: '', requires_action: 1, require_photo_initial: 1, require_photo_done: 1, is_active: 1 })}>
-        + Tambah Jenis
+      {categories.length === 0 && (
+        <div className="alert alert-error">Belum ada Jenis (kategori). Tambah dulu di bagian sebelumnya.</div>
+      )}
+      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }} disabled={categories.length === 0}
+        onClick={() => setEditing({ category_id: categories[0]?.id || '', name: '', target_mode: 'objek', requires_action: 1, require_photo_initial: 1, require_photo_done: 1, is_active: 1 })}>
+        + Tambah Nama Temuan
       </button>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Nama</th><th>Bisa Dikerjakan</th><th>Foto Lapor</th><th>Foto Selesai</th><th>Status</th><th></th></tr>
+            <tr><th>Jenis</th><th>Nama Temuan</th><th>Target</th><th>Bisa Dikerjakan</th><th>Foto Lapor</th><th>Foto Selesai</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {types.map((t) => (
               <tr key={t.id} className={Number(t.is_active) ? '' : 'inactive'}>
+                <td>{t.category_name || '-'}</td>
                 <td>{t.name}</td>
+                <td>{t.target_mode === 'individu' ? 'Individu (mitra)' : 'Objek (lokasi)'}</td>
                 <td>{Number(t.requires_action) ? 'Ya' : 'Satu arah'}</td>
                 <td>{Number(t.require_photo_initial) ? 'Wajib' : 'Opsional'}</td>
                 <td>{Number(t.require_photo_done) ? 'Wajib' : 'Opsional'}</td>
                 <td>{Number(t.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(t)}>Edit</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({ ...t, category_id: t.category_id || '' })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(t)}>Hapus</button>
                 </td>
               </tr>
             ))}
             {types.length === 0 && (
-              <tr><td colSpan="6" style={{ color: 'var(--muted)' }}>Belum ada jenis temuan.</td></tr>
+              <tr><td colSpan="8" style={{ color: 'var(--muted)' }}>Belum ada nama temuan.</td></tr>
             )}
           </tbody>
         </table>
@@ -177,6 +284,7 @@ function TypeAdmin({ onSessionEnd }) {
       {editing && (
         <TypeModal
           initial={editing}
+          categories={categories}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }}
           onSessionEnd={onSessionEnd}
@@ -186,7 +294,7 @@ function TypeAdmin({ onSessionEnd }) {
   );
 }
 
-function TypeModal({ initial, onClose, onSaved, onSessionEnd }) {
+function TypeModal({ initial, categories, onClose, onSaved, onSessionEnd }) {
   const [form, setForm] = useState(initial);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -194,13 +302,16 @@ function TypeModal({ initial, onClose, onSaved, onSessionEnd }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async () => {
-    if (!form.name.trim()) { setError('Nama jenis wajib diisi'); return; }
+    if (!form.name.trim()) { setError('Nama temuan wajib diisi'); return; }
+    if (!form.category_id) { setError('Jenis (kategori) wajib dipilih'); return; }
     setBusy(true);
     setError('');
     try {
       await apiPost('/type_save', {
         id: form.id || null,
+        category_id: form.category_id,
         name: form.name.trim(),
+        target_mode: form.target_mode || 'objek',
         requires_action: form.requires_action ? 1 : 0,
         require_photo_initial: form.require_photo_initial ? 1 : 0,
         require_photo_done: form.require_photo_done ? 1 : 0,
@@ -217,15 +328,33 @@ function TypeModal({ initial, onClose, onSaved, onSessionEnd }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{form.id ? 'Edit Jenis Temuan' : 'Tambah Jenis Temuan'}</h3>
+        <h3>{form.id ? 'Edit Nama Temuan' : 'Tambah Nama Temuan'}</h3>
         {error && <div className="alert alert-error">{error}</div>}
         <div className="field">
-          <label>Nama jenis</label>
-          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Temuan Rak" />
+          <label>Jenis (kategori)</label>
+          <select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Nama temuan</label>
+          <input type="text" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Contoh: Rak kotor" />
+        </div>
+        <div className="field">
+          <label>Target saat lapor</label>
+          <select value={form.target_mode || 'objek'} onChange={(e) => set('target_mode', e.target.value)}>
+            <option value="objek">Objek — pilih lokasi</option>
+            <option value="individu">Individu — pilih mitra (bisa lebih dari satu)</option>
+          </select>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+            {form.target_mode === 'individu'
+              ? 'Saat lapor: pilih cabang, mitra yang ditag (bisa banyak), dan SPV opsional yang juga boleh menyelesaikan.'
+              : 'Saat lapor: pilih lokasi/kode area seperti biasa.'}
+          </div>
         </div>
         <label className="check-row">
           <input type="checkbox" checked={!!Number(form.requires_action)} onChange={(e) => set('requires_action', e.target.checked ? 1 : 0)} />
-          Perlu ditindaklanjuti PJ/SPV (matikan = satu arah, langsung tercatat selesai)
+          Perlu ditindaklanjuti (matikan = satu arah, langsung tercatat selesai, cuma bisa dilihat)
         </label>
         <label className="check-row">
           <input type="checkbox" checked={!!Number(form.require_photo_initial)} onChange={(e) => set('require_photo_initial', e.target.checked ? 1 : 0)} />

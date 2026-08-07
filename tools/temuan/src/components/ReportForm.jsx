@@ -6,8 +6,12 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
   const [branchId, setBranchId] = useState('');
   const [locations, setLocations] = useState([]);
   const [locationId, setLocationId] = useState('');
+  const [categories, setCategories] = useState([]);
   const [types, setTypes] = useState([]);
   const [typeId, setTypeId] = useState('');
+  const [employees, setEmployees] = useState([]);
+  const [subjectIds, setSubjectIds] = useState([]);
+  const [spvId, setSpvId] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -22,16 +26,25 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       else if (me.branch_id) setBranchId(String(me.branch_id));
     }).catch((err) => { if (err.auth) onSessionEnd(); });
     apiGet('/types').then((d) => setTypes(d.rows)).catch(() => {});
+    apiGet('/categories').then((d) => setCategories(d.rows)).catch(() => {});
   }, [me, onSessionEnd]);
 
+  const selectedType = types.find((t) => String(t.id) === String(typeId));
+  const isIndividu = selectedType?.target_mode === 'individu';
+  const photoRequired = !selectedType || !!Number(selectedType.require_photo_initial);
+
   useEffect(() => {
-    if (!branchId) { setLocations([]); return; }
+    if (!branchId) { setLocations([]); setEmployees([]); return; }
     apiGet('/locations', { branch_id: branchId }).then((d) => setLocations(d.rows)).catch(() => {});
+    apiGet('/employees', { branch_id: branchId }).then((d) => setEmployees(d.rows)).catch(() => {});
     setLocationId('');
+    setSubjectIds([]);
+    setSpvId('');
   }, [branchId]);
 
-  const selectedType = types.find((t) => String(t.id) === String(typeId));
-  const photoRequired = !selectedType || !!Number(selectedType.require_photo_initial);
+  const toggleSubject = (uid) => {
+    setSubjectIds((cur) => (cur.includes(uid) ? cur.filter((x) => x !== uid) : [...cur, uid]));
+  };
 
   const pick = (e) => {
     const f = e.target.files[0];
@@ -43,17 +56,28 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
     e.preventDefault();
     setError('');
     setSuccess('');
-    if (!locationId) { setError('Pilih lokasi terlebih dahulu'); return; }
-    if (!typeId) { setError('Pilih jenis temuan terlebih dahulu'); return; }
+    if (!typeId) { setError('Pilih nama temuan terlebih dahulu'); return; }
+    if (!branchId) { setError('Pilih cabang terlebih dahulu'); return; }
+    if (isIndividu) {
+      if (subjectIds.length === 0) { setError('Pilih minimal satu mitra'); return; }
+    } else if (!locationId) {
+      setError('Pilih lokasi terlebih dahulu'); return;
+    }
     if (description.trim().length < 5) { setError('Keterangan minimal 5 karakter'); return; }
     if (photoRequired && !file) { setError('Foto temuan wajib dilampirkan untuk jenis ini'); return; }
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append('location_id', locationId);
       fd.append('type_id', typeId);
       fd.append('description', description.trim());
       if (file) fd.append('photo', file);
+      if (isIndividu) {
+        fd.append('branch_id', branchId);
+        subjectIds.forEach((uid) => fd.append('subject_user_ids[]', uid));
+        if (spvId) fd.append('spv_user_id', spvId);
+      } else {
+        fd.append('location_id', locationId);
+      }
       await apiUpload('/create', fd);
       setSuccess('Temuan berhasil dilaporkan. Notifikasi terkirim.');
       setDescription('');
@@ -61,6 +85,8 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       setPreview(null);
       setLocationId('');
       setTypeId('');
+      setSubjectIds([]);
+      setSpvId('');
       setTimeout(onDone, 1200);
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -76,6 +102,25 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
+      <div className="field">
+        <label>Nama Temuan</label>
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
+          <option value="">— pilih nama temuan —</option>
+          {categories.map((c) => (
+            <optgroup key={c.id} label={c.name}>
+              {types.filter((t) => String(t.category_id) === String(c.id)).map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {selectedType && !Number(selectedType.requires_action) && (
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+            Jenis ini satu arah — begitu dilaporkan, langsung tercatat selesai tanpa perlu ditindaklanjuti.
+          </div>
+        )}
+      </div>
+
       {branches.length > 1 && (
         <div className="field">
           <label>Cabang</label>
@@ -86,31 +131,42 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
         </div>
       )}
 
-      <div className="field">
-        <label>Jenis Temuan</label>
-        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
-          <option value="">— pilih jenis —</option>
-          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        {selectedType && !Number(selectedType.requires_action) && (
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-            Jenis ini satu arah — begitu dilaporkan, langsung tercatat selesai tanpa perlu ditindaklanjuti PJ/SPV.
+      {isIndividu ? (
+        <>
+          <div className="field">
+            <label>Mitra (bisa pilih lebih dari satu)</label>
+            <div className="pj-checklist">
+              {employees.map((u) => (
+                <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
+                  <input type="checkbox" checked={subjectIds.includes(String(u.id))} onChange={() => toggleSubject(String(u.id))} />
+                  {u.name}{u.position_name ? ` (${u.position_name})` : ''}
+                </label>
+              ))}
+              {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
+            </div>
           </div>
-        )}
-      </div>
-
-      <div className="field">
-        <label>Lokasi</label>
-        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
-          <option value="">— pilih lokasi —</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-        {branchId && locations.length === 0 && (
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-            Belum ada lokasi terdaftar untuk cabang ini. Minta admin menambah lewat menu Kelola.
+          <div className="field">
+            <label>SPV (opsional — ikut boleh menyelesaikan)</label>
+            <select value={spvId} onChange={(e) => setSpvId(e.target.value)}>
+              <option value="">— tidak ada —</option>
+              {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
+            </select>
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="field">
+          <label>Lokasi</label>
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+            <option value="">— pilih lokasi —</option>
+            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+          {branchId && locations.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+              Belum ada lokasi terdaftar untuk cabang ini. Minta admin menambah lewat menu Kelola.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="field">
         <label>Keterangan</label>
