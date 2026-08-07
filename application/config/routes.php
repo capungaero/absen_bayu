@@ -340,6 +340,7 @@ $route['temuan/extend_decide']   = 'Temuan/extend_decide';
 $route['temuan/report']          = 'Temuan/report';
 $route['temuan/report_summary']  = 'Temuan/report_summary';
 $route['temuan/report_excel']    = 'Temuan/report_excel';
+$route['temuan/report_detail_excel'] = 'Temuan/report_detail_excel';
 $route['temuan/config']          = 'Temuan/config';
 $route['temuan/save_config']     = 'Temuan/save_config';
 $route['temuan/test_send']       = 'Temuan/test_send';

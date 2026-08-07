@@ -713,6 +713,69 @@ class Temuan extends CI_Controller {
         exit;
     }
 
+    // GET temuan/report_detail_excel?branch_id=&from=&to=&token= — unduh detail temuan .xlsx
+    public function report_detail_excel() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
+            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
+        }
+        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $vis = $this->_visibility_uid();
+        $from = $this->input->get('from') ?: date('Y-m-01');
+        $to   = $this->input->get('to') ?: date('Y-m-d');
+        $rows = array_map([$this, '_row_out'], $this->temuan->list_temuan([
+            'branch_id'       => $branch_id,
+            'from'            => $from,
+            'to'              => $to,
+            'include_deleted' => true,
+            'visible_to'      => $vis,
+        ], 5000, 0));
+
+        require_once FCPATH . 'lib/vendor/autoload.php';
+        $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $ss->getActiveSheet();
+        $sheet->setTitle('Detail Temuan');
+        $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area', 'Cabang', 'Keterangan', 'Inspector', 'Status', 'Terlambat',
+                    'Dikerjakan Oleh', 'Waktu Dikerjakan', 'Lapor Selesai Oleh', 'Waktu Lapor Selesai',
+                    'ACC Oleh', 'Waktu ACC', 'Ditolak Oleh', 'Alasan Ditolak', 'Dihapus Admin'];
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->getStyle('A1:R1')->getFont()->setBold(true);
+        $status_label = ['baru' => 'Baru', 'dikerjakan' => 'Dikerjakan', 'menunggu_acc' => 'Menunggu ACC', 'selesai' => 'Selesai', 'ditolak' => 'Ditolak'];
+        $r = 2;
+        foreach ($rows as $row) {
+            $telat = $row['status'] === 'ditolak' ? '-' : ($row['is_late'] ? 'Telat' : 'Tepat waktu');
+            $sheet->fromArray([
+                $r - 1,
+                $row['created_at'],
+                $row['type_name'] ?: '-',
+                $row['location_name'],
+                $row['branch_name'],
+                $row['description'],
+                $row['reporter_name'],
+                $status_label[$row['status']] ?? $row['status'],
+                $telat,
+                $row['taken_by_name'] ?: '-',
+                $row['taken_at'] ?: '-',
+                $row['done_by_name'] ?: '-',
+                $row['done_at'] ?: '-',
+                $row['acc_by_name'] ?: '-',
+                $row['acc_at'] ?: '-',
+                $row['reject_by_name'] ?: '-',
+                $row['reject_reason'] ?: '-',
+                (int)$row['is_deleted'] ? 'Ya' : 'Tidak',
+            ], null, 'A' . $r);
+            $r++;
+        }
+        foreach (range('A', 'R') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+
+        $filename = 'Detail_Temuan_' . $from . '_sd_' . $to . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($ss))->save('php://output');
+        exit;
+    }
+
     /** Agregasi per kode area: jumlah temuan, selesai tepat waktu, tidak selesai (telat/masih terbuka). */
     private function _aggregate_report($branch_id, $from, $to) {
         $rows = $this->temuan->get_report_rows($branch_id, $from, $to);

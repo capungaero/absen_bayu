@@ -41,7 +41,9 @@ export default function Report({ me, onSessionEnd }) {
   useEffect(() => { load(); }, [load]);
 
   const canExportExcel = me.is_admin || me.is_inspector;
-  const excelUrl = `${API}/report_excel?from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
+  const qs = `from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
+  const excelUrl = `${API}/report_excel?${qs}`;
+  const detailExcelUrl = `${API}/report_detail_excel?${qs}`;
 
   const handling = (r) => {
     const parts = [];
@@ -72,7 +74,7 @@ export default function Report({ me, onSessionEnd }) {
         )}
         <button className="btn btn-outline btn-sm" onClick={load} disabled={busy}>↻ Muat ulang</button>
         {canExportExcel && (
-          <a className="btn btn-primary btn-sm" href={excelUrl}>⬇ Unduh Excel</a>
+          <a className="btn btn-primary btn-sm" href={excelUrl}>⬇ Unduh Excel Ringkasan</a>
         )}
       </div>
 
@@ -118,7 +120,12 @@ export default function Report({ me, onSessionEnd }) {
       </div>
 
       <div className="admin-section">
-        <h3>📄 Detail Temuan</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>📄 Detail Temuan</h3>
+          {canExportExcel && (
+            <a className="btn btn-outline btn-sm" href={detailExcelUrl}>⬇ Unduh Excel Detail</a>
+          )}
+        </div>
         <div className="table-wrap">
           <table className="loc-table report-table">
             <thead>
