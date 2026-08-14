@@ -621,8 +621,9 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        $can = $this->_is_admin()
-            || ($this->temuan->is_inspector($this->user['id']) && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        $can = $this->role === 'admin'
+            || (($this->_is_admin() || $this->temuan->is_inspector($this->user['id']))
+                && (int)$row['branch_id'] === (int)$this->user['branch_id']);
         if (!$can) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh memutuskan penolakan'], 403); return;
         }
@@ -685,8 +686,9 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        $can_acc = $this->_is_admin()
-            || ($this->temuan->is_inspector($this->user['id']) && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        $can_acc = $this->role === 'admin'
+            || (($this->_is_admin() || $this->temuan->is_inspector($this->user['id']))
+                && (int)$row['branch_id'] === (int)$this->user['branch_id']);
         if (!$can_acc) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh ACC'], 403); return;
         }
@@ -1007,19 +1009,15 @@ class Temuan extends CI_Controller {
     }
 
     /**
-     * Filter visibilitas — return array yang di-merge ke $filters:
-     *   [] = lihat semua di cabangnya (admin, inspector)
-     *   ['subdivision_id' => X] = SPV: hanya lihat area divisinya
+     * Filter visibilitas — return array yang di-merge ke $filters (sesuai matriks hak akses):
+     *   [] = lihat semua di cabangnya (admin, inspector, SPV)
      *   ['visible_to' => uid] = PJ/employee: hanya area sendiri / yang ditag
      */
     private function _visibility_filters() {
         if ($this->_is_admin()) { return []; }
         $uid = (int)$this->user['id'];
         if ($this->temuan->is_inspector($uid)) { return []; }
-        if ($this->temuan->has_spv_area($uid)) {
-            $div_ids = $this->temuan->get_spv_division_ids($uid);
-            return $div_ids ? ['division_ids' => $div_ids] : [];
-        }
+        if ($this->temuan->has_spv_area($uid)) { return []; }
         return ['visible_to' => $uid];
     }
 
