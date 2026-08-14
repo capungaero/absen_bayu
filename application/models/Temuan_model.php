@@ -755,6 +755,9 @@ class Temuan_model extends CI_Model {
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                         WHERE lp2.location_id = l.id) AS pj_name,
+                      (SELECT GROUP_CONCAT(lp3.user_id)
+                         FROM {$this->location_pj_table} lp3
+                        WHERE lp3.location_id = l.id) AS pj_user_ids,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
                       TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
