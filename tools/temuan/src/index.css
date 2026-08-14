@@ -115,6 +115,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .summary-card.s-baru .num { color: var(--red); }
 .summary-card.s-dikerjakan .num { color: var(--amber); }
 .summary-card.s-menunggu_acc .num { color: #7c3aed; }
+.summary-card.s-menunggu_acc_tolak .num { color: #b45309; }
 .summary-card.s-selesai .num { color: var(--green); }
 .summary-card.s-ditolak .num { color: var(--muted); }
 
@@ -156,6 +157,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .pj-checklist .check-row { font-size: 13px; }
 .badge-menunggu_acc { background: #f5f3ff; color: #7c3aed; }
+.badge-menunggu_acc_tolak { background: #fef3c7; color: #b45309; }
 .badge-ditolak { background: #f1f5f9; color: #475569; }
 .date-input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }
 .report-table td { vertical-align: top; }

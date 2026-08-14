@@ -15,6 +15,7 @@ class Temuan_model extends CI_Model {
     protected $location_pj_table = 'temuan_location_pj';
     protected $category_table  = 'temuan_category';
     protected $subject_table   = 'temuan_subject';
+    protected $division_table  = 'temuan_division';
 
     public function __construct() {
         parent::__construct();
@@ -117,6 +118,16 @@ class Temuan_model extends CI_Model {
                 ADD COLUMN `acc_by` INT NULL DEFAULT NULL AFTER `reject_at`,
                 ADD COLUMN `acc_at` DATETIME NULL AFTER `acc_by`,
                 ADD COLUMN `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `acc_at`");
+        }
+
+        // Migrasi: penolakan wajib ACC inspector/admin (status menunggu_acc_tolak + kolom keputusan)
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'reject_decision'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                MODIFY COLUMN `status` ENUM('baru','dikerjakan','menunggu_acc','selesai','ditolak','menunggu_acc_tolak') NOT NULL DEFAULT 'baru',
+                ADD COLUMN `reject_decision` ENUM('approved','denied') NULL DEFAULT NULL AFTER `reject_at`,
+                ADD COLUMN `reject_decided_by` INT NULL DEFAULT NULL AFTER `reject_decision`,
+                ADD COLUMN `reject_decided_at` DATETIME NULL AFTER `reject_decided_by`,
+                ADD COLUMN `reject_decision_note` TEXT NULL AFTER `reject_decided_at`");
         }
 
         // Migrasi: timer H+1 + pengajuan tambahan waktu
@@ -238,6 +249,26 @@ class Temuan_model extends CI_Model {
                 KEY `idx_user` (`user_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+
+        // Migrasi: filter visibilitas SPV per divisi (master temuan_division + division_id pada area)
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->division_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `name` VARCHAR(80) NOT NULL,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` DATETIME NULL,
+                `updated_at` DATETIME NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->location_table}` LIKE 'division_id'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->location_table}`
+                ADD COLUMN `division_id` INT UNSIGNED NULL DEFAULT NULL AFTER `branch_id`");
+        }
+        // Bekas percobaan filter pakai tabel subdivision (CV payroll) — tidak jadi dipakai.
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->location_table}` LIKE 'subdivision_id'")->num_rows() > 0) {
+            $this->db->query("ALTER TABLE `{$this->location_table}` DROP COLUMN `subdivision_id`");
+        }
 
         // Migrasi: PJ area jadi banyak-orang; backfill dari pj_user_id lama sekali saja.
         if ((int)$this->db->count_all($this->location_pj_table) === 0) {
@@ -405,6 +436,54 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
+    // DIVISI (master khusus TEMUAN — filter visibilitas SPV)
+    // ====================================================================
+
+    public function get_divisions($active_only = false) {
+        $this->db->from($this->division_table);
+        if ($active_only) { $this->db->where('is_active', 1); }
+        return $this->db->order_by('name')->get()->result_array();
+    }
+
+    public function get_division($id) {
+        return $this->db->where('id', $id)->get($this->division_table)->row_array();
+    }
+
+    public function save_division($data, $id = null) {
+        if ($id) {
+            $data['updated_at'] = date('Y-m-d H:i:s');
+            $this->db->where('id', $id)->update($this->division_table, $data);
+            return $id;
+        }
+        $data['created_at'] = date('Y-m-d H:i:s');
+        $this->db->insert($this->division_table, $data);
+        return $this->db->insert_id();
+    }
+
+    /** Hapus divisi; kalau masih dipakai area, nonaktifkan saja. */
+    public function delete_division($id) {
+        $used = (int)$this->db->where('division_id', $id)->count_all_results($this->location_table);
+        if ($used > 0) {
+            $this->db->where('id', $id)->update($this->division_table, [
+                'is_active'  => 0,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            return 'deactivated';
+        }
+        $this->db->where('id', $id)->delete($this->division_table);
+        return 'deleted';
+    }
+
+    /** Divisi-divisi dari area yang di-SPV-i user ini (dasar filter visibilitas SPV). */
+    public function get_spv_division_ids($user_id) {
+        $rows = $this->db->select('DISTINCT(division_id) AS division_id', false)
+                         ->where('spv_user_id', (int)$user_id)
+                         ->where('division_id IS NOT NULL', null, false)
+                         ->get($this->location_table)->result_array();
+        return array_map(function ($r) { return (int)$r['division_id']; }, $rows);
+    }
+
+    // ====================================================================
     // NAMA TEMUAN
     // ====================================================================
 
@@ -475,7 +554,7 @@ class Temuan_model extends CI_Model {
     // ====================================================================
 
     public function get_locations($branch_id = null, $active_only = false) {
-        $this->db->select("l.*, b.branch_name,
+        $this->db->select("l.*, b.branch_name, dv.name AS division_name,
                            TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name,''))) AS spv_name,
                            (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
                            (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
@@ -483,7 +562,8 @@ class Temuan_model extends CI_Model {
                              WHERE lp2.location_id = l.id) AS pj_names")
                  ->from("{$this->location_table} l")
                  ->join('branch b', 'b.id = l.branch_id', 'left')
-                 ->join('users s', 's.id = l.spv_user_id', 'left');
+                 ->join('users s', 's.id = l.spv_user_id', 'left')
+                 ->join("{$this->division_table} dv", 'dv.id = l.division_id', 'left');
         if ($branch_id !== null) {
             $this->db->where('l.branch_id', $branch_id);
         }
@@ -557,6 +637,7 @@ class Temuan_model extends CI_Model {
                       TRIM(CONCAT(tk.first_name,' ',COALESCE(tk.last_name,''))) AS taken_by_name,
                       TRIM(CONCAT(dn.first_name,' ',COALESCE(dn.last_name,''))) AS done_by_name,
                       TRIM(CONCAT(rj.first_name,' ',COALESCE(rj.last_name,''))) AS reject_by_name,
+                      TRIM(CONCAT(rjd.first_name,' ',COALESCE(rjd.last_name,''))) AS reject_decided_by_name,
                       TRIM(CONCAT(ac.first_name,' ',COALESCE(ac.last_name,''))) AS acc_by_name,
                       TRIM(CONCAT(exr.first_name,' ',COALESCE(exr.last_name,''))) AS extension_requested_by_name,
                       TRIM(CONCAT(exd.first_name,' ',COALESCE(exd.last_name,''))) AS extension_decided_by_name")
@@ -571,6 +652,7 @@ class Temuan_model extends CI_Model {
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
             ->join('users rj', 'rj.id = t.reject_by', 'left')
+            ->join('users rjd', 'rjd.id = t.reject_decided_by', 'left')
             ->join('users ac', 'ac.id = t.acc_by', 'left')
             ->join('users exr', 'exr.id = t.extension_requested_by', 'left')
             ->join('users exd', 'exd.id = t.extension_decided_by', 'left');
@@ -590,7 +672,8 @@ class Temuan_model extends CI_Model {
     }
 
     public function count_temuan($filters = []) {
-        $this->db->from("{$this->temuan_table} t");
+        $this->db->from("{$this->temuan_table} t")
+                 ->join("{$this->location_table} l", 'l.id = t.location_id', 'left');
         $this->_apply_filters($filters);
         return (int)$this->db->count_all_results();
     }
@@ -608,6 +691,9 @@ class Temuan_model extends CI_Model {
                 OR t.individu_spv_id = {$uid}
                 OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
             )", null, false);
+        }
+        if (!empty($filters['division_ids'])) {
+            $this->db->where_in('l.division_id', array_map('intval', (array)$filters['division_ids']));
         }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
@@ -629,8 +715,10 @@ class Temuan_model extends CI_Model {
         }
     }
 
-    /** Rekap jumlah per status. $include_deleted utk halaman Laporan. */
-    public function status_summary($branch_id = null, $include_deleted = false, $from = null, $to = null, $visible_to = null) {
+    /** Rekap jumlah per status. $vis_filters = ['visible_to'=>uid] atau ['division_ids'=>[..]] atau []. */
+    public function status_summary($branch_id = null, $include_deleted = false, $from = null, $to = null, $vis_filters = []) {
+        // backward-compat: kalau dipanggil dengan int/null langsung (caller lama)
+        if (!is_array($vis_filters)) { $vis_filters = $vis_filters ? ['visible_to' => (int)$vis_filters] : []; }
         $this->db->select("t.status, COUNT(*) AS total")
                  ->from("{$this->temuan_table} t")
                  ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
@@ -639,16 +727,19 @@ class Temuan_model extends CI_Model {
         if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
         if ($from) { $this->db->where('t.created_at >=', $from . ' 00:00:00'); }
         if ($to)   { $this->db->where('t.created_at <=', $to . ' 23:59:59'); }
-        if ($visible_to) {
-            $uid = (int)$visible_to;
+        if (!empty($vis_filters['visible_to'])) {
+            $uid = (int)$vis_filters['visible_to'];
             $this->db->where("(
                 EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})
                 OR t.individu_spv_id = {$uid}
                 OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
             )", null, false);
         }
+        if (!empty($vis_filters['division_ids'])) {
+            $this->db->where_in('l.division_id', array_map('intval', (array)$vis_filters['division_ids']));
+        }
         $rows = $this->db->get()->result_array();
-        $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'selesai' => 0, 'ditolak' => 0];
+        $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'menunggu_acc_tolak' => 0, 'selesai' => 0, 'ditolak' => 0];
         foreach ($rows as $r) {
             $out[$r['status']] = (int)$r['total'];
         }

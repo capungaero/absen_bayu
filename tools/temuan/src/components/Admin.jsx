@@ -12,6 +12,7 @@ export default function Admin({ me, onSessionEnd }) {
       />
       <CategoryAdmin onSessionEnd={onSessionEnd} />
       <TypeAdmin onSessionEnd={onSessionEnd} />
+      <DivisionAdmin onSessionEnd={onSessionEnd} />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
     </div>
@@ -377,10 +378,106 @@ function TypeModal({ initial, categories, onClose, onSaved, onSessionEnd }) {
   );
 }
 
+function DivisionAdmin({ onSessionEnd }) {
+  const [divisions, setDivisions] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const d = await apiGet('/divisions', { all: 1 });
+      setDivisions(d.rows);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (d) => {
+    if (!window.confirm(`Hapus divisi "${d.name}"? (kalau masih dipakai area, hanya dinonaktifkan)`)) return;
+    try {
+      await apiPost('/division_delete', { id: d.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  const save = async () => {
+    if (!editing.name.trim()) return;
+    try {
+      await apiPost('/division_save', { id: editing.id || null, name: editing.name.trim(), is_active: editing.is_active ? 1 : 0 });
+      setEditing(null);
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="admin-section">
+      <h3>🏷️ Divisi</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Divisi kerja (mis. Finance, ME, Pramuniaga) untuk filter visibilitas SPV. SPV hanya
+        melihat temuan di area yang divisinya sama dengan divisi area-area yang ia pegang.
+      </p>
+      {error && <div className="alert alert-error">{error}</div>}
+      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
+        onClick={() => setEditing({ name: '', is_active: 1 })}>
+        + Tambah Divisi
+      </button>
+      <div className="table-wrap">
+        <table className="loc-table">
+          <thead><tr><th>Nama Divisi</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {divisions.map((d) => (
+              <tr key={d.id} className={Number(d.is_active) ? '' : 'inactive'}>
+                <td>{d.name}</td>
+                <td>{Number(d.is_active) ? 'Aktif' : 'Nonaktif'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(d)}>Edit</button>{' '}
+                  <button className="btn btn-danger" onClick={() => remove(d)}>Hapus</button>
+                </td>
+              </tr>
+            ))}
+            {divisions.length === 0 && (
+              <tr><td colSpan="3" style={{ color: 'var(--muted)' }}>Belum ada divisi.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <div className="modal-back" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing.id ? 'Edit Divisi' : 'Tambah Divisi'}</h3>
+            <div className="field">
+              <label>Nama divisi</label>
+              <input type="text" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Contoh: Finance, ME, Pramuniaga" />
+            </div>
+            <label className="check-row">
+              <input type="checkbox" checked={!!Number(editing.is_active)} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked ? 1 : 0 })} />
+              Aktif
+            </label>
+            <div className="modal-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Batal</button>
+              <button className="btn btn-primary btn-sm" onClick={save}>Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LocationAdmin({ me, onSessionEnd }) {
   const [branches, setBranches] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [editing, setEditing] = useState(null); // {id?, branch_id, name, pj_user_id, is_active}
+  const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -420,19 +517,20 @@ function LocationAdmin({ me, onSessionEnd }) {
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_id: '', is_active: 1 })}>
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_id: '', division_id: '', is_active: 1 })}>
         + Tambah Kode Area
       </button>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>SPV Area</th><th>Status</th><th></th></tr>
+            <tr><th>Kode Area</th><th>Cabang</th><th>Divisi</th><th>PJ Area</th><th>SPV Area</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {locations.map((l) => (
               <tr key={l.id} className={Number(l.is_active) ? '' : 'inactive'}>
                 <td>{l.name}</td>
                 <td>{l.branch_name}</td>
+                <td>{l.division_name || <i style={{ color: 'var(--muted)' }}>—</i>}</td>
                 <td>{l.pj_names || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
                 <td>{l.spv_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
                 <td>{Number(l.is_active) ? 'Aktif' : 'Nonaktif'}</td>
@@ -441,13 +539,14 @@ function LocationAdmin({ me, onSessionEnd }) {
                     ...l,
                     pj_user_ids: l.pj_user_ids ? l.pj_user_ids.split(',').map(Number) : [],
                     spv_user_id: l.spv_user_id || '',
+                    division_id: l.division_id || '',
                   })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
                 </td>
               </tr>
             ))}
             {locations.length === 0 && (
-              <tr><td colSpan="6" style={{ color: 'var(--muted)' }}>Belum ada lokasi.</td></tr>
+              <tr><td colSpan="7" style={{ color: 'var(--muted)' }}>Belum ada lokasi.</td></tr>
             )}
           </tbody>
         </table>
@@ -467,6 +566,7 @@ function LocationAdmin({ me, onSessionEnd }) {
 }
 
 function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
+  const [divisions, setDivisions] = useState([]);
   const [form, setForm] = useState(initial);
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
@@ -476,6 +576,10 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
     if (!form.branch_id) { setEmployees([]); return; }
     apiGet('/employees', { branch_id: form.branch_id }).then((d) => setEmployees(d.rows)).catch(() => {});
   }, [form.branch_id]);
+
+  useEffect(() => {
+    apiGet('/divisions').then((d) => setDivisions(d.rows)).catch(() => {});
+  }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -498,6 +602,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         name: form.name.trim(),
         pj_user_ids: form.pj_user_ids || [],
         spv_user_id: form.spv_user_id || null,
+        division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
       });
       onSaved();
@@ -547,6 +652,13 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
           <select value={form.spv_user_id} onChange={(e) => set('spv_user_id', e.target.value)}>
             <option value="">— belum ditentukan —</option>
             {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Divisi (filter visibilitas SPV)</label>
+          <select value={form.division_id} onChange={(e) => set('division_id', e.target.value)}>
+            <option value="">— tanpa divisi —</option>
+            {divisions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
         <label className="check-row">

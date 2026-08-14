@@ -210,12 +210,13 @@ class Temuan extends CI_Controller {
                  ->join('position', 'position.id = users.position_id', 'left')
                  ->where('users.active', 1);
         if ($branch_id !== null) {
-            $keyword = self::LOCATION_BRANCH_KEYWORDS[$branch_id] ?? null;
-            if ($keyword) {
-                $this->db->like('users.location', $keyword);
-            } else {
-                $this->db->where('position.branch_id', $branch_id);
+            $bid = (int)$branch_id;
+            $cases = '';
+            foreach (self::LOCATION_BRANCH_KEYWORDS as $b => $kw) {
+                $kw_esc = $this->db->escape_like_str($kw);
+                $cases .= "WHEN users.location LIKE '%{$kw_esc}%' THEN {$b} ";
             }
+            $this->db->where("(CASE {$cases}ELSE position.branch_id END) = {$bid}", null, false);
         }
         $rows = $this->db->order_by('name')->get('users')->result_array();
         $this->_json(['status' => true, 'rows' => $rows]);
@@ -369,10 +370,11 @@ class Temuan extends CI_Controller {
         if (!$branch_id) { $this->_json(['status' => false, 'message' => 'Cabang wajib dipilih'], 422); return; }
 
         $data = [
-            'branch_id'   => $branch_id,
-            'name'        => $name,
-            'spv_user_id' => !empty($p['spv_user_id']) ? (int)$p['spv_user_id'] : null,
-            'is_active'   => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
+            'branch_id'      => $branch_id,
+            'name'           => $name,
+            'spv_user_id'    => !empty($p['spv_user_id']) ? (int)$p['spv_user_id'] : null,
+            'division_id'    => !empty($p['division_id']) ? (int)$p['division_id'] : null,
+            'is_active'      => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
         ];
 
         $id = !empty($p['id']) ? (int)$p['id'] : null;
@@ -411,6 +413,42 @@ class Temuan extends CI_Controller {
     }
 
     // ====================================================================
+    // DIVISI (master khusus TEMUAN — filter visibilitas SPV)
+    // ====================================================================
+
+    // GET temuan/divisions?all=1
+    public function divisions() {
+        if (!$this->_auth()) return;
+        $active_only = !($this->_is_admin() && $this->input->get('all'));
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_divisions($active_only)]);
+    }
+
+    // POST temuan/division_save {id?, name, is_active}
+    public function division_save() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $name = isset($p['name']) ? trim($p['name']) : '';
+        if ($name === '') { $this->_json(['status' => false, 'message' => 'Nama divisi wajib diisi'], 422); return; }
+        $data = ['name' => $name, 'is_active' => isset($p['is_active']) ? (int)!!$p['is_active'] : 1];
+        $id = !empty($p['id']) ? (int)$p['id'] : null;
+        $saved_id = $this->temuan->save_division($data, $id);
+        $this->_json(['status' => true, 'id' => (int)$saved_id]);
+    }
+
+    // POST temuan/division_delete {id}
+    public function division_delete() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $id = (int)($p['id'] ?? 0);
+        $existing = $this->temuan->get_division($id);
+        if (!$existing) { $this->_json(['status' => false, 'message' => 'Divisi tidak ditemukan'], 404); return; }
+        $result = $this->temuan->delete_division($id);
+        $this->_json(['status' => true, 'result' => $result]);
+    }
+
+    // ====================================================================
     // TEMUAN
     // ====================================================================
 
@@ -418,16 +456,15 @@ class Temuan extends CI_Controller {
     public function list() {
         if (!$this->_auth()) return;
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
-        $vis = $this->_visibility_uid();
-        $filters = [
+        $vis_filters = $this->_visibility_filters();
+        $filters = array_merge([
             'branch_id'   => $branch_id,
             'status'      => $this->input->get('status'),
             'location_id' => $this->input->get('location_id'),
             'type_id'     => $this->input->get('type_id'),
             'from'        => $this->input->get('from'),
             'to'          => $this->input->get('to'),
-            'visible_to'  => $vis,
-        ];
+        ], $vis_filters);
         $page  = max(1, (int)($this->input->get('page') ?: 1));
         $limit = 50;
         $rows  = $this->temuan->list_temuan($filters, $limit, ($page - 1) * $limit);
@@ -437,7 +474,7 @@ class Temuan extends CI_Controller {
             'total'   => $this->temuan->count_temuan($filters),
             'page'    => $page,
             'per_page'=> $limit,
-            'summary' => $this->temuan->status_summary($branch_id, false, null, null, $vis),
+            'summary' => $this->temuan->status_summary($branch_id, false, null, null, $vis_filters),
             'me'      => ['id' => (int)$this->user['id'], 'is_admin' => $this->_is_admin()],
         ]);
     }
@@ -546,7 +583,8 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'row' => $this->_row_out($this->temuan->get_temuan($row['id']))]);
     }
 
-    // POST temuan/reject {id, reason} — PJ/SPV/admin, hanya status baru
+    // POST temuan/reject {id, reason} — PJ/SPV/admin, hanya status baru.
+    // Penolakan = PENGAJUAN: masuk status menunggu_acc_tolak, final ditolak setelah di-ACC inspector/admin.
     public function reject() {
         if (!$this->_auth()) return;
         $p = $this->_body();
@@ -563,12 +601,52 @@ class Temuan extends CI_Controller {
             $this->_json(['status' => false, 'message' => 'Alasan penolakan minimal 5 karakter'], 422); return;
         }
         $this->temuan->update_temuan($row['id'], [
-            'status'        => 'ditolak',
-            'reject_by'     => (int)$this->user['id'],
-            'reject_as'     => $this->_actor_label($row),
-            'reject_reason' => $reason,
-            'reject_at'     => date('Y-m-d H:i:s'),
+            'status'               => 'menunggu_acc_tolak',
+            'reject_by'            => (int)$this->user['id'],
+            'reject_as'            => $this->_actor_label($row),
+            'reject_reason'        => $reason,
+            'reject_at'            => date('Y-m-d H:i:s'),
+            'reject_decision'      => null,
+            'reject_decided_by'    => null,
+            'reject_decided_at'    => null,
+            'reject_decision_note' => null,
         ]);
+        $this->_json(['status' => true, 'row' => $this->_row_out($this->temuan->get_temuan($row['id']))]);
+    }
+
+    // POST temuan/reject_decide {id, approve, note?} — inspector (scope cabang) / admin putuskan pengajuan penolakan.
+    // Setuju → ditolak (final). Tidak setuju → lanjut wajib dikerjakan (status dikerjakan, pengaju jadi pengerjanya).
+    public function reject_decide() {
+        if (!$this->_auth()) return;
+        $p = $this->_body();
+        $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
+        if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
+        $can = $this->_is_admin()
+            || ($this->temuan->is_inspector($this->user['id']) && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        if (!$can) {
+            $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh memutuskan penolakan'], 403); return;
+        }
+        if ($row['status'] !== 'menunggu_acc_tolak') {
+            $this->_json(['status' => false, 'message' => 'Tidak ada pengajuan penolakan yang menunggu keputusan'], 422); return;
+        }
+        $approve = !empty($p['approve']);
+        $note    = trim((string)($p['note'] ?? ''));
+        $update  = [
+            'reject_decision'      => $approve ? 'approved' : 'denied',
+            'reject_decided_by'    => (int)$this->user['id'],
+            'reject_decided_at'    => date('Y-m-d H:i:s'),
+            'reject_decision_note' => $note !== '' ? $note : null,
+        ];
+        if ($approve) {
+            $update['status'] = 'ditolak';
+        } else {
+            // Penolakan ditolak → temuan lanjut wajib dikerjakan oleh pengaju penolakan.
+            $update['status']   = 'dikerjakan';
+            $update['taken_by'] = (int)$row['reject_by'];
+            $update['taken_as'] = $row['reject_as'];
+            $update['taken_at'] = date('Y-m-d H:i:s');
+        }
+        $this->temuan->update_temuan($row['id'], $update);
         $this->_json(['status' => true, 'row' => $this->_row_out($this->temuan->get_temuan($row['id']))]);
     }
 
@@ -713,23 +791,22 @@ class Temuan extends CI_Controller {
     public function report() {
         if (!$this->_auth()) return;
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
-        $vis = $this->_visibility_uid();
+        $vis_filters = $this->_visibility_filters();
         $from = $this->input->get('from') ?: date('Y-m-01');
         $to   = $this->input->get('to') ?: date('Y-m-d');
-        $filters = [
+        $filters = array_merge([
             'branch_id'       => $branch_id,
             'from'            => $from,
             'to'              => $to,
             'include_deleted' => true,
-            'visible_to'      => $vis,
-        ];
+        ], $vis_filters);
         $rows = $this->temuan->list_temuan($filters, 500, 0);
         $this->_json([
             'status'  => true,
             'from'    => $from,
             'to'      => $to,
             'rows'    => array_map([$this, '_row_out'], $rows),
-            'summary' => $this->temuan->status_summary($branch_id, true, $from, $to, $vis),
+            'summary' => $this->temuan->status_summary($branch_id, true, $from, $to, $vis_filters),
         ]);
     }
 
@@ -788,16 +865,15 @@ class Temuan extends CI_Controller {
             $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
         }
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
-        $vis = $this->_visibility_uid();
+        $vis_filters = $this->_visibility_filters();
         $from = $this->input->get('from') ?: date('Y-m-01');
         $to   = $this->input->get('to') ?: date('Y-m-d');
-        $rows = array_map([$this, '_row_out'], $this->temuan->list_temuan([
+        $rows = array_map([$this, '_row_out'], $this->temuan->list_temuan(array_merge([
             'branch_id'       => $branch_id,
             'from'            => $from,
             'to'              => $to,
             'include_deleted' => true,
-            'visible_to'      => $vis,
-        ], 5000, 0));
+        ], $vis_filters), 5000, 0));
 
         require_once FCPATH . 'lib/vendor/autoload.php';
         $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
@@ -810,7 +886,7 @@ class Temuan extends CI_Controller {
                     'ACC Oleh', 'Waktu ACC', 'Ditolak Oleh', 'Alasan Ditolak', 'Dihapus Admin'];
         $sheet->fromArray($headers, null, 'A1');
         $sheet->getStyle('A1:T1')->getFont()->setBold(true);
-        $status_label = ['baru' => 'Baru', 'dikerjakan' => 'Dikerjakan', 'menunggu_acc' => 'Menunggu ACC', 'selesai' => 'Selesai', 'ditolak' => 'Ditolak'];
+        $status_label = ['baru' => 'Baru', 'dikerjakan' => 'Dikerjakan', 'menunggu_acc' => 'Menunggu ACC', 'menunggu_acc_tolak' => 'Menunggu ACC Tolak', 'selesai' => 'Selesai', 'ditolak' => 'Ditolak'];
         $r = 2;
         foreach ($rows as $row) {
             $telat = $row['status'] === 'ditolak' ? '-' : ($row['is_late'] ? 'Telat' : 'Tepat waktu');
@@ -930,12 +1006,21 @@ class Temuan extends CI_Controller {
         return 'Admin';
     }
 
-    /** Filter visibilitas: PJ murni (bukan SPV/inspector/admin) hanya lihat area miliknya. */
-    private function _visibility_uid() {
-        if ($this->_is_admin()) { return null; }
-        if ($this->temuan->is_inspector($this->user['id'])) { return null; }
-        if ($this->temuan->has_spv_area($this->user['id'])) { return null; } // SPV: cakupan cabang, utk backup
-        return (int)$this->user['id'];
+    /**
+     * Filter visibilitas — return array yang di-merge ke $filters:
+     *   [] = lihat semua di cabangnya (admin, inspector)
+     *   ['subdivision_id' => X] = SPV: hanya lihat area divisinya
+     *   ['visible_to' => uid] = PJ/employee: hanya area sendiri / yang ditag
+     */
+    private function _visibility_filters() {
+        if ($this->_is_admin()) { return []; }
+        $uid = (int)$this->user['id'];
+        if ($this->temuan->is_inspector($uid)) { return []; }
+        if ($this->temuan->has_spv_area($uid)) {
+            $div_ids = $this->temuan->get_spv_division_ids($uid);
+            return $div_ids ? ['division_ids' => $div_ids] : [];
+        }
+        return ['visible_to' => $uid];
     }
 
     /** Ajukan tambahan waktu: SPV area tsb / SPV ad-hoc individu / SPV backup cabang / admin. */

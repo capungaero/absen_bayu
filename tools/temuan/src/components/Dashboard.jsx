@@ -5,6 +5,7 @@ export const STATUS_LABEL = {
   baru: 'Baru',
   dikerjakan: 'Dikerjakan',
   menunggu_acc: 'Menunggu ACC',
+  menunggu_acc_tolak: 'Menunggu ACC Tolak',
   selesai: 'Selesai',
   ditolak: 'Ditolak',
 };
@@ -46,6 +47,7 @@ export default function Dashboard({ me, onSessionEnd }) {
   const [viewPhoto, setViewPhoto] = useState(null);
   const [doneTarget, setDoneTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectDecideTarget, setRejectDecideTarget] = useState(null);
   const [extendTarget, setExtendTarget] = useState(null);
   const [extendDecideTarget, setExtendDecideTarget] = useState(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -120,7 +122,7 @@ export default function Dashboard({ me, onSessionEnd }) {
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="summary-row">
-        {['baru', 'dikerjakan', 'menunggu_acc', 'selesai', 'ditolak'].map((s) => (
+        {['baru', 'dikerjakan', 'menunggu_acc', 'menunggu_acc_tolak', 'selesai', 'ditolak'].map((s) => (
           <div key={s} className={`summary-card s-${s}`} onClick={() => setStatus(status === s ? '' : s)} style={{ cursor: 'pointer', outline: status === s ? '2px solid var(--teal)' : 'none' }}>
             <div className="num">{summary[s]}</div>
             <div className="lbl">{STATUS_LABEL[s]}</div>
@@ -187,9 +189,19 @@ export default function Dashboard({ me, onSessionEnd }) {
                 {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className="badge badge-actor"> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
                 {row.done_by_name && <>Dilaporkan selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className="badge badge-actor"> {row.done_as}</span> : null} · {fmtTime(row.done_at)}<br /></>}
                 {row.acc_by_name && <>ACC oleh <b>{row.acc_by_name}</b> · {fmtTime(row.acc_at)}<br /></>}
+                {row.status === 'menunggu_acc_tolak' && (
+                  <>Pengajuan tolak oleh <b>{row.reject_by_name}</b>{row.reject_as ? <span className="badge badge-actor"> {row.reject_as}</span> : null} · {fmtTime(row.reject_at)}<br />
+                  Alasan: <i>{row.reject_reason}</i><br />
+                  <b>Menunggu ACC inspector/admin.</b></>
+                )}
                 {row.status === 'ditolak' && (
                   <>Ditolak oleh <b>{row.reject_by_name}</b>{row.reject_as ? <span className="badge badge-actor"> {row.reject_as}</span> : null} · {fmtTime(row.reject_at)}<br />
-                  Alasan: <i>{row.reject_reason}</i></>
+                  Alasan: <i>{row.reject_reason}</i>
+                  {row.reject_decided_by_name && <><br />ACC penolakan oleh <b>{row.reject_decided_by_name}</b> · {fmtTime(row.reject_decided_at)}{row.reject_decision_note && <> — Catatan: <i>{row.reject_decision_note}</i></>}</>}</>
+                )}
+                {row.reject_decision === 'denied' && row.status !== 'ditolak' && (
+                  <>Pengajuan tolak <b>tidak disetujui</b> oleh <b>{row.reject_decided_by_name}</b> · {fmtTime(row.reject_decided_at)}{row.reject_decision_note && <> — Catatan: <i>{row.reject_decision_note}</i></>}<br />
+                  Alasan pengajuan sebelumnya: <i>{row.reject_reason}</i><br /></>
                 )}
               </div>
               {row.extension_status !== 'none' && (
@@ -218,6 +230,9 @@ export default function Dashboard({ me, onSessionEnd }) {
               }
               if (row.status === 'menunggu_acc' && canAcc(row)) {
                 btns.push(<button key="acc" className="btn btn-primary btn-sm" onClick={() => doAction('/acc', { id: row.id }, 'ACC — pengerjaan sudah sesuai dan temuan ditutup?')}>🆗 ACC Selesai</button>);
+              }
+              if (row.status === 'menunggu_acc_tolak' && canAcc(row)) {
+                btns.push(<button key="rejdec" className="btn btn-primary btn-sm" onClick={() => setRejectDecideTarget(row)}>⚖ Putuskan Penolakan</button>);
               }
               if (canRequestExtension(row)) {
                 btns.push(<button key="extreq" className="btn btn-outline btn-sm" onClick={() => setExtendTarget(row)}>⏳ Ajukan Tambahan Waktu</button>);
@@ -273,6 +288,19 @@ export default function Dashboard({ me, onSessionEnd }) {
           onClose={() => setRejectTarget(null)}
           onSaved={(fresh) => {
             setRejectTarget(null);
+            setRows((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)));
+            load(1);
+          }}
+          onSessionEnd={onSessionEnd}
+        />
+      )}
+
+      {rejectDecideTarget && (
+        <RejectDecideModal
+          row={rejectDecideTarget}
+          onClose={() => setRejectDecideTarget(null)}
+          onSaved={(fresh) => {
+            setRejectDecideTarget(null);
             setRows((prev) => prev.map((r) => (r.id === fresh.id ? fresh : r)));
             load(1);
           }}
@@ -412,6 +440,64 @@ function ExtendDecideModal({ row, onClose, onSaved, onSessionEnd }) {
   );
 }
 
+function RejectDecideModal({ row, onClose, onSaved, onSessionEnd }) {
+  const [approve, setApprove] = useState(true);
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await apiPost('/reject_decide', {
+        id: row.id, approve: approve ? 1 : 0, note: note.trim() || undefined,
+      });
+      onSaved(data.row);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>⚖ Putuskan Pengajuan Penolakan</h3>
+        <div className="tcard-meta" style={{ marginBottom: 12 }}>
+          📍 {row.location_name} — {row.description}<br />
+          Diajukan tolak oleh <b>{row.reject_by_name}</b>{row.reject_as ? ` (${row.reject_as})` : ''} · {fmtTime(row.reject_at)}<br />
+          Alasan: <i>{row.reject_reason}</i>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="field">
+          <label>Keputusan</label>
+          <select value={approve ? '1' : '0'} onChange={(e) => setApprove(e.target.value === '1')}>
+            <option value="1">Setujui penolakan (temuan ditutup sebagai Ditolak)</option>
+            <option value="0">Tolak pengajuan (temuan lanjut wajib dikerjakan)</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Catatan (opsional)</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan keputusan" />
+        </div>
+        {!approve && (
+          <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Temuan akan berstatus Dikerjakan dan {row.reject_by_name} wajib melanjutkan pengerjaan.
+          </p>
+        )}
+        <div className="modal-actions">
+          <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
+          <button className={approve ? 'btn btn-danger' : 'btn btn-primary btn-sm'} onClick={submit} disabled={busy}>
+            {busy ? 'Menyimpan…' : approve ? 'Setujui Penolakan' : 'Lanjut Kerjakan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RejectModal({ row, onClose, onSaved, onSessionEnd }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -443,9 +529,10 @@ function RejectModal({ row, onClose, onSaved, onSessionEnd }) {
           <label>Alasan penolakan</label>
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contoh: salah data, temuan sudah tidak relevan, dll" />
         </div>
+        <p style={{ fontSize: 12, color: 'var(--muted)' }}>Penolakan menunggu ACC inspector/admin. Jika tidak disetujui, temuan wajib lanjut dikerjakan.</p>
         <div className="modal-actions">
           <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
-          <button className="btn btn-danger" onClick={submit} disabled={busy}>{busy ? 'Menyimpan…' : 'Tolak Temuan'}</button>
+          <button className="btn btn-danger" onClick={submit} disabled={busy}>{busy ? 'Menyimpan…' : 'Ajukan Penolakan'}</button>
         </div>
       </div>
     </div>

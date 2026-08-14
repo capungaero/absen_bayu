@@ -50,7 +50,9 @@ export default function Report({ me, onSessionEnd }) {
     if (r.taken_by_name) parts.push(`Dikerjakan: ${r.taken_by_name}${r.taken_as ? ` (${r.taken_as})` : ''} ${fmtTime(r.taken_at)}`);
     if (r.done_by_name) parts.push(`Lapor selesai: ${r.done_by_name}${r.done_as ? ` (${r.done_as})` : ''} ${fmtTime(r.done_at)}`);
     if (r.acc_by_name) parts.push(`ACC: ${r.acc_by_name} ${fmtTime(r.acc_at)}`);
-    if (r.status === 'ditolak') parts.push(`Ditolak: ${r.reject_by_name}${r.reject_as ? ` (${r.reject_as})` : ''} ${fmtTime(r.reject_at)} — ${r.reject_reason}`);
+    if (r.status === 'menunggu_acc_tolak') parts.push(`Pengajuan tolak (menunggu ACC): ${r.reject_by_name}${r.reject_as ? ` (${r.reject_as})` : ''} ${fmtTime(r.reject_at)} — ${r.reject_reason}`);
+    if (r.status === 'ditolak') parts.push(`Ditolak: ${r.reject_by_name}${r.reject_as ? ` (${r.reject_as})` : ''} ${fmtTime(r.reject_at)} — ${r.reject_reason}${r.reject_decided_by_name ? ` (ACC: ${r.reject_decided_by_name})` : ''}`);
+    if (r.reject_decision === 'denied' && r.status !== 'ditolak') parts.push(`Pengajuan tolak TIDAK disetujui oleh ${r.reject_decided_by_name} ${fmtTime(r.reject_decided_at)}${r.reject_decision_note ? ` — ${r.reject_decision_note}` : ''}`);
     if (r.extension_status && r.extension_status !== 'none') {
       const label = { pending: 'menunggu', approved: 'disetujui', rejected: 'ditolak' }[r.extension_status];
       parts.push(`Perpanjangan waktu: ${label} (oleh ${r.extension_requested_by_name})`);
