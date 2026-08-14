@@ -932,11 +932,14 @@ class Temuan extends CI_Controller {
     private function _aggregate_report($branch_id, $from, $to, $vis_filters = []) {
         $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
         $vis_uid = !empty($vis_filters['visible_to']) ? (int)$vis_filters['visible_to'] : 0;
+        $vis_divs = !empty($vis_filters['division_ids']) ? array_map('intval', (array)$vis_filters['division_ids']) : [];
         $groups = [];
         foreach ($rows as $r) {
             if ($r['type_target_mode'] === 'individu' || empty($r['location_id'])) { continue; } // rekap per area, bukan individu
             // Karyawan biasa/PJ: hanya area yang dia pegang sebagai PJ.
             if ($vis_uid && !$this->_is_location_pj($r, $vis_uid)) { continue; }
+            // SPV: hanya area divisinya; area tanpa tag divisi tetap tampil.
+            if ($vis_divs && !empty($r['division_id']) && !in_array((int)$r['division_id'], $vis_divs, true)) { continue; }
             $key = $r['location_id'];
             if (!isset($groups[$key])) {
                 $groups[$key] = [
@@ -1012,15 +1015,20 @@ class Temuan extends CI_Controller {
     }
 
     /**
-     * Filter visibilitas — return array yang di-merge ke $filters (sesuai matriks hak akses):
-     *   [] = lihat semua di cabangnya (admin, inspector, SPV)
-     *   ['visible_to' => uid] = PJ/employee: hanya area sendiri / yang ditag
+     * Filter visibilitas — return array yang di-merge ke $filters:
+     *   [] = lihat semua di cabangnya (admin, inspector)
+     *   ['division_ids' => [..]] = SPV: divisi dari area-area yang dia pegang
+     *     (area tanpa tag divisi tetap terlihat; SPV tanpa divisi = lihat semua)
+     *   ['visible_to' => uid] = PJ/mitra: hanya area sendiri / yang ditag
      */
     private function _visibility_filters() {
         if ($this->_is_admin()) { return []; }
         $uid = (int)$this->user['id'];
         if ($this->temuan->is_inspector($uid)) { return []; }
-        if ($this->temuan->has_spv_area($uid)) { return []; }
+        if ($this->temuan->has_spv_area($uid)) {
+            $div_ids = $this->temuan->get_spv_division_ids($uid);
+            return $div_ids ? ['division_ids' => $div_ids] : [];
+        }
         return ['visible_to' => $uid];
     }
 

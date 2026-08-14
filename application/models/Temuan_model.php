@@ -693,7 +693,9 @@ class Temuan_model extends CI_Model {
             )", null, false);
         }
         if (!empty($filters['division_ids'])) {
-            $this->db->where_in('l.division_id', array_map('intval', (array)$filters['division_ids']));
+            // Area tanpa tag divisi (atau temuan individu tanpa area) tetap terlihat semua SPV cabang.
+            $ids = implode(',', array_map('intval', (array)$filters['division_ids']));
+            $this->db->where("(l.division_id IS NULL OR l.division_id IN ({$ids}))", null, false);
         }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
@@ -736,7 +738,8 @@ class Temuan_model extends CI_Model {
             )", null, false);
         }
         if (!empty($vis_filters['division_ids'])) {
-            $this->db->where_in('l.division_id', array_map('intval', (array)$vis_filters['division_ids']));
+            $ids = implode(',', array_map('intval', (array)$vis_filters['division_ids']));
+            $this->db->where("(l.division_id IS NULL OR l.division_id IN ({$ids}))", null, false);
         }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'menunggu_acc_tolak' => 0, 'selesai' => 0, 'ditolak' => 0];
@@ -758,6 +761,7 @@ class Temuan_model extends CI_Model {
                       (SELECT GROUP_CONCAT(lp3.user_id)
                          FROM {$this->location_pj_table} lp3
                         WHERE lp3.location_id = l.id) AS pj_user_ids,
+                      l.division_id,
                       TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
                       TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
