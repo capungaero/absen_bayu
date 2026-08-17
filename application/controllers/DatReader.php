@@ -92,6 +92,22 @@ class DatReader extends CI_Controller {
         ]);
     }
 
+    // ───────────────────── GET dat_reader/attendance_machines ───────────────────
+    // Dropdown sumber upload -- HANYA mesin type=attendance yang boleh dipilih,
+    // supaya admin tidak bisa keliru upload dump mesin sholat (lihat investigasi
+    // kecampur sholat/jam-kerja, 17 Agu 2026: sync_upload dulu terima file .dat
+    // apa saja tanpa validasi mesin sama sekali).
+    public function attendance_machines() {
+        $rows = $this->sync_machines->get_active_by_type('attendance');
+        $out = [];
+        foreach ($rows as $row) {
+            $sn = attlog_sanitize_machine_sn($row['machine_sn']);
+            if ($sn === '') continue;
+            $out[] = ['sn' => $sn, 'name' => $row['name']];
+        }
+        $this->_json($out);
+    }
+
     // ─────────────── POST dat_reader/sync_upload (multipart: file) ──────────────
     public function sync_upload() {
         if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
@@ -102,12 +118,21 @@ class DatReader extends CI_Controller {
             $this->input->post('mode'), $this->input->post('from'), $this->input->post('to'));
         if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
 
+        // Wajib pilih SN mesin ABSENSI aktif dari dropdown -- cegah upload dump
+        // mesin sholat tanpa sadar (lihat komentar attendance_machines() di atas).
+        $machine_sn = attlog_sanitize_machine_sn($this->input->post('machine_sn'));
+        if ($machine_sn === '') return $this->_json(['error' => 'Pilih mesin absensi sumber file dulu.'], 422);
+        $known = array_column($this->_active_attendance_machines(), 'sn');
+        if (!in_array($machine_sn, $known, true)) {
+            return $this->_json(['error' => 'Mesin yang dipilih bukan mesin absensi aktif. Pilih ulang dari daftar.'], 422);
+        }
+
         if (empty($_FILES['file']['name']))  return $this->_json(['error' => 'File .dat belum dipilih'], 422);
         if (!empty($_FILES['file']['error'])) return $this->_json(['error' => 'Upload gagal (kode '.$_FILES['file']['error'].')'], 422);
         $raw = file_get_contents($_FILES['file']['tmp_name']);
         if ($raw === false || trim($raw) === '') return $this->_json(['error' => 'File .dat kosong / tidak terbaca'], 422);
 
-        $res = $this->_sync_core($raw, $branch_id, $from, $to, [basename($_FILES['file']['name'])]);
+        $res = $this->_sync_core($raw, $branch_id, $from, $to, [$machine_sn.':'.basename($_FILES['file']['name'])]);
         if (!$res['ok']) return $this->_json(['error' => $res['msg']], 422);
         $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'sync' => $res, 'source' => 'upload']));
     }

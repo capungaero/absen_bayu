@@ -308,6 +308,7 @@ $route['payroll_import/commit']   = 'PayrollImporter/commit';
 // DAT Reader (baca .dat mesin → mirror+work editable → dorong ke presence, auth via CI3 session)
 $route['dat_reader/branches']    = 'DatReader/branches';
 $route['dat_reader/period']      = 'DatReader/period';
+$route['dat_reader/attendance_machines'] = 'DatReader/attendance_machines';
 $route['dat_reader/sync_upload'] = 'DatReader/sync_upload';
 $route['dat_reader/sync_cloud']  = 'DatReader/sync_cloud';
 $route['dat_reader/data']        = 'DatReader/data';

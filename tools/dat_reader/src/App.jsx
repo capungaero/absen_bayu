@@ -8,6 +8,8 @@ export default function App() {
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState(null);
   const [period, setPeriod] = useState(null);
+  const [machines, setMachines] = useState([]);
+  const [machineSn, setMachineSn] = useState('');
 
   const [mode, setMode] = useState('period');     // period | range | date
   const [from, setFrom] = useState('');
@@ -27,6 +29,13 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('dr-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    fetch(`${API}/attendance_machines`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(rows => { if (Array.isArray(rows)) setMachines(rows); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/branches`, { credentials: 'include' })
@@ -88,10 +97,11 @@ export default function App() {
 
   const doUpload = async (file) => {
     if (!file || !branchId) return;
+    if (!machineSn) { setError('Pilih mesin absensi sumber file dulu.'); if (fileRef.current) fileRef.current.value = ''; return; }
     setError(''); setBusy('upload');
     try {
       const fd = new FormData();
-      fd.append('file', file); fd.append('branch_id', branchId);
+      fd.append('file', file); fd.append('branch_id', branchId); fd.append('machine_sn', machineSn);
       const rp = rangeParams();
       Object.entries(rp).forEach(([k, v]) => fd.append(k, v));
       const r = await fetch(`${API}/sync_upload`, { method: 'POST', body: fd, credentials: 'include' });
@@ -223,7 +233,17 @@ export default function App() {
           <button className="btn-ghost" disabled={!canAct} onClick={doLoad}>
             {busy === 'load' ? 'Memuat…' : '↻ Muat Data'}
           </button>
-          <button className="btn-ghost" disabled={!canAct} onClick={() => fileRef.current?.click()}>
+          <select
+            className="tb-select"
+            value={machineSn}
+            onChange={e => setMachineSn(e.target.value)}
+            disabled={!canAct}
+            title="Wajib pilih mesin absensi sumber file sebelum upload -- cegah salah upload dump mesin sholat"
+          >
+            <option value="">Pilih mesin absensi…</option>
+            {machines.map(m => <option key={m.sn} value={m.sn}>{m.name} ({m.sn})</option>)}
+          </select>
+          <button className="btn-ghost" disabled={!canAct || !machineSn} onClick={() => fileRef.current?.click()}>
             {busy === 'upload' ? 'Membaca…' : '📄 Sync Upload .dat'}
           </button>
           <button className="btn-ghost" disabled={!canAct} onClick={doCloud}>
