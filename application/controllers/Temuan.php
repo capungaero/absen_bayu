@@ -82,6 +82,11 @@ class Temuan extends CI_Controller {
         return in_array($this->role, self::ADMIN_ROLES, true);
     }
 
+    /** Admin & inspector (ditunjuk) beroperasi lintas cabang; admin-branch terbatas cabangnya. */
+    private function _is_full_access() {
+        return $this->role === 'admin' || $this->temuan->is_inspector((int)$this->user['id']);
+    }
+
     /** Cocokkan keyword lokasi fisik ke id branch; fallback ke branch posisi kalau tak dikenal (mis. Kanvas). */
     private function _location_branch_id($location, $fallback_branch_id) {
         if ($location) {
@@ -92,9 +97,9 @@ class Temuan extends CI_Controller {
         return (int)$fallback_branch_id;
     }
 
-    /** Cabang yang boleh diakses: admin bebas, lainnya cabang sendiri. */
+    /** Cabang yang boleh diakses: admin & inspector (ditunjuk) bebas, lainnya cabang sendiri. */
     private function _scope_branch($requested) {
-        if ($this->role === 'admin') {
+        if ($this->role === 'admin' || $this->temuan->is_inspector((int)$this->user['id'])) {
             return $requested !== null && $requested !== '' ? (int)$requested : null; // null = semua
         }
         return (int)$this->user['branch_id'];
@@ -194,7 +199,7 @@ class Temuan extends CI_Controller {
     // GET temuan/branches
     public function branches() {
         if (!$this->_auth()) return;
-        if ($this->role === 'admin') {
+        if ($this->role === 'admin' || $this->temuan->is_inspector((int)$this->user['id'])) {
             $rows = $this->db->select('id, branch_name')->order_by('branch_name')->get('branch')->result_array();
         } else {
             $rows = $this->db->select('id, branch_name')->where('id', $this->user['branch_id'])->get('branch')->result_array();
@@ -356,7 +361,7 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'rows' => $rows]);
     }
 
-    // POST temuan/location_save {id?, branch_id, name, pj_user_ids[], spv_user_id, is_active}
+    // POST temuan/location_save {id?, branch_id, name, pj_user_ids[], spv_user_ids[], division_id, is_active}
     public function location_save() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
@@ -372,7 +377,6 @@ class Temuan extends CI_Controller {
         $data = [
             'branch_id'      => $branch_id,
             'name'           => $name,
-            'spv_user_id'    => !empty($p['spv_user_id']) ? (int)$p['spv_user_id'] : null,
             'division_id'    => !empty($p['division_id']) ? (int)$p['division_id'] : null,
             'is_active'      => isset($p['is_active']) ? (int)!!$p['is_active'] : 1,
         ];
@@ -387,6 +391,8 @@ class Temuan extends CI_Controller {
         }
         $saved_id = $this->temuan->save_location($data, $id);
         $this->temuan->set_location_pjs($saved_id, $p['pj_user_ids'] ?? []);
+        $spv_ids = $p['spv_user_ids'] ?? (!empty($p['spv_user_id']) ? [$p['spv_user_id']] : []);
+        $this->temuan->set_location_spvs($saved_id, $spv_ids);
         $this->_json(['status' => true, 'id' => (int)$saved_id]);
     }
 
@@ -621,9 +627,8 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        $can = $this->role === 'admin'
-            || (($this->_is_admin() || $this->temuan->is_inspector($this->user['id']))
-                && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        $can = $this->_is_full_access()
+            || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
         if (!$can) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh memutuskan penolakan'], 403); return;
         }
@@ -686,9 +691,8 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        $can_acc = $this->role === 'admin'
-            || (($this->_is_admin() || $this->temuan->is_inspector($this->user['id']))
-                && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        $can_acc = $this->_is_full_access()
+            || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
         if (!$can_acc) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh ACC'], 403); return;
         }
@@ -778,13 +782,12 @@ class Temuan extends CI_Controller {
     // POST temuan/delete {id} — admin, status apapun (soft delete, tetap terekap di Laporan)
     public function delete() {
         if (!$this->_auth()) return;
-        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        if ($this->role !== 'admin' && (int)$row['branch_id'] !== (int)$this->user['branch_id']) {
-            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
-        }
+        $can = $this->_is_full_access()
+            || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
+        if (!$can) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $this->temuan->update_temuan($row['id'], ['is_deleted' => 1]);
         $this->_json(['status' => true]);
     }
@@ -977,6 +980,12 @@ class Temuan extends CI_Controller {
         return in_array((string)$uid, explode(',', (string)$row['subject_user_ids']), true);
     }
 
+    /** SPV area kini bisa banyak orang; spv_user_ids = string "1,5,9". */
+    private function _is_location_spv($row, $uid) {
+        if (empty($row['spv_user_ids'])) { return false; }
+        return in_array((string)$uid, explode(',', (string)$row['spv_user_ids']), true);
+    }
+
     private function _can_respond($row) {
         if ($this->_is_admin()) {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
@@ -989,10 +998,10 @@ class Temuan extends CI_Controller {
         }
 
         // PJ / SPV area lokasi tsb (keduanya melekat per area)
-        if ($this->_is_location_pj($row, $uid) || (int)$row['spv_user_id'] === $uid) { return true; }
-        // Inspector: boleh bertindak sebagai PJ/SPV cadangan, scope cabangnya
+        if ($this->_is_location_pj($row, $uid) || $this->_is_location_spv($row, $uid)) { return true; }
+        // Inspector (ditunjuk): boleh bertindak sebagai PJ/SPV cadangan, lintas cabang
         if ($this->temuan->is_inspector($uid)) {
-            return (int)$row['branch_id'] === (int)$this->user['branch_id'];
+            return true;
         }
         // Backup SPV: SPV area lain di cabang yg sama boleh bantu saat SPV asli libur
         if ($this->temuan->has_spv_area($uid)) {
@@ -1006,7 +1015,7 @@ class Temuan extends CI_Controller {
         $uid = (int)$this->user['id'];
         if ($this->_is_subject($row, $uid)) { return 'PJ'; }
         if ($this->_is_location_pj($row, $uid)) { return 'PJ'; }
-        if ((int)$row['spv_user_id'] === $uid || (int)$row['individu_spv_id'] === $uid) { return 'SPV'; }
+        if ($this->_is_location_spv($row, $uid) || (int)$row['individu_spv_id'] === $uid) { return 'SPV'; }
         if (!$this->_is_admin()) {
             if ($this->temuan->has_spv_area($uid)) { return 'SPV'; } // backup SPV
             if ($this->temuan->is_inspector($uid)) { return 'Inspector'; }
@@ -1038,18 +1047,16 @@ class Temuan extends CI_Controller {
             return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
         }
         $uid = (int)$this->user['id'];
-        if ((int)$row['spv_user_id'] === $uid || (int)$row['individu_spv_id'] === $uid) { return true; }
+        if ($this->_is_location_spv($row, $uid) || (int)$row['individu_spv_id'] === $uid) { return true; }
         if (($row['type_target_mode'] ?? 'objek') === 'individu') { return false; }
         if ($this->temuan->has_spv_area($uid)) { return (int)$row['branch_id'] === (int)$this->user['branch_id']; }
         return false;
     }
 
-    /** Putuskan pengajuan tambahan waktu: inspector (scope cabang) / admin. */
+    /** Putuskan pengajuan tambahan waktu: inspector (lintas cabang) / admin. */
     private function _can_decide_extension($row) {
-        if ($this->_is_admin()) {
-            return $this->role === 'admin' || (int)$row['branch_id'] === (int)$this->user['branch_id'];
-        }
-        return $this->temuan->is_inspector($this->user['id']) && (int)$row['branch_id'] === (int)$this->user['branch_id'];
+        return $this->_is_full_access()
+            || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
     }
 
     // ====================================================================

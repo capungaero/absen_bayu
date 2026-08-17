@@ -13,6 +13,7 @@ class Temuan_model extends CI_Model {
     protected $inspector_table = 'temuan_inspector';
     protected $type_table      = 'temuan_type';
     protected $location_pj_table = 'temuan_location_pj';
+    protected $location_spv_table = 'temuan_location_spv';
     protected $category_table  = 'temuan_category';
     protected $subject_table   = 'temuan_subject';
     protected $division_table  = 'temuan_division';
@@ -283,6 +284,30 @@ class Temuan_model extends CI_Model {
             }
         }
 
+        // Migrasi: SPV area jadi banyak-orang (pola sama PJ); backfill dari spv_user_id sekali saja.
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->location_spv_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `location_id` INT UNSIGNED NOT NULL,
+                `user_id` INT NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_loc_user` (`location_id`, `user_id`),
+                KEY `idx_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        if ((int)$this->db->count_all($this->location_spv_table) === 0) {
+            $legacy = $this->db->select('id, spv_user_id')->where('spv_user_id IS NOT NULL', null, false)
+                                ->get($this->location_table)->result_array();
+            if (!empty($legacy)) {
+                $now = date('Y-m-d H:i:s');
+                $rows = array_map(function ($l) use ($now) {
+                    return ['location_id' => $l['id'], 'user_id' => $l['spv_user_id'], 'created_at' => $now];
+                }, $legacy);
+                $this->db->insert_batch($this->location_spv_table, $rows);
+            }
+        }
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -356,8 +381,21 @@ class Temuan_model extends CI_Model {
 
     /** Apakah user jadi SPV di minimal satu area aktif. */
     public function has_spv_area($user_id) {
-        return (int)$this->db->where('spv_user_id', (int)$user_id)
-                             ->count_all_results($this->location_table) > 0;
+        return (int)$this->db->where('user_id', (int)$user_id)
+                             ->count_all_results($this->location_spv_table) > 0;
+    }
+
+    /** Ganti seluruh daftar SPV area tsb (replace-all dari array user_id). */
+    public function set_location_spvs($location_id, $user_ids) {
+        $location_id = (int)$location_id;
+        $this->db->where('location_id', $location_id)->delete($this->location_spv_table);
+        $user_ids = array_unique(array_filter(array_map('intval', (array)$user_ids)));
+        if (empty($user_ids)) { return; }
+        $now = date('Y-m-d H:i:s');
+        $rows = array_map(function ($uid) use ($location_id, $now) {
+            return ['location_id' => $location_id, 'user_id' => $uid, 'created_at' => $now];
+        }, $user_ids);
+        $this->db->insert_batch($this->location_spv_table, $rows);
     }
 
     /** Apakah user jadi PJ di minimal satu area. */
@@ -476,10 +514,12 @@ class Temuan_model extends CI_Model {
 
     /** Divisi-divisi dari area yang di-SPV-i user ini (dasar filter visibilitas SPV). */
     public function get_spv_division_ids($user_id) {
-        $rows = $this->db->select('DISTINCT(division_id) AS division_id', false)
-                         ->where('spv_user_id', (int)$user_id)
-                         ->where('division_id IS NOT NULL', null, false)
-                         ->get($this->location_table)->result_array();
+        $rows = $this->db->select('DISTINCT(l.division_id) AS division_id', false)
+                         ->from("{$this->location_table} l")
+                         ->join("{$this->location_spv_table} ls", 'ls.location_id = l.id')
+                         ->where('ls.user_id', (int)$user_id)
+                         ->where('l.division_id IS NOT NULL', null, false)
+                         ->get()->result_array();
         return array_map(function ($r) { return (int)$r['division_id']; }, $rows);
     }
 
@@ -555,14 +595,16 @@ class Temuan_model extends CI_Model {
 
     public function get_locations($branch_id = null, $active_only = false) {
         $this->db->select("l.*, b.branch_name, dv.name AS division_name,
-                           TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name,''))) AS spv_name,
+                           (SELECT GROUP_CONCAT(ls.user_id) FROM {$this->location_spv_table} ls WHERE ls.location_id = l.id) AS spv_user_ids,
+                           (SELECT GROUP_CONCAT(TRIM(CONCAT(u4.first_name,' ',COALESCE(u4.last_name,''))) SEPARATOR ', ')
+                              FROM {$this->location_spv_table} ls2 JOIN users u4 ON u4.id = ls2.user_id
+                             WHERE ls2.location_id = l.id) AS spv_name,
                            (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
                            (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                               FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                              WHERE lp2.location_id = l.id) AS pj_names")
                  ->from("{$this->location_table} l")
                  ->join('branch b', 'b.id = l.branch_id', 'left')
-                 ->join('users s', 's.id = l.spv_user_id', 'left')
                  ->join("{$this->division_table} dv", 'dv.id = l.division_id', 'left');
         if ($branch_id !== null) {
             $this->db->where('l.branch_id', $branch_id);
@@ -617,7 +659,7 @@ class Temuan_model extends CI_Model {
 
     private function _select_full() {
         $this->db
-            ->select("t.*, l.name AS location_name, l.spv_user_id, b.branch_name,
+            ->select("t.*, l.name AS location_name, b.branch_name,
                       ty.name AS type_name, ty.target_mode AS type_target_mode,
                       ty.category_id AS type_category_id, cat.name AS category_name,
                       ty.requires_action AS type_requires_action,
@@ -629,7 +671,10 @@ class Temuan_model extends CI_Model {
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                         WHERE lp2.location_id = l.id) AS pj_name,
-                      TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
+                      (SELECT GROUP_CONCAT(ls.user_id) FROM {$this->location_spv_table} ls WHERE ls.location_id = l.id) AS spv_user_ids,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u4.first_name,' ',COALESCE(u4.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->location_spv_table} ls2 JOIN users u4 ON u4.id = ls2.user_id
+                        WHERE ls2.location_id = l.id) AS spv_name,
                       (SELECT GROUP_CONCAT(sj.user_id) FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id) AS subject_user_ids,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
                          FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id
@@ -648,7 +693,6 @@ class Temuan_model extends CI_Model {
             ->join('branch b', 'b.id = t.branch_id', 'left')
             ->join('users r', 'r.id = t.reporter_id', 'left')
             ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
-            ->join('users sv', 'sv.id = l.spv_user_id', 'left')
             ->join('users tk', 'tk.id = t.taken_by', 'left')
             ->join('users dn', 'dn.id = t.done_by', 'left')
             ->join('users rj', 'rj.id = t.reject_by', 'left')
@@ -762,7 +806,9 @@ class Temuan_model extends CI_Model {
                          FROM {$this->location_pj_table} lp3
                         WHERE lp3.location_id = l.id) AS pj_user_ids,
                       l.division_id,
-                      TRIM(CONCAT(sv.first_name,' ',COALESCE(sv.last_name,''))) AS spv_name,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u5.first_name,' ',COALESCE(u5.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->location_spv_table} ls JOIN users u5 ON u5.id = ls.user_id
+                        WHERE ls.location_id = l.id) AS spv_name,
                       TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
                          FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id
@@ -772,7 +818,6 @@ class Temuan_model extends CI_Model {
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
-            ->join('users sv', 'sv.id = l.spv_user_id', 'left')
             ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
             ->where('t.is_deleted', 0)
             ->where('t.status !=', 'ditolak')

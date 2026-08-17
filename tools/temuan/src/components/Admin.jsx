@@ -512,12 +512,11 @@ function LocationAdmin({ me, onSessionEnd }) {
       <h3>📍 Kode Area, PJ &amp; SPV Area</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). Tiap area bisa punya lebih dari satu PJ
-        (tanggung jawab tim/bersama) dan 1 SPV — semua merespon temuan area itu, dan hanya melihat
-        progres areanya sendiri.
+        dan lebih dari satu SPV (tanggung jawab bersama) — semua merespon temuan area itu.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_id: '', division_id: '', is_active: 1 })}>
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_ids: [], division_id: '', is_active: 1 })}>
         + Tambah Kode Area
       </button>
       <div className="table-wrap">
@@ -538,7 +537,7 @@ function LocationAdmin({ me, onSessionEnd }) {
                   <button className="btn btn-outline btn-sm" onClick={() => setEditing({
                     ...l,
                     pj_user_ids: l.pj_user_ids ? l.pj_user_ids.split(',').map(Number) : [],
-                    spv_user_id: l.spv_user_id || '',
+                    spv_user_ids: l.spv_user_ids ? l.spv_user_ids.split(',').map(Number) : [],
                     division_id: l.division_id || '',
                   })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
@@ -591,6 +590,14 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
     });
   };
 
+  const toggleSpv = (uid) => {
+    setForm((f) => {
+      const cur = f.spv_user_ids || [];
+      const has = cur.includes(uid);
+      return { ...f, spv_user_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
+    });
+  };
+
   const save = async () => {
     if (!form.name.trim()) { setError('Nama lokasi wajib diisi'); return; }
     setBusy(true);
@@ -601,7 +608,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         branch_id: form.branch_id,
         name: form.name.trim(),
         pj_user_ids: form.pj_user_ids || [],
-        spv_user_id: form.spv_user_id || null,
+        spv_user_ids: form.spv_user_ids || [],
         division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
       });
@@ -648,11 +655,23 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
           )}
         </div>
         <div className="field">
-          <label>SPV Area (supervisor)</label>
-          <select value={form.spv_user_id} onChange={(e) => set('spv_user_id', e.target.value)}>
-            <option value="">— belum ditentukan —</option>
-            {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
-          </select>
+          <label>SPV Area (supervisor — bisa lebih dari satu)</label>
+          <div className="pj-checklist">
+            {employees.map((u) => (
+              <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={(form.spv_user_ids || []).includes(Number(u.id))}
+                  onChange={() => toggleSpv(Number(u.id))}
+                />
+                {u.name}{u.position_name ? ` (${u.position_name})` : ''}
+              </label>
+            ))}
+            {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
+          </div>
+          {(form.spv_user_ids || []).length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Belum ada SPV dipilih.</div>
+          )}
         </div>
         <div className="field">
           <label>Divisi (filter visibilitas SPV)</label>

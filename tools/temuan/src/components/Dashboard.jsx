@@ -86,6 +86,7 @@ export default function Dashboard({ me, onSessionEnd }) {
   }, [branchId]);
 
   const isRowPj = (row) => !!row.pj_user_ids && row.pj_user_ids.split(',').map(Number).includes(Number(me.id));
+  const isRowSpv = (row) => !!row.spv_user_ids && row.spv_user_ids.split(',').map(Number).includes(Number(me.id));
   const isRowSubject = (row) => !!row.subject_user_ids && row.subject_user_ids.split(',').map(Number).includes(Number(me.id));
 
   const canRespond = (row) => {
@@ -97,7 +98,7 @@ export default function Dashboard({ me, onSessionEnd }) {
       || me.is_inspector
       || me.is_spv
       || isRowPj(row)
-      || Number(row.spv_user_id) === Number(me.id);
+      || isRowSpv(row);
   };
 
   const doAction = async (path, body, confirmMsg) => {
