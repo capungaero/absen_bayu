@@ -1200,6 +1200,17 @@ class Presence extends CI_Controller{
 	}
 
 	private function _import_presence_sheet($sheetData, $branch_id, $method = 'upload', $month = null, $year = null, $use_schedule = true){
+		// Re-assert kartu sync (lihat komentar upload_pray/sync_cron). Semua pemanggil
+		// fungsi ini SUDAH set ctx di awal request, tapi proses ini bisa makan waktu
+		// lama (ratusan-ribuan baris, beberapa mesin) -- kalau koneksi DB sempat putus-
+		// nyambung di tengah jalan (mis. server lagi resource-exhausted), CI diam-diam
+		// reconnect dan session variable (@absen_sync_ctx) ikut hilang tanpa error.
+		// Akibatnya trigger presence_provenance_bu menganggap tulisan berikutnya sbg
+		// edit manual & bisa nge-cleared_fields entry_time yg sebenarnya cuma "belum
+		// ketemu tap di pass ini" -- mengunci baris itu NULL permanen selamanya (lihat
+		// investigasi 17 Agu 2026, ~900 baris presence kena, root cause absensi masal
+		// tak lengkap). Re-assert di sini + ulang lagi sebelum tiap batch write besar.
+		$this->db->query("SET @absen_sync_ctx = 1");
 		// Lock penggajian: cegah sync/import menimpa presensi periode yang sudah di-payroll.
 		if($month !== null && $year !== null && $this->_payroll_locked($branch_id, $month, $year)){
 			return [
@@ -1449,6 +1460,8 @@ class Presence extends CI_Controller{
 				}
 			}
 
+			// Re-assert ctx sebelum batch write besar (lihat komentar di awal fungsi).
+			$this->db->query("SET @absen_sync_ctx = 1");
 			if(!empty($insert_rows)){
 				$this->db->insert_batch('presence', $insert_rows);
 			}
@@ -1578,6 +1591,8 @@ class Presence extends CI_Controller{
 		}
 
 		if(!empty($batch)){
+			// Re-assert ctx sebelum batch write (lihat komentar di _import_presence_sheet).
+			$this->db->query("SET @absen_sync_ctx = 1");
 			foreach(array_chunk($batch, 500) as $chunk){
 				$this->db->update_batch('presence', $chunk, 'id');
 			}
@@ -2600,6 +2615,8 @@ class Presence extends CI_Controller{
 	}
 
 	private function _import_pray_sheet($sheetData, $branch_id, $month = null, $year = null, $method = 'sync_pray'){
+		// Re-assert kartu sync (lihat komentar di _import_presence_sheet).
+		$this->db->query("SET @absen_sync_ctx = 1");
 		// Lock penggajian: cegah import sholat menimpa periode yang sudah di-payroll.
 		if($month !== null && $year !== null && $this->_payroll_locked($branch_id, $month, $year)){
 			return [
