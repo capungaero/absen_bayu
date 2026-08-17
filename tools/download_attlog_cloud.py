@@ -23,14 +23,19 @@ from pathlib import Path
 
 BASE_URL = "http://solutioncloud.co.id/"
 
+# PENTING: cocokkan dgn tabel sync_machine (machine_type) sebelum edit --
+# jangan asumsi dari nama SN. 6339163400576 sempat salah taruh di sini
+# (harusnya pray, "Mesin Sholat Gambir") dan bikin data sholat kecampur
+# jam kerja di sync produksi (lihat scripts/vps/absen_sync.py, 17 Agu 2026).
 ATTENDANCE_MACHINES = [
-    ("BWXP212160931", "solution"),
-    ("BWXP212161065", "solution"),
-    ("6339163400576", "solution"),
+    ("BWXP212160931", "solution"),  # Mesin Absensi Gambir
+    ("BWXP212161065", "solution"),  # Mesin Absensi Sudirman
 ]
 
 PRAY_MACHINES = [
-    ("BWXP212161070", "solution"),
+    ("6339163400576", "solution"),  # Mesin Sholat Gambir
+    ("BWXP212161070", "solution"),  # Mesin Sholat Sudirman
+    ("BWXP212161076", "solution"),  # Mesin Sholat Sudirman 2
 ]
 
 
