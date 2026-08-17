@@ -516,7 +516,7 @@ function LocationAdmin({ me, onSessionEnd }) {
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_ids: [], division_id: '', is_active: 1 })}>
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_ids: [], primary_spv_id: null, division_id: '', is_active: 1 })}>
         + Tambah Kode Area
       </button>
       <div className="table-wrap">
@@ -531,13 +531,23 @@ function LocationAdmin({ me, onSessionEnd }) {
                 <td>{l.branch_name}</td>
                 <td>{l.division_name || <i style={{ color: 'var(--muted)' }}>—</i>}</td>
                 <td>{l.pj_names || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
-                <td>{l.spv_name || <i style={{ color: 'var(--muted)' }}>belum ada</i>}</td>
+                <td>
+                  {l.primary_spv_name ? (
+                    <>
+                      <b>{l.primary_spv_name}</b> <span style={{ fontSize: 11, color: 'var(--muted)' }}>(Utama)</span>
+                      {l.backup_spv_names && (
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Backup: {l.backup_spv_names}</div>
+                      )}
+                    </>
+                  ) : <i style={{ color: 'var(--muted)' }}>belum ada</i>}
+                </td>
                 <td>{Number(l.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="btn btn-outline btn-sm" onClick={() => setEditing({
                     ...l,
                     pj_user_ids: l.pj_user_ids ? l.pj_user_ids.split(',').map(Number) : [],
                     spv_user_ids: l.spv_user_ids ? l.spv_user_ids.split(',').map(Number) : [],
+                    primary_spv_id: l.primary_spv_id ? Number(l.primary_spv_id) : null,
                     division_id: l.division_id || '',
                   })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
@@ -594,7 +604,11 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
     setForm((f) => {
       const cur = f.spv_user_ids || [];
       const has = cur.includes(uid);
-      return { ...f, spv_user_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
+      const next = has ? cur.filter((x) => x !== uid) : [...cur, uid];
+      let primary = f.primary_spv_id;
+      if (has && primary === uid) primary = next[0] ?? null; // Utama dihapus -> pindah ke sisa pertama
+      if (!has && next.length === 1) primary = uid; // orang pertama otomatis jadi Utama
+      return { ...f, spv_user_ids: next, primary_spv_id: primary };
     });
   };
 
@@ -609,6 +623,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         name: form.name.trim(),
         pj_user_ids: form.pj_user_ids || [],
         spv_user_ids: form.spv_user_ids || [],
+        primary_spv_id: form.primary_spv_id || null,
         division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
       });
@@ -671,6 +686,27 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
           </div>
           {(form.spv_user_ids || []).length === 0 && (
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Belum ada Pengawas dipilih.</div>
+          )}
+          {(form.spv_user_ids || []).length > 1 && (
+            <div style={{ marginTop: 8 }}>
+              <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                Pengawas Utama (dipakai notif WA &amp; rekap laporan; sisanya jadi backup)
+              </label>
+              {(form.spv_user_ids || []).map((uid) => {
+                const emp = employees.find((e) => Number(e.id) === uid);
+                return (
+                  <label key={uid} className="check-row" style={{ marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="primary_spv"
+                      checked={form.primary_spv_id === uid}
+                      onChange={() => set('primary_spv_id', uid)}
+                    />
+                    {emp ? `${emp.name}${emp.position_name ? ` (${emp.position_name})` : ''}` : uid}
+                  </label>
+                );
+              })}
+            </div>
           )}
         </div>
         <div className="field">

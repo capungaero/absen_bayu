@@ -392,7 +392,8 @@ class Temuan extends CI_Controller {
         $saved_id = $this->temuan->save_location($data, $id);
         $this->temuan->set_location_pjs($saved_id, $p['pj_user_ids'] ?? []);
         $spv_ids = $p['spv_user_ids'] ?? (!empty($p['spv_user_id']) ? [$p['spv_user_id']] : []);
-        $this->temuan->set_location_spvs($saved_id, $spv_ids);
+        $primary_spv_id = !empty($p['primary_spv_id']) ? (int)$p['primary_spv_id'] : null;
+        $this->temuan->set_location_spvs($saved_id, $spv_ids, $primary_spv_id);
         $this->_json(['status' => true, 'id' => (int)$saved_id]);
     }
 
@@ -1125,7 +1126,13 @@ class Temuan extends CI_Controller {
         $progress_types = ['temuan_lapor', 'temuan_selesai', 'temuan_extend_request', 'temuan_extend_approved', 'temuan_extend_rejected'];
         if (in_array($type, $progress_types, true) && empty($cfg['notify_done_enabled'])) return;
 
-        $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
+        // Target notif: nomor Pengawas Utama area tsb. Kalau area tak punya Pengawas
+        // Utama (kosong/tanpa nomor) atau temuan mode individu (tanpa area), fallback
+        // ke daftar nomor bersama.
+        $primary_phone = !empty($row['location_id']) ? $this->temuan->get_primary_spv_phone($row['location_id']) : null;
+        $phones = $primary_phone
+            ? [$primary_phone]
+            : array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
         if (empty($phones)) return;
 
         $this->load->model('wa_model', 'wa');

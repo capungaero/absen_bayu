@@ -308,6 +308,19 @@ class Temuan_model extends CI_Model {
             }
         }
 
+        // Migrasi: Pengawas Utama vs Backup (is_primary) — notif WA & rekap laporan pakai Utama saja.
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->location_spv_table}` LIKE 'is_primary'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->location_spv_table}`
+                ADD COLUMN `is_primary` TINYINT(1) NOT NULL DEFAULT 0 AFTER `user_id`");
+            // Backfill: pengawas tercatat paling awal per area jadi Utama (satu-satunya kandidat kalau cuma 1).
+            $this->db->query("
+                UPDATE `{$this->location_spv_table}` t
+                JOIN (SELECT location_id, MIN(id) AS min_id FROM `{$this->location_spv_table}` GROUP BY location_id) m
+                  ON m.location_id = t.location_id AND m.min_id = t.id
+                SET t.is_primary = 1
+            ");
+        }
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -380,20 +393,37 @@ class Temuan_model extends CI_Model {
     public function is_inspector($user_id) { return $this->in_roster('inspector', $user_id); }
 
     /** Apakah user jadi SPV di minimal satu area aktif. */
+    /** Nomor HP Pengawas Utama area tsb (untuk notif WA); null kalau tak ada/kosong. */
+    public function get_primary_spv_phone($location_id) {
+        if (empty($location_id)) { return null; }
+        $row = $this->db->select('u.phone')
+                        ->from("{$this->location_spv_table} ls")
+                        ->join('users u', 'u.id = ls.user_id')
+                        ->where('ls.location_id', (int)$location_id)
+                        ->where('ls.is_primary', 1)
+                        ->limit(1)->get()->row_array();
+        return ($row && !empty($row['phone'])) ? $row['phone'] : null;
+    }
+
     public function has_spv_area($user_id) {
         return (int)$this->db->where('user_id', (int)$user_id)
                              ->count_all_results($this->location_spv_table) > 0;
     }
 
-    /** Ganti seluruh daftar SPV area tsb (replace-all dari array user_id). */
-    public function set_location_spvs($location_id, $user_ids) {
+    /**
+     * Ganti seluruh daftar Pengawas area tsb (replace-all dari array user_id).
+     * $primary_user_id = Pengawas Utama; kalau kosong/tak ada di $user_ids, dipilih elemen pertama.
+     */
+    public function set_location_spvs($location_id, $user_ids, $primary_user_id = null) {
         $location_id = (int)$location_id;
         $this->db->where('location_id', $location_id)->delete($this->location_spv_table);
-        $user_ids = array_unique(array_filter(array_map('intval', (array)$user_ids)));
+        $user_ids = array_values(array_unique(array_filter(array_map('intval', (array)$user_ids))));
         if (empty($user_ids)) { return; }
+        $primary_user_id = (int)$primary_user_id;
+        if (!in_array($primary_user_id, $user_ids, true)) { $primary_user_id = $user_ids[0]; }
         $now = date('Y-m-d H:i:s');
-        $rows = array_map(function ($uid) use ($location_id, $now) {
-            return ['location_id' => $location_id, 'user_id' => $uid, 'created_at' => $now];
+        $rows = array_map(function ($uid) use ($location_id, $now, $primary_user_id) {
+            return ['location_id' => $location_id, 'user_id' => $uid, 'is_primary' => $uid === $primary_user_id ? 1 : 0, 'created_at' => $now];
         }, $user_ids);
         $this->db->insert_batch($this->location_spv_table, $rows);
     }
@@ -588,6 +618,13 @@ class Temuan_model extends CI_Model {
                            (SELECT GROUP_CONCAT(TRIM(CONCAT(u4.first_name,' ',COALESCE(u4.last_name,''))) SEPARATOR ', ')
                               FROM {$this->location_spv_table} ls2 JOIN users u4 ON u4.id = ls2.user_id
                              WHERE ls2.location_id = l.id) AS spv_name,
+                           (SELECT ls3.user_id FROM {$this->location_spv_table} ls3 WHERE ls3.location_id = l.id AND ls3.is_primary = 1 LIMIT 1) AS primary_spv_id,
+                           (SELECT TRIM(CONCAT(u6.first_name,' ',COALESCE(u6.last_name,'')))
+                              FROM {$this->location_spv_table} ls4 JOIN users u6 ON u6.id = ls4.user_id
+                             WHERE ls4.location_id = l.id AND ls4.is_primary = 1 LIMIT 1) AS primary_spv_name,
+                           (SELECT GROUP_CONCAT(TRIM(CONCAT(u7.first_name,' ',COALESCE(u7.last_name,''))) SEPARATOR ', ')
+                              FROM {$this->location_spv_table} ls5 JOIN users u7 ON u7.id = ls5.user_id
+                             WHERE ls5.location_id = l.id AND ls5.is_primary = 0) AS backup_spv_names,
                            (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
                            (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                               FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
@@ -787,9 +824,9 @@ class Temuan_model extends CI_Model {
                          FROM {$this->location_pj_table} lp3
                         WHERE lp3.location_id = l.id) AS pj_user_ids,
                       l.division_id,
-                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u5.first_name,' ',COALESCE(u5.last_name,''))) SEPARATOR ', ')
+                      (SELECT TRIM(CONCAT(u5.first_name,' ',COALESCE(u5.last_name,'')))
                          FROM {$this->location_spv_table} ls JOIN users u5 ON u5.id = ls.user_id
-                        WHERE ls.location_id = l.id) AS spv_name,
+                        WHERE ls.location_id = l.id AND ls.is_primary = 1 LIMIT 1) AS spv_name,
                       (SELECT GROUP_CONCAT(ls2.user_id)
                          FROM {$this->location_spv_table} ls2
                         WHERE ls2.location_id = l.id) AS spv_user_ids,
