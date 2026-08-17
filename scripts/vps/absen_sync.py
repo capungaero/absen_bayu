@@ -47,13 +47,39 @@ DB_CONFIG = {
 # Solution Cloud
 SOLUTION_CLOUD_URL = 'http://solutioncloud.co.id/'
 
-# Machines to sync (from DB query)
-MACHINES = [
-    {'id': 1, 'name': 'Mesin Absensi 1', 'sn': 'BWXP212160931', 'password': 'solution', 'type': 'attendance'},
-    {'id': 2, 'name': 'Mesin Absensi 2', 'sn': 'BWXP212161065', 'password': 'solution', 'type': 'attendance'},
-    {'id': 3, 'name': 'Mesin Absensi 3', 'sn': '6339163400576', 'password': 'solution', 'type': 'attendance'},
-    {'id': 4, 'name': 'Mesin Sholat', 'sn': 'BWXP212161070', 'password': 'solution', 'type': 'pray'},
+# Fallback machine list -- HANYA dipakai kalau query ke sync_machine gagal total
+# (mis. koneksi DB belum siap sama sekali). Daftar ini TERBUKTI bisa nyasar dari
+# konfigurasi asli di DB (id 3 sempat ke-hardcode type='attendance' padahal di DB
+# type='pray' -- SN itu benar "Mesin Sholat Gambir", bukan mesin absensi. Akibatnya
+# tap sholat ikut diklasifikasi sbg jam kerja & tercampur ke entry_time/rest_time_in/
+# rest_time_out, lihat investigasi 17 Agu 2026). JANGAN dipakai sbg sumber utama lagi
+# -- fetch_machines() di bawah ambil langsung dari tabel sync_machine tiap run supaya
+# tidak pernah drift dari config asli.
+MACHINES_FALLBACK = [
+    {'id': 1, 'name': 'Mesin Absensi Gambir', 'sn': 'BWXP212160931', 'password': 'solution', 'type': 'attendance'},
+    {'id': 2, 'name': 'Mesin Absensi Sudirman', 'sn': 'BWXP212161065', 'password': 'solution', 'type': 'attendance'},
+    {'id': 3, 'name': 'Mesin Sholat Gambir', 'sn': '6339163400576', 'password': 'solution', 'type': 'pray'},
+    {'id': 4, 'name': 'Mesin Sholat Sudirman', 'sn': 'BWXP212161070', 'password': 'solution', 'type': 'pray'},
+    {'id': 5, 'name': 'Mesin Sholat Sudirman 2', 'sn': 'BWXP212161076', 'password': 'solution', 'type': 'pray'},
 ]
+
+
+def fetch_machines(conn):
+    """Ambil daftar mesin aktif langsung dari tabel sync_machine (sumber kebenaran
+    tunggal, sama seperti sisi PHP Sync_model::get_active_by_type()). Ini yang
+    dipakai main() -- MACHINES_FALLBACK di atas cadangan darurat saja."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, machine_sn AS sn, password, machine_type AS type "
+                "FROM sync_machine WHERE is_active = 1 ORDER BY id"
+            )
+            rows = cur.fetchall()
+        if rows:
+            return list(rows)
+    except Exception as e:
+        print(f"  ⚠️ Gagal ambil daftar mesin dari DB, pakai fallback: {e}")
+    return MACHINES_FALLBACK
 
 # Directory to store .dat files (will be created if not exists)
 DAT_DIR = Path(__file__).parent / 'dat_files'
@@ -1365,13 +1391,18 @@ def main():
             sys.exit(1)
         
         print("✅ Database connected")
-        
+
+        # Ambil daftar mesin LANGSUNG dari DB tiap run (bukan hardcode) -- lihat
+        # komentar fetch_machines()/MACHINES_FALLBACK di atas kenapa ini penting.
+        machines = fetch_machines(conn)
+        print(f"  📋 {len(machines)} mesin aktif: " + ", ".join(f"{m['name']} ({m['type']})" for m in machines))
+
         # Sync each machine
         results = []
         total_records = 0
         total_deleted = 0
-        
-        for machine in MACHINES:
+
+        for machine in machines:
             # Fresh DB connection per machine (SSH tunnel drops after heavy queries)
             try:
                 conn = get_db_connection(tunnel_port)
