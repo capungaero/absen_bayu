@@ -52,6 +52,21 @@ END$$
 -- v3 (19 Jul 2026): cakupan cleared_fields diperluas ke 6 anchor sholat
 -- (subuh/dzuhur/ashar/maghrib/isha/friday _time_in) — pengosongan sholat
 -- manual kini juga terlindungi dari refill sync, sama seperti 4 kolom kerja.
+-- v4 (17 Agu 2026): sebelum ini, trigger cuma melindungi (a) label input_by
+-- dan (b) kolom yang SUDAH DIKOSONGKAN manual (cleared_fields). Kolom yang
+-- SUDAH TERISI dan TIDAK di-cleared sama sekali tidak dijaga di level trigger
+-- -- perlindungan "jangan timpa yang udah keisi" 100% mengandalkan tiap kode
+-- aplikasi (PHP presence_merge_preserve_existing, Python upsert_presence)
+-- benar terus. Terbukti rapuh: ditemukan baris presence dengan input_by
+-- tetap 'manual' tapi rest_time_in/rest_time_out (sudah terisi, bukan
+-- cleared) tertimpa nilai lain lewat sync otomatis, menghasilkan rest_time_out
+-- < rest_time_in (durasi istirahat negatif). Jalur tulis persisnya tidak
+-- terlacak pasti -- tapi celahnya nyata: satu bug di kode aplikasi manapun
+-- (sekarang atau nanti) bisa lolos tanpa terjaring trigger sama sekali.
+-- Fix: tambah lapis pertahanan terakhir -- kalau input_by='manual' dan kolom
+-- SUDAH TERISI (bukan cleared), trigger sekarang MENOLAK nilai baru & pasang
+-- balik nilai lama, apa pun jalur/kode yang menulisnya. Escape hatch tetap
+-- sama: admin_reset (menimpa branch ini sepenuhnya).
 DROP TRIGGER IF EXISTS presence_provenance_bu$$
 CREATE TRIGGER presence_provenance_bu
 BEFORE UPDATE ON presence
@@ -215,6 +230,51 @@ BEGIN
     IF FIND_IN_SET('friday_time_in', OLD.cleared_fields) > 0
        AND OLD.friday_time_in IS NULL AND NEW.friday_time_in IS NOT NULL THEN
       SET NEW.friday_time_in = NULL, NEW.friday_time_out = OLD.friday_time_out, NEW.friday_time_late = OLD.friday_time_late;
+    END IF;
+
+    -- v4: lapis pertahanan terakhir -- kolom yang SUDAH TERISI (bukan
+    -- cleared) pada baris manual tidak boleh berubah nilai lewat sync,
+    -- apa pun kode/jalur penulisnya. Pasang balik nilai lama kalau berubah.
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('entry_time', OLD.cleared_fields) = 0
+       AND OLD.entry_time IS NOT NULL AND NOT (NEW.entry_time <=> OLD.entry_time) THEN
+      SET NEW.entry_time = OLD.entry_time, NEW.entry_time_late = OLD.entry_time_late;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('out_time', OLD.cleared_fields) = 0
+       AND OLD.out_time IS NOT NULL AND NOT (NEW.out_time <=> OLD.out_time) THEN
+      SET NEW.out_time = OLD.out_time;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('rest_time_in', OLD.cleared_fields) = 0
+       AND OLD.rest_time_in IS NOT NULL AND NOT (NEW.rest_time_in <=> OLD.rest_time_in) THEN
+      SET NEW.rest_time_in = OLD.rest_time_in;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('rest_time_out', OLD.cleared_fields) = 0
+       AND OLD.rest_time_out IS NOT NULL AND NOT (NEW.rest_time_out <=> OLD.rest_time_out) THEN
+      SET NEW.rest_time_out = OLD.rest_time_out, NEW.rest_time_late = OLD.rest_time_late;
+    END IF;
+
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('subuh_time_in', OLD.cleared_fields) = 0
+       AND OLD.subuh_time_in IS NOT NULL AND NOT (NEW.subuh_time_in <=> OLD.subuh_time_in) THEN
+      SET NEW.subuh_time_in = OLD.subuh_time_in, NEW.subuh_time_out = OLD.subuh_time_out, NEW.subuh_time_late = OLD.subuh_time_late;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('dzuhur_time_in', OLD.cleared_fields) = 0
+       AND OLD.dzuhur_time_in IS NOT NULL AND NOT (NEW.dzuhur_time_in <=> OLD.dzuhur_time_in) THEN
+      SET NEW.dzuhur_time_in = OLD.dzuhur_time_in, NEW.dzuhur_time_out = OLD.dzuhur_time_out, NEW.dzuhur_time_late = OLD.dzuhur_time_late;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('ashar_time_in', OLD.cleared_fields) = 0
+       AND OLD.ashar_time_in IS NOT NULL AND NOT (NEW.ashar_time_in <=> OLD.ashar_time_in) THEN
+      SET NEW.ashar_time_in = OLD.ashar_time_in, NEW.ashar_time_out = OLD.ashar_time_out, NEW.ashar_time_late = OLD.ashar_time_late;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('maghrib_time_in', OLD.cleared_fields) = 0
+       AND OLD.maghrib_time_in IS NOT NULL AND NOT (NEW.maghrib_time_in <=> OLD.maghrib_time_in) THEN
+      SET NEW.maghrib_time_in = OLD.maghrib_time_in, NEW.maghrib_time_out = OLD.maghrib_time_out, NEW.maghrib_time_late = OLD.maghrib_time_late;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('isha_time_in', OLD.cleared_fields) = 0
+       AND OLD.isha_time_in IS NOT NULL AND NOT (NEW.isha_time_in <=> OLD.isha_time_in) THEN
+      SET NEW.isha_time_in = OLD.isha_time_in, NEW.isha_time_out = OLD.isha_time_out, NEW.isha_time_late = OLD.isha_time_late;
+    END IF;
+    IF OLD.input_by = 'manual' AND FIND_IN_SET('friday_time_in', OLD.cleared_fields) = 0
+       AND OLD.friday_time_in IS NOT NULL AND NOT (NEW.friday_time_in <=> OLD.friday_time_in) THEN
+      SET NEW.friday_time_in = OLD.friday_time_in, NEW.friday_time_out = OLD.friday_time_out, NEW.friday_time_late = OLD.friday_time_late;
     END IF;
   END IF;
 END$$
