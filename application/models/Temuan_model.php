@@ -17,6 +17,8 @@ class Temuan_model extends CI_Model {
     protected $category_table  = 'temuan_category';
     protected $subject_table   = 'temuan_subject';
     protected $division_table  = 'temuan_division';
+    protected $wa_contact_table = 'temuan_wa_contact';
+    protected $location_contact_table = 'temuan_location_contact';
 
     public function __construct() {
         parent::__construct();
@@ -321,6 +323,30 @@ class Temuan_model extends CI_Model {
             ");
         }
 
+        // Migrasi: Kontak Notifikasi WA (nama+nomor bebas, dipilih manual per Kode Area).
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->wa_contact_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `name` VARCHAR(80) NOT NULL,
+                `phone` VARCHAR(30) NOT NULL,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` DATETIME NULL,
+                `updated_at` DATETIME NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->location_contact_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `location_id` INT UNSIGNED NOT NULL,
+                `contact_id` INT UNSIGNED NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_loc_contact` (`location_id`, `contact_id`),
+                KEY `idx_contact` (`contact_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
         if ((int)$this->db->count_all($this->config_table) === 0) {
             $this->db->insert($this->config_table, [
                 'notify_enabled'      => 1,
@@ -543,6 +569,61 @@ class Temuan_model extends CI_Model {
     }
 
     // ====================================================================
+    // KONTAK NOTIFIKASI WA (nama+nomor bebas, dipilih manual per Kode Area)
+    // ====================================================================
+
+    public function get_wa_contacts($active_only = false) {
+        $this->db->from($this->wa_contact_table);
+        if ($active_only) { $this->db->where('is_active', 1); }
+        return $this->db->order_by('name')->get()->result_array();
+    }
+
+    public function get_wa_contact($id) {
+        return $this->db->where('id', $id)->get($this->wa_contact_table)->row_array();
+    }
+
+    public function save_wa_contact($data, $id = null) {
+        if ($id) {
+            $data['updated_at'] = date('Y-m-d H:i:s');
+            $this->db->where('id', $id)->update($this->wa_contact_table, $data);
+            return $id;
+        }
+        $data['created_at'] = date('Y-m-d H:i:s');
+        $this->db->insert($this->wa_contact_table, $data);
+        return $this->db->insert_id();
+    }
+
+    public function delete_wa_contact($id) {
+        $this->db->where('contact_id', $id)->delete($this->location_contact_table);
+        $this->db->where('id', $id)->delete($this->wa_contact_table);
+    }
+
+    /** Ganti seluruh daftar kontak notifikasi area tsb (replace-all dari array contact_id). */
+    public function set_location_contacts($location_id, $contact_ids) {
+        $location_id = (int)$location_id;
+        $this->db->where('location_id', $location_id)->delete($this->location_contact_table);
+        $contact_ids = array_unique(array_filter(array_map('intval', (array)$contact_ids)));
+        if (empty($contact_ids)) { return; }
+        $now = date('Y-m-d H:i:s');
+        $rows = array_map(function ($cid) use ($location_id, $now) {
+            return ['location_id' => $location_id, 'contact_id' => $cid, 'created_at' => $now];
+        }, $contact_ids);
+        $this->db->insert_batch($this->location_contact_table, $rows);
+    }
+
+    /** Nomor HP semua kontak notifikasi aktif yang dipilih untuk area tsb. */
+    public function get_location_contact_phones($location_id) {
+        if (empty($location_id)) { return []; }
+        $rows = $this->db->select('c.phone')
+                         ->from("{$this->location_contact_table} lc")
+                         ->join("{$this->wa_contact_table} c", 'c.id = lc.contact_id')
+                         ->where('lc.location_id', (int)$location_id)
+                         ->where('c.is_active', 1)
+                         ->get()->result_array();
+        return array_filter(array_map(function ($r) { return $r['phone']; }, $rows));
+    }
+
+    // ====================================================================
     // NAMA TEMUAN
     // ====================================================================
 
@@ -628,7 +709,11 @@ class Temuan_model extends CI_Model {
                            (SELECT GROUP_CONCAT(lp.user_id) FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id) AS pj_user_ids,
                            (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                               FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
-                             WHERE lp2.location_id = l.id) AS pj_names")
+                             WHERE lp2.location_id = l.id) AS pj_names,
+                           (SELECT GROUP_CONCAT(lc.contact_id) FROM {$this->location_contact_table} lc WHERE lc.location_id = l.id) AS contact_ids,
+                           (SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
+                              FROM {$this->location_contact_table} lc2 JOIN {$this->wa_contact_table} c ON c.id = lc2.contact_id
+                             WHERE lc2.location_id = l.id) AS contact_names")
                  ->from("{$this->location_table} l")
                  ->join('branch b', 'b.id = l.branch_id', 'left')
                  ->join("{$this->division_table} dv", 'dv.id = l.division_id', 'left');

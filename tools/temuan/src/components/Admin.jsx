@@ -13,6 +13,7 @@ export default function Admin({ me, onSessionEnd }) {
       <CategoryAdmin onSessionEnd={onSessionEnd} />
       <TypeAdmin onSessionEnd={onSessionEnd} />
       <DivisionAdmin onSessionEnd={onSessionEnd} />
+      <WaContactAdmin onSessionEnd={onSessionEnd} />
       <LocationAdmin me={me} onSessionEnd={onSessionEnd} />
       <ConfigAdmin onSessionEnd={onSessionEnd} />
     </div>
@@ -474,6 +475,112 @@ function DivisionAdmin({ onSessionEnd }) {
   );
 }
 
+function WaContactAdmin({ onSessionEnd }) {
+  const [contacts, setContacts] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const d = await apiGet('/wa_contacts', { all: 1 });
+      setContacts(d.rows);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (c) => {
+    if (!window.confirm(`Hapus kontak "${c.name}"?`)) return;
+    try {
+      await apiPost('/wa_contact_delete', { id: c.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  const save = async () => {
+    if (!editing.name.trim() || !editing.phone.trim()) return;
+    try {
+      await apiPost('/wa_contact_save', {
+        id: editing.id || null,
+        name: editing.name.trim(),
+        phone: editing.phone.trim(),
+        is_active: editing.is_active ? 1 : 0,
+      });
+      setEditing(null);
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="admin-section">
+      <h3>📱 Kontak Notifikasi WA</h3>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+        Nomor HP + nama yang bisa dipilih sebagai penerima notif WA untuk Kode Area tertentu
+        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah).
+      </p>
+      {error && <div className="alert alert-error">{error}</div>}
+      <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
+        onClick={() => setEditing({ name: '', phone: '', is_active: 1 })}>
+        + Tambah Kontak
+      </button>
+      <div className="table-wrap">
+        <table className="loc-table">
+          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {contacts.map((c) => (
+              <tr key={c.id} className={Number(c.is_active) ? '' : 'inactive'}>
+                <td>{c.name}</td>
+                <td>{c.phone}</td>
+                <td>{Number(c.is_active) ? 'Aktif' : 'Nonaktif'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(c)}>Edit</button>{' '}
+                  <button className="btn btn-danger" onClick={() => remove(c)}>Hapus</button>
+                </td>
+              </tr>
+            ))}
+            {contacts.length === 0 && (
+              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <div className="modal-back" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing.id ? 'Edit Kontak' : 'Tambah Kontak'}</h3>
+            <div className="field">
+              <label>Nama</label>
+              <input type="text" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Contoh: Pak Budi (Owner)" />
+            </div>
+            <div className="field">
+              <label>Nomor HP</label>
+              <input type="text" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} placeholder="Contoh: 6281234567890" />
+            </div>
+            <label className="check-row">
+              <input type="checkbox" checked={!!Number(editing.is_active)} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked ? 1 : 0 })} />
+              Aktif
+            </label>
+            <div className="modal-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Batal</button>
+              <button className="btn btn-primary btn-sm" onClick={save}>Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LocationAdmin({ me, onSessionEnd }) {
   const [branches, setBranches] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -516,7 +623,7 @@ function LocationAdmin({ me, onSessionEnd }) {
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_ids: [], primary_spv_id: null, division_id: '', is_active: 1 })}>
+        onClick={() => setEditing({ branch_id: me.branch_id || (branches[0]?.id ?? ''), name: '', pj_user_ids: [], spv_user_ids: [], primary_spv_id: null, contact_ids: [], division_id: '', is_active: 1 })}>
         + Tambah Kode Area
       </button>
       <div className="table-wrap">
@@ -548,6 +655,7 @@ function LocationAdmin({ me, onSessionEnd }) {
                     pj_user_ids: l.pj_user_ids ? l.pj_user_ids.split(',').map(Number) : [],
                     spv_user_ids: l.spv_user_ids ? l.spv_user_ids.split(',').map(Number) : [],
                     primary_spv_id: l.primary_spv_id ? Number(l.primary_spv_id) : null,
+                    contact_ids: l.contact_ids ? l.contact_ids.split(',').map(Number) : [],
                     division_id: l.division_id || '',
                   })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(l)}>Hapus</button>
@@ -576,6 +684,7 @@ function LocationAdmin({ me, onSessionEnd }) {
 
 function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
   const [divisions, setDivisions] = useState([]);
+  const [contacts, setContacts] = useState([]);
   const [form, setForm] = useState(initial);
   const [employees, setEmployees] = useState([]);
   const [error, setError] = useState('');
@@ -588,6 +697,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
 
   useEffect(() => {
     apiGet('/divisions').then((d) => setDivisions(d.rows)).catch(() => {});
+    apiGet('/wa_contacts').then((d) => setContacts(d.rows)).catch(() => {});
   }, []);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -612,6 +722,14 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
     });
   };
 
+  const toggleContact = (cid) => {
+    setForm((f) => {
+      const cur = f.contact_ids || [];
+      const has = cur.includes(cid);
+      return { ...f, contact_ids: has ? cur.filter((x) => x !== cid) : [...cur, cid] };
+    });
+  };
+
   const save = async () => {
     if (!form.name.trim()) { setError('Nama lokasi wajib diisi'); return; }
     setBusy(true);
@@ -624,6 +742,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         pj_user_ids: form.pj_user_ids || [],
         spv_user_ids: form.spv_user_ids || [],
         primary_spv_id: form.primary_spv_id || null,
+        contact_ids: form.contact_ids || [],
         division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
       });
@@ -715,6 +834,29 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
             <option value="">— tanpa divisi —</option>
             {divisions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+        </div>
+        <div className="field">
+          <label>Notifikasi WA (kontak tambahan, opsional)</label>
+          <div className="pj-checklist">
+            {contacts.map((c) => (
+              <label key={c.id} className="check-row" style={{ marginBottom: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={(form.contact_ids || []).includes(Number(c.id))}
+                  onChange={() => toggleContact(Number(c.id))}
+                />
+                {c.name} ({c.phone})
+              </label>
+            ))}
+            {contacts.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Belum ada kontak. Tambah di bagian "Kontak Notifikasi WA" di atas.
+              </div>
+            )}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+            Selain Pengawas Utama area ini, kontak yang dicentang juga akan dapat notif WA.
+          </p>
         </div>
         <label className="check-row">
           <input type="checkbox" checked={!!Number(form.is_active)} onChange={(e) => set('is_active', e.target.checked ? 1 : 0)} />

@@ -394,6 +394,7 @@ class Temuan extends CI_Controller {
         $spv_ids = $p['spv_user_ids'] ?? (!empty($p['spv_user_id']) ? [$p['spv_user_id']] : []);
         $primary_spv_id = !empty($p['primary_spv_id']) ? (int)$p['primary_spv_id'] : null;
         $this->temuan->set_location_spvs($saved_id, $spv_ids, $primary_spv_id);
+        $this->temuan->set_location_contacts($saved_id, $p['contact_ids'] ?? []);
         $this->_json(['status' => true, 'id' => (int)$saved_id]);
     }
 
@@ -453,6 +454,45 @@ class Temuan extends CI_Controller {
         if (!$existing) { $this->_json(['status' => false, 'message' => 'Divisi tidak ditemukan'], 404); return; }
         $result = $this->temuan->delete_division($id);
         $this->_json(['status' => true, 'result' => $result]);
+    }
+
+    // ====================================================================
+    // KONTAK NOTIFIKASI WA
+    // ====================================================================
+
+    // GET temuan/wa_contacts?all=1
+    public function wa_contacts() {
+        if (!$this->_auth()) return;
+        $active_only = !($this->_is_admin() && $this->input->get('all'));
+        $this->_json(['status' => true, 'rows' => $this->temuan->get_wa_contacts($active_only)]);
+    }
+
+    // POST temuan/wa_contact_save {id?, name, phone, is_active}
+    public function wa_contact_save() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $name  = isset($p['name']) ? trim($p['name']) : '';
+        $phone = isset($p['phone']) ? trim($p['phone']) : '';
+        if ($name === '') { $this->_json(['status' => false, 'message' => 'Nama kontak wajib diisi'], 422); return; }
+        if ($phone === '' || !preg_match('/^[0-9+\-\s]+$/', $phone)) {
+            $this->_json(['status' => false, 'message' => 'Nomor HP wajib diisi, format 628xxx'], 422); return;
+        }
+        $data = ['name' => $name, 'phone' => $phone, 'is_active' => isset($p['is_active']) ? (int)!!$p['is_active'] : 1];
+        $id = !empty($p['id']) ? (int)$p['id'] : null;
+        $saved_id = $this->temuan->save_wa_contact($data, $id);
+        $this->_json(['status' => true, 'id' => (int)$saved_id]);
+    }
+
+    // POST temuan/wa_contact_delete {id}
+    public function wa_contact_delete() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $id = (int)($p['id'] ?? 0);
+        if (!$this->temuan->get_wa_contact($id)) { $this->_json(['status' => false, 'message' => 'Kontak tidak ditemukan'], 404); return; }
+        $this->temuan->delete_wa_contact($id);
+        $this->_json(['status' => true]);
     }
 
     // ====================================================================
@@ -1126,13 +1166,20 @@ class Temuan extends CI_Controller {
         $progress_types = ['temuan_lapor', 'temuan_selesai', 'temuan_extend_request', 'temuan_extend_approved', 'temuan_extend_rejected'];
         if (in_array($type, $progress_types, true) && empty($cfg['notify_done_enabled'])) return;
 
-        // Target notif: nomor Pengawas Utama area tsb. Kalau area tak punya Pengawas
-        // Utama (kosong/tanpa nomor) atau temuan mode individu (tanpa area), fallback
-        // ke daftar nomor bersama.
-        $primary_phone = !empty($row['location_id']) ? $this->temuan->get_primary_spv_phone($row['location_id']) : null;
-        $phones = $primary_phone
-            ? [$primary_phone]
-            : array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
+        // Target notif: nomor Pengawas Utama area tsb + kontak notifikasi WA yang dipilih
+        // manual utk area itu (Kelola -> Kode Area). Kalau keduanya kosong (area tak punya
+        // Pengawas Utama/nomor, tak ada kontak dipilih, atau temuan mode individu tanpa
+        // area), fallback ke daftar nomor bersama (Kelola -> Notifikasi).
+        $phones = [];
+        if (!empty($row['location_id'])) {
+            $primary_phone = $this->temuan->get_primary_spv_phone($row['location_id']);
+            if ($primary_phone) { $phones[] = $primary_phone; }
+            $phones = array_merge($phones, $this->temuan->get_location_contact_phones($row['location_id']));
+        }
+        $phones = array_values(array_unique(array_filter(array_map('trim', $phones))));
+        if (empty($phones)) {
+            $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
+        }
         if (empty($phones)) return;
 
         $this->load->model('wa_model', 'wa');
