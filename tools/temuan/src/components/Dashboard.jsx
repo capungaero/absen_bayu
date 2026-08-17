@@ -178,10 +178,10 @@ export default function Dashboard({ me, onSessionEnd }) {
               <div className="tcard-meta">
                 Pelapor: <b>{row.reporter_name}</b> · {fmtTime(row.created_at)}<br />
                 {row.type_target_mode === 'individu' ? (
-                  row.individu_spv_name && <>SPV: <b>{row.individu_spv_name}</b><br /></>
+                  row.individu_spv_name && <>Pengawas: <b>{row.individu_spv_name}</b><br /></>
                 ) : (
                   (row.pj_name || row.spv_name) && (
-                    <>{row.pj_name && <>PJ: <b>{row.pj_name}</b></>}{row.pj_name && row.spv_name && ' · '}{row.spv_name && <>SPV: <b>{row.spv_name}</b></>}<br /></>
+                    <>{row.pj_name && <>PJ: <b>{row.pj_name}</b></>}{row.pj_name && row.spv_name && ' · '}{row.spv_name && <>Pengawas: <b>{row.spv_name}</b></>}<br /></>
                   )
                 )}
                 {row.status !== 'selesai' && row.status !== 'ditolak' && (

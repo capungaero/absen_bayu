@@ -146,7 +146,7 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
             </div>
           </div>
           <div className="field">
-            <label>SPV (opsional — ikut boleh menyelesaikan)</label>
+            <label>Pengawas (opsional — ikut boleh menyelesaikan)</label>
             <select value={spvId} onChange={(e) => setSpvId(e.target.value)}>
               <option value="">— tidak ada —</option>
               {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}

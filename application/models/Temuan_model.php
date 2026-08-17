@@ -512,17 +512,6 @@ class Temuan_model extends CI_Model {
         return 'deleted';
     }
 
-    /** Divisi-divisi dari area yang di-SPV-i user ini (dasar filter visibilitas SPV). */
-    public function get_spv_division_ids($user_id) {
-        $rows = $this->db->select('DISTINCT(l.division_id) AS division_id', false)
-                         ->from("{$this->location_table} l")
-                         ->join("{$this->location_spv_table} ls", 'ls.location_id = l.id')
-                         ->where('ls.user_id', (int)$user_id)
-                         ->where('l.division_id IS NOT NULL', null, false)
-                         ->get()->result_array();
-        return array_map(function ($r) { return (int)$r['division_id']; }, $rows);
-    }
-
     // ====================================================================
     // NAMA TEMUAN
     // ====================================================================
@@ -726,20 +715,15 @@ class Temuan_model extends CI_Model {
         if (empty($filters['include_deleted'])) {
             $this->db->where('t.is_deleted', 0);
         }
-        // Pembatasan visibilitas: PJ murni (bukan SPV/inspector/admin) hanya lihat area miliknya.
-        // SPV tetap lihat seluruh cabang (perlu untuk backup SPV lain yang libur).
+        // Pembatasan visibilitas: PJ/Pengawas murni (bukan inspector/admin) hanya lihat area yang ditugaskan.
         if (!empty($filters['visible_to'])) {
             $uid = (int)$filters['visible_to'];
             $this->db->where("(
                 EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})
+                OR EXISTS (SELECT 1 FROM {$this->location_spv_table} ls WHERE ls.location_id = l.id AND ls.user_id = {$uid})
                 OR t.individu_spv_id = {$uid}
                 OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
             )", null, false);
-        }
-        if (!empty($filters['division_ids'])) {
-            // Area tanpa tag divisi (atau temuan individu tanpa area) tetap terlihat semua SPV cabang.
-            $ids = implode(',', array_map('intval', (array)$filters['division_ids']));
-            $this->db->where("(l.division_id IS NULL OR l.division_id IN ({$ids}))", null, false);
         }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
@@ -761,7 +745,7 @@ class Temuan_model extends CI_Model {
         }
     }
 
-    /** Rekap jumlah per status. $vis_filters = ['visible_to'=>uid] atau ['division_ids'=>[..]] atau []. */
+    /** Rekap jumlah per status. $vis_filters = ['visible_to'=>uid] atau []. */
     public function status_summary($branch_id = null, $include_deleted = false, $from = null, $to = null, $vis_filters = []) {
         // backward-compat: kalau dipanggil dengan int/null langsung (caller lama)
         if (!is_array($vis_filters)) { $vis_filters = $vis_filters ? ['visible_to' => (int)$vis_filters] : []; }
@@ -777,13 +761,10 @@ class Temuan_model extends CI_Model {
             $uid = (int)$vis_filters['visible_to'];
             $this->db->where("(
                 EXISTS (SELECT 1 FROM {$this->location_pj_table} lp WHERE lp.location_id = l.id AND lp.user_id = {$uid})
+                OR EXISTS (SELECT 1 FROM {$this->location_spv_table} ls WHERE ls.location_id = l.id AND ls.user_id = {$uid})
                 OR t.individu_spv_id = {$uid}
                 OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
             )", null, false);
-        }
-        if (!empty($vis_filters['division_ids'])) {
-            $ids = implode(',', array_map('intval', (array)$vis_filters['division_ids']));
-            $this->db->where("(l.division_id IS NULL OR l.division_id IN ({$ids}))", null, false);
         }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'menunggu_acc_tolak' => 0, 'selesai' => 0, 'ditolak' => 0];
@@ -809,6 +790,9 @@ class Temuan_model extends CI_Model {
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u5.first_name,' ',COALESCE(u5.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_spv_table} ls JOIN users u5 ON u5.id = ls.user_id
                         WHERE ls.location_id = l.id) AS spv_name,
+                      (SELECT GROUP_CONCAT(ls2.user_id)
+                         FROM {$this->location_spv_table} ls2
+                        WHERE ls2.location_id = l.id) AS spv_user_ids,
                       TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
                          FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id

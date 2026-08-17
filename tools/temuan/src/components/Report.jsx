@@ -97,7 +97,7 @@ export default function Report({ me, onSessionEnd }) {
           <table className="loc-table">
             <thead>
               <tr>
-                <th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>SPV Area</th>
+                <th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>Pengawas Area</th>
                 <th>Jumlah Temuan</th><th>Selesai Tepat Waktu</th><th>Tidak Selesai</th>
               </tr>
             </thead>

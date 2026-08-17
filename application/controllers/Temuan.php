@@ -520,7 +520,7 @@ class Temuan extends CI_Controller {
             $spv_post = (int)$this->input->post('spv_user_id');
             if ($spv_post) {
                 $spv_row = $this->db->where(['id' => $spv_post, 'active' => 1])->get('users')->row_array();
-                if (!$spv_row) { $this->_json(['status' => false, 'message' => 'SPV tidak valid'], 422); return; }
+                if (!$spv_row) { $this->_json(['status' => false, 'message' => 'Pengawas tidak valid'], 422); return; }
                 $individu_spv_id = $spv_post;
             }
             $location_id = null;
@@ -575,7 +575,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, inspector, atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, Pengawas, inspector, atau admin yang boleh merespon'], 403); return;
         }
         if ($row['status'] !== 'baru') {
             $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status']], 422); return;
@@ -597,7 +597,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, inspector, atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, Pengawas, inspector, atau admin yang boleh merespon'], 403); return;
         }
         if ($row['status'] !== 'baru') {
             $this->_json(['status' => false, 'message' => 'Hanya temuan berstatus baru yang bisa ditolak'], 422); return;
@@ -662,7 +662,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)$this->input->post('id'));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_respond($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya PJ area, SPV, inspector, atau admin yang boleh merespon'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya PJ area, Pengawas, inspector, atau admin yang boleh merespon'], 403); return;
         }
         if (!in_array($row['status'], ['baru', 'dikerjakan'], true)) {
             $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status']], 422); return;
@@ -716,7 +716,7 @@ class Temuan extends CI_Controller {
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
         if (!$this->_can_request_extension($row)) {
-            $this->_json(['status' => false, 'message' => 'Hanya SPV area, SPV backup, atau admin yang boleh mengajukan tambahan waktu'], 403); return;
+            $this->_json(['status' => false, 'message' => 'Hanya Pengawas area, Pengawas backup, atau admin yang boleh mengajukan tambahan waktu'], 403); return;
         }
         if (!in_array($row['status'], ['baru', 'dikerjakan'], true)) {
             $this->_json(['status' => false, 'message' => 'Status sudah ' . $row['status'] . ', tidak bisa mengajukan tambahan waktu'], 422); return;
@@ -842,7 +842,7 @@ class Temuan extends CI_Controller {
         $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $ss->getActiveSheet();
         $sheet->setTitle('Rekap Temuan');
-        $headers = ['No', 'Kode Area', 'Cabang', 'PJ Area', 'SPV Area', 'Jumlah Temuan', 'Selesai Tepat Waktu', 'Tidak Selesai'];
+        $headers = ['No', 'Kode Area', 'Cabang', 'PJ Area', 'Pengawas Area', 'Jumlah Temuan', 'Selesai Tepat Waktu', 'Tidak Selesai'];
         $sheet->fromArray($headers, null, 'A1');
         $sheet->getStyle('A1:H1')->getFont()->setBold(true);
         $r = 2;
@@ -935,14 +935,11 @@ class Temuan extends CI_Controller {
     private function _aggregate_report($branch_id, $from, $to, $vis_filters = []) {
         $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
         $vis_uid = !empty($vis_filters['visible_to']) ? (int)$vis_filters['visible_to'] : 0;
-        $vis_divs = !empty($vis_filters['division_ids']) ? array_map('intval', (array)$vis_filters['division_ids']) : [];
         $groups = [];
         foreach ($rows as $r) {
             if ($r['type_target_mode'] === 'individu' || empty($r['location_id'])) { continue; } // rekap per area, bukan individu
-            // Karyawan biasa/PJ: hanya area yang dia pegang sebagai PJ.
-            if ($vis_uid && !$this->_is_location_pj($r, $vis_uid)) { continue; }
-            // SPV: hanya area divisinya; area tanpa tag divisi tetap tampil.
-            if ($vis_divs && !empty($r['division_id']) && !in_array((int)$r['division_id'], $vis_divs, true)) { continue; }
+            // Karyawan biasa/PJ/Pengawas: hanya area yang ditugaskan.
+            if ($vis_uid && !$this->_is_location_pj($r, $vis_uid) && !$this->_is_location_spv($r, $vis_uid)) { continue; }
             $key = $r['location_id'];
             if (!isset($groups[$key])) {
                 $groups[$key] = [
@@ -1010,14 +1007,14 @@ class Temuan extends CI_Controller {
         return false;
     }
 
-    /** Label pelaku respon: PJ / SPV (area tsb, backup, atau ad-hoc individu), Inspector, atau Admin. */
+    /** Label pelaku respon: PJ / Pengawas (area tsb, backup, atau ad-hoc individu), Inspector, atau Admin. */
     private function _actor_label($row) {
         $uid = (int)$this->user['id'];
         if ($this->_is_subject($row, $uid)) { return 'PJ'; }
         if ($this->_is_location_pj($row, $uid)) { return 'PJ'; }
-        if ($this->_is_location_spv($row, $uid) || (int)$row['individu_spv_id'] === $uid) { return 'SPV'; }
+        if ($this->_is_location_spv($row, $uid) || (int)$row['individu_spv_id'] === $uid) { return 'Pengawas'; }
         if (!$this->_is_admin()) {
-            if ($this->temuan->has_spv_area($uid)) { return 'SPV'; } // backup SPV
+            if ($this->temuan->has_spv_area($uid)) { return 'Pengawas'; } // backup pengawas
             if ($this->temuan->is_inspector($uid)) { return 'Inspector'; }
         }
         return 'Admin';
@@ -1026,18 +1023,12 @@ class Temuan extends CI_Controller {
     /**
      * Filter visibilitas — return array yang di-merge ke $filters:
      *   [] = lihat semua di cabangnya (admin, inspector)
-     *   ['division_ids' => [..]] = SPV: divisi dari area-area yang dia pegang
-     *     (area tanpa tag divisi tetap terlihat; SPV tanpa divisi = lihat semua)
-     *   ['visible_to' => uid] = PJ/mitra: hanya area sendiri / yang ditag
+     *   ['visible_to' => uid] = PJ/Pengawas/mitra: hanya area yang ditugaskan / yang ditag
      */
     private function _visibility_filters() {
         if ($this->_is_admin()) { return []; }
         $uid = (int)$this->user['id'];
         if ($this->temuan->is_inspector($uid)) { return []; }
-        if ($this->temuan->has_spv_area($uid)) {
-            $div_ids = $this->temuan->get_spv_division_ids($uid);
-            return $div_ids ? ['division_ids' => $div_ids] : [];
-        }
         return ['visible_to' => $uid];
     }
 

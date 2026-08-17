@@ -243,7 +243,7 @@ function TypeAdmin({ onSessionEnd }) {
       <h3>🏷️ Nama Temuan</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Label spesifik di bawah sebuah Jenis, mis. "Rak kotor", "WC tidak bersih". Tiap nama temuan diatur:
-        target-nya objek (lokasi) atau individu (mitra), perlu ditindaklanjuti PJ/SPV atau satu arah,
+        target-nya objek (lokasi) atau individu (mitra), perlu ditindaklanjuti PJ/Pengawas atau satu arah,
         dan wajib-tidaknya foto saat lapor & saat lapor selesai.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
@@ -349,7 +349,7 @@ function TypeModal({ initial, categories, onClose, onSaved, onSessionEnd }) {
           </select>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
             {form.target_mode === 'individu'
-              ? 'Saat lapor: pilih cabang, mitra yang ditag (bisa banyak), dan SPV opsional yang juga boleh menyelesaikan.'
+              ? 'Saat lapor: pilih cabang, mitra yang ditag (bisa banyak), dan Pengawas opsional yang juga boleh menyelesaikan.'
               : 'Saat lapor: pilih lokasi/kode area seperti biasa.'}
           </div>
         </div>
@@ -422,8 +422,8 @@ function DivisionAdmin({ onSessionEnd }) {
     <div className="admin-section">
       <h3>🏷️ Divisi</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-        Divisi kerja (mis. Finance, ME, Pramuniaga) untuk filter visibilitas SPV. SPV hanya
-        melihat temuan di area yang divisinya sama dengan divisi area-area yang ia pegang.
+        Divisi kerja (mis. Finance, ME, Pramuniaga) — penanda area, tidak membatasi visibilitas.
+        Pengawas hanya melihat temuan di area yang ditugaskan kepadanya.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
@@ -509,10 +509,10 @@ function LocationAdmin({ me, onSessionEnd }) {
 
   return (
     <div className="admin-section">
-      <h3>📍 Kode Area, PJ &amp; SPV Area</h3>
+      <h3>📍 Kode Area, PJ & Pengawas Area</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Kode area = lokasi temuan (mis. Rak 1, WC, Gudang). Tiap area bisa punya lebih dari satu PJ
-        dan lebih dari satu SPV (tanggung jawab bersama) — semua merespon temuan area itu.
+        dan lebih dari satu Pengawas (tanggung jawab bersama) — semua merespon temuan area itu.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
@@ -522,7 +522,7 @@ function LocationAdmin({ me, onSessionEnd }) {
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Kode Area</th><th>Cabang</th><th>Divisi</th><th>PJ Area</th><th>SPV Area</th><th>Status</th><th></th></tr>
+            <tr><th>Kode Area</th><th>Cabang</th><th>Divisi</th><th>PJ Area</th><th>Pengawas Area</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {locations.map((l) => (
@@ -655,7 +655,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
           )}
         </div>
         <div className="field">
-          <label>SPV Area (supervisor — bisa lebih dari satu)</label>
+          <label>Pengawas Area (bisa lebih dari satu)</label>
           <div className="pj-checklist">
             {employees.map((u) => (
               <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
@@ -670,11 +670,11 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
             {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
           </div>
           {(form.spv_user_ids || []).length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Belum ada SPV dipilih.</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Belum ada Pengawas dipilih.</div>
           )}
         </div>
         <div className="field">
-          <label>Divisi (filter visibilitas SPV)</label>
+          <label>Divisi (opsional, penanda area)</label>
           <select value={form.division_id} onChange={(e) => set('division_id', e.target.value)}>
             <option value="">— tanpa divisi —</option>
             {divisions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
