@@ -677,10 +677,33 @@ td.attendance { position: relative; }
                                 <th colspan="<?= $d ?>"></th>
                             </tr>
 
-                            <?php 
-                                $all = []; 
-                                foreach ($attendance['shift'] as $row){ 
+                            <?php
+                                $all = [];
+                                foreach ($attendance['shift'] as $row){
                                     $total_all_shift = 0;
+                                    $row_nums = [];
+                                    // Hitung dulu totalnya; shift yang tidak dipakai sama sekali di
+                                    // periode ini (mis. shift musiman/Ramadhan) tidak perlu ditampilkan.
+                                    foreach ($daterange['list'] as $d) {
+                                        $num = isset($day[$d][$row['code']]['num']) ? $day[$d][$row['code']]['num'] : 0;
+                                        $row_nums[$d] = $num;
+                                        $total_all_shift += $num;
+                                    }
+                                    foreach ($daterange['list'] as $d) {
+                                        $num = $row_nums[$d];
+                                        if(isset($all[$d]['num'])){
+                                            if($num != 0){
+                                                $all[$d]['num'] += $num;
+                                            }
+                                        }else{
+                                            if($num != 0){
+                                                $all[$d]['num'] = 1;
+                                            }else{
+                                                $all[$d]['num'] = 0;
+                                            }
+                                        }
+                                    }
+                                    if($total_all_shift == 0){ continue; }
                                 ?>
                                 <tr>
                                     <th colspan="2" style="background-color: #fff">
@@ -688,25 +711,8 @@ td.attendance { position: relative; }
                                         <small class="text-muted"><?= date('H:i', strtotime($row['start']))." - ".date('H:i', strtotime($row['end'])) ?></small>
                                     </th>
 
-                                    <?php 
-                                        foreach ($daterange['list'] as $d) { 
-                                            $num = isset($day[$d][$row['code']]['num']) ? $day[$d][$row['code']]['num'] : 0;
-                                            $total_all_shift += $num;
-                                            
-                                            if(isset($all[$d]['num'])){
-                                                if($num != 0){
-                                                    $all[$d]['num'] += $num;
-                                                }
-                                                
-                                            }else{
-                                                if($num != 0){
-                                                    $all[$d]['num'] = 1;
-                                                }else{
-                                                    $all[$d]['num'] = 0;
-                                                }
-                                            }
-                                    ?>
-                                        <td class="text-center" style="background-color: #fff"><?= $num ?></td>
+                                    <?php foreach ($daterange['list'] as $d) { ?>
+                                        <td class="text-center" style="background-color: #fff"><?= $row_nums[$d] ?></td>
                                     <?php } ?>
                                     <td style="border : 1px solid #999; background-color: #fff" class="text-center"><b><?= $total_all_shift ?></b></td>
                                 </tr>
