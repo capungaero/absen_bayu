@@ -451,7 +451,7 @@ def get_employee_map(conn, finger_ids, date, tunnel_port=None, db_config=None):
 
     query = """
         SELECT u.id as user_id, u.employee_code, u.first_name, u.last_name,
-               po.branch_id
+               u.jenis_kelamin, po.branch_id
         FROM users u
         JOIN position po ON po.id = u.position_id
         WHERE u.active = 1
