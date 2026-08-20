@@ -448,6 +448,10 @@ function RejectDecideModal({ row, onClose, onSaved, onSessionEnd }) {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (!approve && note.trim().length < 5) {
+      setError('Keterangan kenapa penolakan tidak diterima wajib diisi, minimal 5 karakter');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -480,8 +484,8 @@ function RejectDecideModal({ row, onClose, onSaved, onSessionEnd }) {
           </select>
         </div>
         <div className="field">
-          <label>Catatan (opsional)</label>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Alasan keputusan" />
+          <label>{approve ? 'Catatan (opsional)' : 'Keterangan kenapa penolakan tidak diterima (wajib)'}</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={approve ? 'Alasan keputusan' : 'Jelaskan kenapa penolakan PJ/SPV tidak diterima'} />
         </div>
         {!approve && (
           <p style={{ fontSize: 12, color: 'var(--muted)' }}>

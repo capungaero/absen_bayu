@@ -678,6 +678,9 @@ class Temuan extends CI_Controller {
         }
         $approve = !empty($p['approve']);
         $note    = trim((string)($p['note'] ?? ''));
+        if (!$approve && strlen($note) < 5) {
+            $this->_json(['status' => false, 'message' => 'Keterangan kenapa penolakan tidak diterima wajib diisi, minimal 5 karakter'], 422); return;
+        }
         $update  = [
             'reject_decision'      => $approve ? 'approved' : 'denied',
             'reject_decided_by'    => (int)$this->user['id'],
