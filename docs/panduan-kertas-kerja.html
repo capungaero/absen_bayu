@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panduan Kertas Kerja — E-ABSENSI Tiffany Houseware</title>
+<style>
+  :root{
+    --primary:#5b73e8; --primary-dark:#4058c9; --bg:#f7f8fb; --card:#ffffff;
+    --text:#2a2f3a; --muted:#6b7280; --border:#e5e7eb; --success:#22a06b; --warn:#e9a23b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+  header.hero{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;padding:40px 24px}
+  header.hero h1{margin:0 0 6px;font-size:26px}
+  header.hero p{margin:0;opacity:.9;font-size:14px}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px 60px}
+  nav.toc{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-top:-24px;box-shadow:0 4px 14px rgba(0,0,0,.06)}
+  nav.toc h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 10px}
+  nav.toc ol{margin:0;padding-left:20px}
+  nav.toc a{color:var(--primary-dark);text-decoration:none}
+  nav.toc a:hover{text-decoration:underline}
+  section{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:26px 28px;margin-top:22px}
+  section h2{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  section h2 .badge{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:14px;flex-shrink:0}
+  section > p.lede{color:var(--muted);margin:0 0 18px;font-size:14px}
+  .role-tag{display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:3px 10px;border-radius:999px;margin-bottom:14px}
+  .role-tag.admin{background:#eef0fe;color:var(--primary-dark)}
+  .role-tag.karyawan{background:#e8f7f0;color:var(--success)}
+  .role-tag.spv{background:#fdf3e3;color:#a56b0a}
+  ol.steps{margin:0;padding-left:22px}
+  ol.steps li{margin-bottom:14px}
+  ol.steps li:last-child{margin-bottom:0}
+  ol.steps b{color:var(--text)}
+  code{background:#f1f2f6;padding:1px 6px;border-radius:4px;font-size:13px;color:#c7254e}
+  .path{font-family:Consolas,Menlo,monospace;font-size:13px;background:#eef0f6;padding:8px 12px;border-radius:6px;margin:10px 0;display:inline-block}
+  .note{background:#fff8e6;border:1px solid #f2dfa5;border-radius:8px;padding:12px 16px;font-size:13.5px;margin-top:16px}
+  .note b{color:#a56b0a}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13.5px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:640px){.grid2{grid-template-columns:1fr}}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+  .flow .step{background:#eef0fe;color:var(--primary-dark);padding:6px 12px;border-radius:6px;font-size:13px;font-weight:600}
+  .flow .arrow{color:var(--muted)}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 0 10px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>📋 Panduan Fitur Kertas Kerja</h1>
+  <p>E-ABSENSI Tiffany Houseware — to-do list harian karyawan (versi tanpa screenshot)</p>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <h2>Daftar Isi</h2>
+    <ol>
+      <li><a href="#tentang">Apa itu Kertas Kerja</a></li>
+      <li><a href="#admin-setting">Admin — Menandai karyawan wajib isi</a></li>
+      <li><a href="#admin-spv">Admin — Menugaskan SPV</a></li>
+      <li><a href="#karyawan">Karyawan — Mengisi Kertas Kerja di HP</a></li>
+      <li><a href="#review">Admin / SPV — Melihat & menandai dibaca</a></li>
+      <li><a href="#faq">Pertanyaan Umum</a></li>
+    </ol>
+  </nav>
+
+  <section id="tentang">
+    <h2><span class="badge">i</span> Apa itu Kertas Kerja</h2>
+    <p class="lede">Ringkasan alur fitur secara keseluruhan.</p>
+    <p>Kertas Kerja adalah <b>to-do list harian</b> yang diisi karyawan lewat HP (aplikasi PWA), berisi daftar rencana tugas hari itu (checklist, bisa dicentang selesai/belum) plus catatan bebas. Menu ini <b>hanya muncul</b> untuk karyawan yang secara khusus ditandai "wajib isi" oleh admin — karyawan lain tidak akan melihat menu ini sama sekali.</p>
+    <div class="flow">
+      <span class="step">1. Admin tandai wajib</span><span class="arrow">→</span>
+      <span class="step">2. Admin tugaskan SPV</span><span class="arrow">→</span>
+      <span class="step">3. Karyawan isi tiap hari</span><span class="arrow">→</span>
+      <span class="step">4. Admin/SPV lihat & tandai dibaca</span>
+    </div>
+    <div class="note"><b>Catatan:</b> Kertas Kerja tidak melalui proses ACC/tolak seperti izin atau lembur — statusnya cuma dua: <b>Baru</b> (belum dibaca admin/SPV) atau <b>Sudah Dibaca</b>.</div>
+  </section>
+
+  <section id="admin-setting">
+    <h2><span class="badge">1</span> Menandai Karyawan Wajib Isi</h2>
+    <span class="role-tag admin">Admin / Admin Cabang</span>
+    <p class="lede">Sebelum karyawan bisa mengisi Kertas Kerja, admin harus menandainya dulu di sini.</p>
+    <div class="path">Menu atas → Master Data → Setting Kertas Kerja</div>
+    <ol class="steps">
+      <li>Login ke panel admin (<code>tiffany.my.id/absen</code>) sebagai admin atau admin cabang.</li>
+      <li>Buka menu <b>Master Data</b> di navbar atas, klik <b>Setting Kertas Kerja</b>.</li>
+      <li>(Khusus role admin) Pilih cabang dulu di dropdown atas kalau mau lihat karyawan cabang tertentu.</li>
+      <li>Halaman menampilkan daftar semua Mitra Kerja (karyawan) di cabang tersebut, lengkap dengan tombol geser (toggle) di kolom <b>"Wajib Isi Kertas Kerja"</b>.</li>
+      <li>Geser toggle ke posisi <b>ON</b> (biru) untuk karyawan yang wajib isi. Tersimpan otomatis — tidak perlu tombol simpan terpisah.</li>
+      <li>Geser ke posisi <b>OFF</b> kapan saja untuk mencabut kewajiban — menu Kertas Kerja langsung hilang dari HP karyawan itu.</li>
+    </ol>
+    <div class="note"><b>Catatan:</b> Perubahan berlaku langsung (real-time). Karyawan yang sedang membuka aplikasi perlu refresh halaman untuk melihat menu barunya muncul/hilang.</div>
+  </section>
+
+  <section id="admin-spv">
+    <h2><span class="badge">2</span> Menugaskan SPV (Pengawas)</h2>
+    <span class="role-tag admin">Admin saja</span>
+    <p class="lede">SPV hanya bisa melihat Kertas Kerja milik karyawan yang secara khusus ditugaskan kepadanya — bukan otomatis berdasarkan cabang. Panel ini hanya tampil untuk role Admin (bukan Admin Cabang).</p>
+    <div class="path">Master Data → Setting Kertas Kerja → panel "Penugasan SPV Kertas Kerja" (di bawah tabel karyawan)</div>
+    <ol class="steps">
+      <li>Di halaman Setting Kertas Kerja yang sama, scroll ke bawah sampai panel <b>Penugasan SPV Kertas Kerja</b>.</li>
+      <li>Pada dropdown <b>Pilih SPV</b>, cari dan pilih nama karyawan yang akan bertindak sebagai pengawas.</li>
+      <li>Pada dropdown <b>Pilih Mitra Kerja</b>, pilih karyawan yang akan diawasi orang tersebut.</li>
+      <li>Klik tombol <b>Tugaskan</b>. Baris baru langsung muncul di tabel daftar penugasan di bawahnya.</li>
+      <li>Satu SPV bisa ditugaskan ke banyak karyawan — ulangi langkah 2–4 untuk tiap karyawan yang perlu diawasi SPV tersebut.</li>
+      <li>Untuk mencabut penugasan, klik ikon <b>tempat sampah merah</b> di baris yang bersangkutan pada tabel penugasan.</li>
+    </ol>
+    <div class="note"><b>Catatan:</b> SPV di sini murni istilah "yang mengawasi Kertas Kerja" — bisa siapa saja, tidak harus punya jabatan Supervisor di sistem. Penugasan berlaku lintas cabang.</div>
+  </section>
+
+  <section id="karyawan">
+    <h2><span class="badge">3</span> Mengisi Kertas Kerja (Karyawan)</h2>
+    <span class="role-tag karyawan">Karyawan yang ditandai wajib</span>
+    <p class="lede">Dikerjakan lewat HP, di aplikasi absensi mobile (PWA) — bukan lewat komputer/web desktop.</p>
+    <div class="path">Buka <code>tiffany.my.id/absen/m</code> di HP → Home → Menu Cepat → Kertas Kerja</div>
+    <ol class="steps">
+      <li>Buka aplikasi absensi di HP (link/PWA yang biasa dipakai untuk cek absensi, ajukan izin, dsb).</li>
+      <li>Di halaman <b>Home</b>, cari bagian <b>Menu Cepat</b> (kumpulan ikon di bawah ringkasan kehadiran). Kalau sudah ditandai wajib oleh admin, akan ada ikon <b>Kertas Kerja</b> (ikon centang/checklist).</li>
+      <li>Ketuk ikon <b>Kertas Kerja</b> untuk masuk ke halaman pengisian.</li>
+      <li><b>Tanggal</b> otomatis terisi tanggal hari ini (tidak bisa diubah ke tanggal masa depan).</li>
+      <li>Di bagian <b>Checklist Tugas</b>, ketik rencana tugas pertama di kolom "Tugas ke-1".</li>
+      <li>Ketuk <b>+ Tambah Item</b> untuk menambah baris tugas baru. Ulangi sesuai kebutuhan (tidak dibatasi jumlahnya).</li>
+      <li>Centang kotak di sebelah kiri tugas yang <b>sudah selesai dikerjakan</b> (boleh dicentang belakangan, tidak harus saat mengetik).</li>
+      <li>Ketuk ikon <b>silang (×)</b> di sebelah kanan baris untuk menghapus item yang salah/tidak jadi.</li>
+      <li>Isi kolom <b>Catatan</b> di bawah checklist kalau ada info tambahan (opsional, boleh dikosongkan).</li>
+      <li>Ketuk tombol <b>Simpan Kertas Kerja</b> di paling bawah. Muncul notifikasi sukses dan halaman otomatis reload.</li>
+      <li>Riwayat pengisian hari-hari sebelumnya tampil di bagian <b>Riwayat</b> di bawah form, dengan status <b>Baru</b> (belum dicek admin/SPV) atau <b>Sudah Dibaca</b>.</li>
+    </ol>
+    <div class="note"><b>Boleh isi ulang di hari yang sama:</b> Kalau kembali membuka menu Kertas Kerja di hari yang sama, form akan otomatis terisi data yang tadi disimpan (tombol berubah jadi <b>"Perbarui Kertas Kerja"</b>). Mengedit dan menyimpan ulang akan <b>menimpa</b> isian sebelumnya (bukan menambah baris baru), dan statusnya kembali jadi <b>Baru</b> supaya admin/SPV tahu ada perubahan.</div>
+  </section>
+
+  <section id="review">
+    <h2><span class="badge">4</span> Melihat & Menandai Dibaca (Admin / SPV)</h2>
+    <span class="role-tag admin">Admin / Admin Cabang</span>
+    <span class="role-tag spv">SPV yang ditugaskan</span>
+    <p class="lede">Siapa yang bisa lihat apa, tergantung role dan penugasan:</p>
+    <table>
+      <tr><th>Role</th><th>Yang terlihat</th></tr>
+      <tr><td>Admin</td><td>Semua Kertas Kerja, semua cabang</td></tr>
+      <tr><td>Admin Cabang</td><td>Kertas Kerja karyawan di cabangnya saja</td></tr>
+      <tr><td>SPV</td><td>Hanya karyawan yang ditugaskan kepadanya (lihat bagian 2)</td></tr>
+    </table>
+    <div class="path" style="margin-top:16px">Menu atas → Laporan → Kertas Kerja</div>
+    <ol class="steps">
+      <li>Login ke panel admin, buka menu <b>Laporan</b> di navbar atas, klik <b>Kertas Kerja</b>.</li>
+      <li>Angka merah di sebelah menu (kalau ada) menunjukkan jumlah Kertas Kerja yang <b>belum dibaca</b>.</li>
+      <li>(Khusus admin) Bisa filter berdasarkan cabang di dropdown atas tabel.</li>
+      <li>Tabel menampilkan: nama karyawan, tanggal, jumlah item selesai/total, dan status (Baru / Sudah Dibaca).</li>
+      <li>Klik ikon <b>kaca pembesar</b> di baris yang mau dilihat detailnya.</li>
+      <li>Halaman detail menampilkan checklist lengkap (item selesai ditandai centang hijau + coret, yang belum ditandai kotak kosong) beserta catatan karyawan.</li>
+      <li>Kalau statusnya masih <b>Baru</b>, ketuk tombol <b>Tandai Dibaca</b>. Status berubah jadi Sudah Dibaca dan angka unread di navbar berkurang.</li>
+    </ol>
+    <div class="note"><b>Catatan:</b> Menandai dibaca tidak mengunci atau menyetujui isinya — cuma penanda bahwa admin/SPV sudah melihat. Tidak ada proses ACC/tolak untuk Kertas Kerja.</div>
+  </section>
+
+  <section id="faq">
+    <h2><span class="badge">?</span> Pertanyaan Umum</h2>
+    <ol class="steps">
+      <li><b>Karyawan saya tidak lihat menu Kertas Kerja di HP-nya, kenapa?</b><br>Pastikan sudah ditandai wajib di <i>Setting Kertas Kerja</i> (bagian 1), dan karyawan sudah refresh/buka ulang aplikasinya setelah ditandai.</li>
+      <li><b>Bisa isi Kertas Kerja untuk tanggal kemarin yang terlewat?</b><br>Tidak. Form hanya untuk tanggal hari ini berjalan; tidak ada opsi mengisi tanggal lampau.</li>
+      <li><b>SPV saya tidak lihat Kertas Kerja karyawan tertentu, kenapa?</b><br>Cek penugasan di <i>Setting Kertas Kerja → Penugasan SPV</i> (bagian 2) — SPV cuma bisa lihat karyawan yang eksplisit ditugaskan kepadanya, tidak otomatis se-cabang.</li>
+      <li><b>Kalau kewajiban dicabut (toggle OFF), riwayat pengisian karyawan itu hilang?</b><br>Tidak, data lama tetap tersimpan dan tetap bisa dilihat admin/SPV di halaman Laporan → Kertas Kerja. Hanya menu di HP karyawan yang hilang, sehingga tidak bisa isi baru lagi.</li>
+    </ol>
+  </section>
+
+  <footer>Panduan internal — E-ABSENSI Tiffany Houseware · Disimpan lokal, tidak dipublikasikan ke server</footer>
+</div>
+</body>
+</html>
