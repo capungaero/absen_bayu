@@ -2688,13 +2688,19 @@ class Presence extends CI_Controller{
 				}
 
 				$friday = get_dayname($date) == 'Jumat';
+				// Karyawati tidak sholat Jumat -- tap Jumat-nya masuk dzuhur biasa
+				// (paritas Python sync_pray_machine, 20 Agu 2026). Tanpa ini tiap
+				// jalur sync saling menimpa kolom friday vs dzuhur utk karyawati.
+				$is_female = isset($employee['jenis_kelamin']) && $employee['jenis_kelamin'] === 'P';
 				sort($row['time']);
 				foreach($row['time'] as $time){
 					$d_day = $date.' '.$time;
 					$assigned = false; // satu tap hanya boleh masuk satu prayer slot
 					foreach($prayer as $pray){
 						if($assigned){ break; }
-						if(($friday && $pray == 'dzuhur') || (!$friday && $pray == 'friday')){
+						if(($friday && $pray == 'dzuhur' && !$is_female)
+							|| (!$friday && $pray == 'friday')
+							|| ($friday && $pray == 'friday' && $is_female)){
 							continue;
 						}
 
@@ -2768,10 +2774,33 @@ class Presence extends CI_Controller{
 					$p_late = isset($pray_data[$pray.'_time_late']) ? (int)$pray_data[$pray.'_time_late'] : 0;
 
 					if($is_manual){
-						if(empty($existing[$pray.'_time_in']) && !empty($p_in)){
+						$cur_in  = $existing[$pray.'_time_in'];
+						$cur_out = $existing[$pray.'_time_out'];
+						if(empty($cur_in) && !empty($p_in)){
+							// Pasangan kosong + mesin punya in → isi lengkap (perilaku lama).
 							$update[$pray.'_time_in']   = $p_in;
 							$update[$pray.'_time_out']  = !empty($p_out) ? $p_out : null;
 							$update[$pray.'_time_late'] = $p_late;
+						} elseif(!empty($cur_in) && empty($cur_out) && !empty($p_out)
+						         && !in_array($pray.'_time_out', $cleared, true)){
+							// FIX 19 Agu 2026: in sudah terisi (manual/sync lama) tapi out
+							// kosong padahal mesin punya scan keluar → isi out + hitung ulang
+							// late. Nilai in manual TIDAK pernah ditimpa/di-clear.
+							$out_t = date('H:i:s', strtotime($p_out));
+							$in_t  = date('H:i:s', strtotime($cur_in));
+							if($out_t > $in_t){
+								$update[$pray.'_time_out'] = $p_out;
+								$range = isset($branch[$pray.'_pray_time_range']) ? (int)$branch[$pray.'_pray_time_range'] : 0;
+								$limit = date('H:i:s', strtotime($in_t.' +'.$range.' minutes'));
+								$p_out_win = isset($branch[$pray.'_pray_time_out']) ? $branch[$pray.'_pray_time_out'] : '';
+								if($limit <= $p_out_win && $out_t > $limit){
+									$dif_time  = (substr($out_t, 0, 2) * 60) + substr($out_t, 3, 2);
+									$dif_limit = (substr($limit, 0, 2) * 60) + substr($limit, 3, 2);
+									$update[$pray.'_time_late'] = $dif_time - $dif_limit;
+								} else {
+									$update[$pray.'_time_late'] = 0;
+								}
+							}
 						}
 						continue;
 					}

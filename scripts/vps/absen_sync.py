@@ -545,6 +545,46 @@ ALADHAN_TO_PRAYER = {
 # Cache for prayer times (avoid repeated API calls)
 _prayer_times_cache = {}
 
+# Window sholat per-cabang dari tabel branch (sinkron dgn PHP _import_pray_sheet,
+# 20 Agu 2026). Kalau terisi, classify_prayer_scan pakai ini; Aladhan API jadi
+# fallback saja. Menghilangkan inkonsistensi klasifikasi PHP vs Python (dulu
+# tap sama bisa beda kolom tergantung jalur sync mana yang jalan terakhir).
+_branch_windows = None
+
+def load_branch_prayer_windows(conn):
+    """Muat window sholat cabang aktif pertama. Return dict atau None."""
+    global _branch_windows
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM branch WHERE is_active=1 ORDER BY id LIMIT 1")
+            b = cur.fetchone()
+        if not b:
+            _branch_windows = None
+            return None
+        def t(v):
+            if v is None:
+                return None
+            s = str(v)
+            if len(s.split(':')) == 2:
+                s += ':00'
+            return s
+        wins = {}
+        for name in ('subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'):
+            start = t(b.get(name + '_pray_time_in'))
+            end = t(b.get(name + '_pray_time_out'))
+            rng = b.get(name + '_pray_time_range')
+            if start and end:
+                wins[name] = {'start': start, 'end': end,
+                              'range': int(rng) if rng else None}
+        _branch_windows = wins or None
+        if _branch_windows:
+            print(f"  \U0001F54C Window sholat dari config cabang id {b.get('id')} ({len(wins)} window)")
+        return _branch_windows
+    except Exception as e:
+        print(f"  \u26A0\uFE0F Gagal muat window cabang, fallback Aladhan: {e}")
+        _branch_windows = None
+        return None
+
 
 def fetch_prayer_times(date_str=None):
     """Fetch prayer times for Payakumbuh from Aladhan API.
@@ -646,9 +686,25 @@ def classify_prayer_scan(time_str, date_str):
         return datetime.strptime(val, "%H:%M:%S").time()
     
     t = parse_t(time_str)
-    windows = fetch_prayer_times(date_str)
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     is_friday = dt.weekday() == 4
+
+    # Window cabang (kalau dimuat) menang atas Aladhan -- urutan cek sama
+    # dgn PHP: friday duluan di hari Jumat, sisanya urut waktu.
+    if _branch_windows:
+        if is_friday and 'friday' in _branch_windows:
+            w = _branch_windows['friday']
+            if w['start'] <= time_str <= w['end']:
+                return 'jumat'
+        for name in ('subuh', 'dzuhur', 'ashar', 'maghrib', 'isha'):
+            if is_friday and name == 'dzuhur':
+                continue
+            w = _branch_windows.get(name)
+            if w and w['start'] <= time_str <= w['end']:
+                return name
+        return None
+
+    windows = fetch_prayer_times(date_str)
     
     # On Friday: check jumat window FIRST (narrower, male-specific)
     if is_friday:
@@ -953,6 +1009,9 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
     period_from, period_to = get_payroll_period(today)
     cutoff = min(today, period_to)
 
+    # Window sholat per-cabang (paritas PHP) -- dimuat sekali per run.
+    load_branch_prayer_windows(conn)
+
     # Group logs by (finger_id, date) within the period
     logs_by_key = {}
     for finger_id, timestamp, date_str, time_str in logs:
@@ -998,11 +1057,14 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
 
             if prayer:
                 if prayer == 'jumat':
-                    max_min = FRIDAY_MAX_MINUTES if jenis_kelamin != 'P' else PRAYER_MAX_MINUTES
                     col = 'friday' if jenis_kelamin != 'P' else 'dzuhur'
+                    max_min = FRIDAY_MAX_MINUTES if col == 'friday' else PRAYER_MAX_MINUTES
                 else:
-                    max_min = PRAYER_MAX_MINUTES
                     col = prayer
+                    max_min = PRAYER_MAX_MINUTES
+                # Range per-cabang menang atas konstanta (paritas PHP).
+                if _branch_windows and _branch_windows.get(col, {}).get('range'):
+                    max_min = _branch_windows[col]['range']
 
                 if col not in day_prayers:
                     day_prayers[col] = {'in': None, 'out': None, 'max_min': max_min}
