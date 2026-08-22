@@ -45,7 +45,12 @@
                                     </tr>
 
                                     <tr>
-                                        <td><i class="dripicons-clock"></i> Lama Jam Lembur<br><b><?= $overtime['overtime_hour'] ?> Jam</b></td>
+                                        <td><i class="dripicons-clock"></i> Lama Jam Lembur<br>
+                                            <b><?= $overtime['overtime_hour'] ?> Jam</b>
+                                            <?php if($overtime['overtime_hour_requested'] !== null && $overtime['overtime_hour_requested'] != ''){ ?>
+                                                <br><small class="text-muted"><s>Diajukan: <?= $overtime['overtime_hour_requested'] ?> Jam</s> (disetujui dengan catatan)</small>
+                                            <?php } ?>
+                                        </td>
                                         <td><i class="dripicons-store"></i> Cabang<br><b><?= $overtime['branch_code']." / ".$overtime['branch_name'] ?></b></td>
                                     </tr>
 
@@ -76,8 +81,9 @@
                             <div class="col-md-7 text-end">
                                 <?php if($overtime['overtime_status'] == 'pending'){ ?>
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalApprove" class="btn btn-success text-end bodyStatus"><i class="fa fa-check-circle"></i> Setujui</a> &nbsp;
+                                    <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalApproveNote" class="btn btn-outline-success text-end bodyStatus"><i class="fa fa-edit"></i> Setujui dengan Catatan</a> &nbsp;
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalDeny" class="btn btn-outline-danger text-end bodyStatus"><i class="fa fa-ban"></i> Tolak</a>
-                                   
+
                                 <?php }else if($overtime['overtime_status'] == 'approve'){ ?>
                                     <a href="javascript:void(0)" id="btnCancel" class="btn btn-outline-danger"><i class="fa fa-ban"></i> Batalkan Pengajuan Lembur</a>
                                 <?php } ?>
@@ -99,6 +105,13 @@
                                             $status = 'success';
                                             $title  = '<b><i class="fa fa-check-circle"></i> Pengajuan diterima</b>';
                                             $message = 'Pengajuan lembur berhasil diterima';
+                                            if(!empty($overtime['approve_note'])){
+                                                $title  = '<b><i class="fa fa-check-circle"></i> Pengajuan diterima dengan catatan</b>';
+                                                $message = 'Keterangan : <br>'.nl2br(htmlspecialchars($overtime['approve_note']));
+                                                if($overtime['overtime_hour_requested'] !== null && $overtime['overtime_hour_requested'] != ''){
+                                                    $message .= '<br><small class="text-muted">Jam diajukan '.$overtime['overtime_hour_requested'].' Jam &rarr; disetujui '.$overtime['overtime_hour'].' Jam</small>';
+                                                }
+                                            }
 
                                         }else{
                                             $status = 'warning';
@@ -217,10 +230,79 @@
 </div>
 </form>
 
+<form id="formApproveNote">
+<input type="hidden" name="status" value="approve">
+<div class="modal fade" id="modalApproveNote" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" role="dialog" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+<input type="hidden" name="<?php echo $this->security->get_csrf_token_name() ?>" value="<?php echo $this->security->get_csrf_hash() ?>">
+<input type="hidden" name="transaction_id" value="<?= $overtime['id'] ?>">
+
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success">
+                <h5 class="modal-title" id="staticBackdropLabel" style="color: #fff">Setujui dengan Catatan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <img src="<?= base_url('assets/images/icon/success.png') ?>" class="img-fluid">
+                    </div>
+                    <div class="col-md-9">
+                        <h6>Diajukan : <b><?= $overtime['overtime_hour'] ?> Jam</b></h6>
+
+                        <label><b>Jam Disetujui</b></label>
+                        <input type="number" class="form-control" name="approved_hour" required="" min="0.5" step="0.5" value="<?= $overtime['overtime_hour'] ?>" placeholder="Contoh: 2">
+                        <br>
+                        <label><b>Keterangan</b></label>
+                        <textarea class="form-control" name="approve_note" required="" placeholder="Alasan jam disetujui berbeda dari pengajuan"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
+                <button class="btn btn-success" id="btnApproveNote">Setujui</button>
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+
 <?php } ?>
 
 <script type="text/javascript">
 <?php if($overtime['overtime_status'] == 'pending'){ ?>
+    $(document).on('submit', '#formApproveNote', function(e){
+        e.preventDefault();
+        var btn = $('#btnApproveNote');
+        var formData = new FormData(this);
+
+        $.ajax({
+            url         : "<?= site_url('change_status_overtime/'.$overtime['id']) ?>",
+            dataType    : "json",
+            method      : "POST",
+            data        : formData,
+            processData : false,
+            contentType : false,
+            beforeSend  : function(){
+                btn.html(show_loading()).attr('disabled', 'disabled');
+            },
+            success : function(res){
+                if(res.status){
+                    $('#modalApproveNote').modal('hide');
+                    window.location.reload();
+                }else{
+                    alert(res.message);
+                }
+            },
+            complete : function(){
+                btn.html('Setujui').removeAttr('disabled');
+            }
+        });
+
+        return false;
+    });
+
     $(document).on('submit', '#formDeny', function(e){
         e.preventDefault();
         var status  = true;

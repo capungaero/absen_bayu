@@ -18,7 +18,7 @@ Class Overtime_model extends CI_Model{
    }
 
    public function get_detail($key, $val = '', $limit = '', $order = array()){
-      $this->db->select('overtime.id, overtime.id AS overtime_id, overtime.user_id, overtime_proof, overtime_hour, overtime_date, overtime_status, overtime.created_at, overtime.confirm_at, overtime.updated_at, overtime.deleted_at, reject_reason,
+      $this->db->select('overtime.id, overtime.id AS overtime_id, overtime.user_id, overtime_proof, overtime_hour, overtime_hour_requested, approve_note, overtime_date, overtime_status, overtime.created_at, overtime.confirm_at, overtime.updated_at, overtime.deleted_at, reject_reason,
            DATE_FORMAT(overtime.created_at, "%d %M %Y %H:%i") AS created_at_string,
            DATE_FORMAT(overtime.updated_at, "%d %M %Y %H:%i") AS updated_at_string,
            users.first_name, users.employee_code, branch_name, branch_code, position_name
@@ -139,7 +139,7 @@ Class Overtime_model extends CI_Model{
       $dt = $this->datatables->init();
 
       if(empty($find)){
-         $dt->select('overtime.id, overtime.id AS overtime_id, overtime.user_id, overtime_proof, overtime_hour, overtime_date, overtime_status, overtime.created_at, overtime.confirm_at, overtime.updated_at, overtime.deleted_at,
+         $dt->select('overtime.id, overtime.id AS overtime_id, overtime.user_id, overtime_proof, overtime_hour, overtime_hour_requested, approve_note, reject_reason, overtime_date, overtime_status, overtime.created_at, overtime.confirm_at, overtime.updated_at, overtime.deleted_at,
            DATE_FORMAT(overtime.created_at, "%d %M %Y %H:%i") AS created_at_string,
            DATE_FORMAT(overtime.updated_at, "%d %M %Y %H:%i") AS updated_at_string,
            users.first_name, users.employee_code, branch_name, branch_code, position_name
@@ -150,7 +150,7 @@ Class Overtime_model extends CI_Model{
 
       }else{
 
-         $dt->select('overtime.id, overtime.id AS overtime_id, overtime.user_id, overtime_proof, overtime_hour, overtime_date, overtime_status, overtime.created_at, overtime.confirm_at, overtime.updated_at, overtime.deleted_at,
+         $dt->select('overtime.id, overtime.id AS overtime_id, overtime.user_id, overtime_proof, overtime_hour, overtime_hour_requested, approve_note, reject_reason, overtime_date, overtime_status, overtime.created_at, overtime.confirm_at, overtime.updated_at, overtime.deleted_at,
            DATE_FORMAT(overtime.created_at, "%d %M %Y %H:%i") AS created_at_string,
            DATE_FORMAT(overtime.updated_at, "%d %M %Y %H:%i") AS updated_at_string,
            users.first_name, users.employee_code, branch_name, branch_code, position_name
@@ -161,7 +161,7 @@ Class Overtime_model extends CI_Model{
                ->join('position', 'position.id = users.position_id')
                ->join('branch', 'branch.id = position.branch_id');
       }
-      
+
       $dt->style(array(
          'class' => 'table table-striped table-bordered',
           ))
@@ -173,7 +173,11 @@ Class Overtime_model extends CI_Model{
          })
          ->column('<b>JABATAN</b>', 'position_name')
          ->column('<b>LAMA LEMBUR</b>', 'overtime_hour', function($data, $row){
-            return $row['overtime_hour']." Jam";
+            $txt = $row['overtime_hour']." Jam";
+            if($row['overtime_hour_requested'] !== null && $row['overtime_hour_requested'] != ''){
+               $txt .= "<br><small class='text-muted'><s>diajukan ".$row['overtime_hour_requested']." Jam</s></small>";
+            }
+            return $txt;
          })
          ->column('<b>TANGGAL</b>', 'overtime_hour', function($data, $row){
             return indonesian_date($row['overtime_date']);
@@ -183,6 +187,15 @@ Class Overtime_model extends CI_Model{
          })
          ->column('<b>STATUS</b>', 'overtime_status', function($data, $row){
             return transaction_status($row['overtime_status']);
+         })
+         ->column('<b>KETERANGAN</b>', 'approve_note', function($data, $row){
+            if($row['approve_note'] != ''){
+               return "<small><i class='fa fa-sticky-note text-warning'></i> ".nl2br(htmlspecialchars($row['approve_note']))."</small>";
+            }
+            if($row['overtime_status'] == 'deny' && !empty($row['reject_reason'])){
+               return "<small class='text-muted'>".nl2br(htmlspecialchars($row['reject_reason']))."</small>";
+            }
+            return "<small class='text-muted'>-</small>";
          })
          ->column('<center><i class="fa fa-cog"></i></center>', 'overtime_id', function($data, $row){
             return "<center><a class='btn btn-primary btn-sm' href='".site_url('hr/overtime/acc/detail/'.$row['id'])."'><i class='fa fa-search'></i></a></center>";

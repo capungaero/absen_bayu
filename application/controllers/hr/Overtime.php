@@ -109,15 +109,25 @@ class Overtime extends CI_Controller{
 				        $config['width'] = 800;
 				        $this->load->library('image_lib', $config);
 				        if ($this->image_lib->resize()) {
-				        	$inserted = $skipped = 0;
+				        	$inserted = 0;
+				        	$skipped_list = [];
 				        	$this->db->trans_begin();
 				        	foreach($rows as $row){
-				        		$query = $this->overtime->get_detail([
-									'user_id' => $row['user_id'],
-									'overtime_date' => $row['overtime_date']
-								]);
-								if($query->num_rows() > 0 && in_array($query->row_array()['overtime_status'], ['approve', 'pending'])){
-									$skipped++;
+				        		// Satu pengajuan aktif (pending/approve) per karyawan per
+				        		// tanggal -- cek semua baris via where_in (dulu cuma baris
+				        		// pertama yang dicek statusnya). Backstop terakhir: unique
+				        		// index uniq_active_overtime di DB.
+				        		$dup = $this->db->where('user_id', $row['user_id'])
+				        						->where('overtime_date', $row['overtime_date'])
+				        						->where_in('overtime_status', ['approve', 'pending'])
+				        						->where('deleted_at IS NULL', null, false)
+				        						->count_all_results('overtime');
+								if($dup > 0){
+									$emp = $this->db->select('first_name, last_name')
+													->where('id', $row['user_id'])
+													->get('users')->row_array();
+									$nama = $emp ? trim($emp['first_name'].' '.($emp['last_name'] ?? '')) : ('ID '.$row['user_id']);
+									$skipped_list[] = 'a.n. '.$nama.' tanggal '.$row['overtime_date'];
 									continue;
 								}
 					        	$this->overtime->insert([
@@ -132,9 +142,11 @@ class Overtime extends CI_Controller{
 
 							if($this->db->trans_status()){
 								$this->db->trans_commit();
+								$warn = empty($skipped_list) ? ''
+									: ' Pengajuan lembur '.implode('; ', $skipped_list).' sudah ada, dilewati.';
 								$res = [
 									'status'  => true,
-									'message' => 'Data berhasil dimasukkan. Tersimpan: '.$inserted.', dilewati karena sudah ada: '.$skipped.'.'
+									'message' => 'Data berhasil dimasukkan. Tersimpan: '.$inserted.'.'.$warn
 								];
 
 							}else{
@@ -308,12 +320,38 @@ class Overtime extends CI_Controller{
 			$p  = $this->input->post();
 
 			if($tr->num_rows() > 0 && in_array($p['status'], ['approve', 'deny'])){
+				$row = $tr->row_array();
 				$this->db->trans_begin();
 				$data = [
 					'overtime_status' => $p['status'],
 					'confirm_at'	  => date('Y-m-d H:i:s'),
 					'reject_reason'   => $p['status'] == 'deny' ? $p['reject_reason'] : ''
 				];
+
+				// "Setujui dengan catatan": admin bisa mengubah jam yang disetujui
+				// (mis. diajukan 5 jam, di-acc 2 jam) + wajib isi keterangan.
+				// Jam asli pengajuan disimpan di overtime_hour_requested supaya
+				// tetap terlihat; payroll membaca overtime_hour (nilai final).
+				if($p['status'] == 'approve' && isset($p['approved_hour']) && trim($p['approved_hour']) !== ''){
+					$approved_hour = str_replace(',', '.', trim($p['approved_hour']));
+					$approve_note  = isset($p['approve_note']) ? trim($p['approve_note']) : '';
+					if(!is_numeric($approved_hour) || $approved_hour <= 0){
+						echo json_encode(['status' => false, 'message' => 'Jam disetujui harus angka lebih dari 0']);
+						$this->db->trans_rollback();
+						return;
+					}
+					if((float)$approved_hour != (float)$row['overtime_hour'] && $approve_note === ''){
+						echo json_encode(['status' => false, 'message' => 'Keterangan wajib diisi saat jam disetujui berbeda dari pengajuan']);
+						$this->db->trans_rollback();
+						return;
+					}
+					if((float)$approved_hour != (float)$row['overtime_hour']){
+						$data['overtime_hour_requested'] = $row['overtime_hour'];
+						$data['overtime_hour'] = (float)$approved_hour;
+					}
+					$data['approve_note'] = $approve_note;
+				}
+
 				$this->overtime->update($data, $overtime_id);
 
 				if($this->db->trans_status()){

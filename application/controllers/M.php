@@ -406,10 +406,19 @@ class M extends CI_Controller {
         $user_id = $this->userdata->user_id;
         $date    = date('Y-m-d', strtotime($p['overtime_date']));
 
-        // Cegah duplikat lembur (sudah ada yang pending/approve di tanggal sama)
-        $dup = $this->overtime->get_detail(['user_id' => $user_id, 'overtime_date' => $date]);
-        if ($dup->num_rows() > 0 && in_array($dup->row_array()['overtime_status'], ['approve', 'pending'])) {
-            return $this->_json(['status' => false, 'message' => 'Lembur untuk tanggal ini sudah pernah diajukan.']);
+        // Cegah duplikat lembur: SATU pengajuan aktif (pending/approve) per
+        // karyawan per tanggal, jalur mana pun (manual maupun auto-sync lacak).
+        // Cek semua baris via where_in (dulu cuma baris pertama yang dicek --
+        // deny di urutan pertama bisa meloloskan pending di urutan berikutnya).
+        // Backstop terakhir: unique index uniq_active_overtime di DB.
+        $dup = $this->db->where('user_id', $user_id)
+                        ->where('overtime_date', $date)
+                        ->where_in('overtime_status', ['approve', 'pending'])
+                        ->where('deleted_at IS NULL', null, false)
+                        ->count_all_results('overtime');
+        if ($dup > 0) {
+            $nama = trim($this->userdata->first_name.' '.($this->userdata->last_name ?? ''));
+            return $this->_json(['status' => false, 'message' => 'Pengajuan lembur a.n. '.$nama.' untuk tanggal '.$date.' sudah ada.']);
         }
 
         if (empty($_FILES['overtime_proof']['name'])) {

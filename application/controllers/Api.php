@@ -464,9 +464,15 @@ class Api extends CI_Controller {
         if($this->form_validation->run() != TRUE){ $this->_json(['status'=>false,'message'=>strip_tags(validation_errors())]); return; }
 
         $date = date('Y-m-d', strtotime($p['overtime_date']));
-        $dup = $this->overtime->get_detail(['user_id'=>$user_id, 'overtime_date'=>$date]);
-        if($dup->num_rows() > 0 && in_array($dup->row_array()['overtime_status'], ['approve','pending'])){
-            $this->_json(['status'=>false,'message'=>'Lembur untuk tanggal ini sudah pernah diajukan.']); return;
+        // Satu pengajuan aktif per karyawan per tanggal (paritas M.php; backstop
+        // terakhir: unique index uniq_active_overtime di DB).
+        $dup = $this->db->where('user_id', $user_id)->where('overtime_date', $date)
+            ->where_in('overtime_status', ['approve','pending'])
+            ->where('deleted_at IS NULL', null, false)
+            ->count_all_results('overtime');
+        if($dup > 0){
+            $nama = trim(($this->user['first_name'] ?? '').' '.($this->user['last_name'] ?? ''));
+            $this->_json(['status'=>false,'message'=>'Pengajuan lembur a.n. '.$nama.' untuk tanggal '.$date.' sudah ada.']); return;
         }
         if(empty($_FILES['overtime_proof']['name'])){ $this->_json(['status'=>false,'message'=>'Foto bukti lembur wajib diunggah.']); return; }
 
