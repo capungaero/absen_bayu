@@ -40,7 +40,10 @@ DB_CONFIG = {
     'host': '127.0.0.1',
     'port': 3306,
     'user': 'absen_copy',
-    'password': 'bec55489de1d91636660af70850284ff8512c733',
+    # Password TIDAK di-commit (sempat bocor ke git 22 Agu 2026 -> sudah
+    # dirotasi 23 Agu). Nilai asli hanya di kopi server VPS
+    # (/home/santai/.hermes/scripts/absen_sync.py) & /root/.absen_copy_pass.
+    'password': os.environ.get('ABSEN_DB_PASS', 'GANTI-DI-SERVER'),
     'database': 'absen_copy',
     'charset': 'utf8mb4',
 }
