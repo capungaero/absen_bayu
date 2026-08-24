@@ -84,8 +84,6 @@ export default function Report({ me, onSessionEnd }) {
     }
   };
 
-  const sortArrow = (key) => (sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼');
-
   const canExportExcel = me.is_admin || me.is_inspector;
   const qs = `from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
   const excelUrl = `${API}/report_excel?${qs}`;
@@ -138,13 +136,13 @@ export default function Report({ me, onSessionEnd }) {
       )}
 
       <div className="admin-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>🥧 Distribusi Temuan</h3>
-          <div className="filter-row" style={{ margin: 0 }}>
+          <div className="segmented">
             {CHART_DIMENSIONS.map((d) => (
               <button
                 key={d.key}
-                className={`btn btn-sm ${chartDim === d.key ? 'btn-primary' : 'btn-outline'}`}
+                className={chartDim === d.key ? 'active' : ''}
                 onClick={() => setChartDim(d.key)}
               >
                 {d.label}
@@ -162,23 +160,27 @@ export default function Report({ me, onSessionEnd }) {
             <thead>
               <tr>
                 {SORT_COLUMNS.map((c) => (
-                  <th key={c.key} onClick={() => toggleSort(c.key)} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                    {c.label}{sortArrow(c.key)}
+                  <th
+                    key={c.key}
+                    className={`sortable${c.key === 'total' ? ' num' : ''}`}
+                    onClick={() => toggleSort(c.key)}
+                  >
+                    {c.label}{sortKey === c.key && <span className="arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
                   </th>
                 ))}
-                <th>Cabang</th><th>Selesai Tepat Waktu</th><th>Tidak Selesai</th>
+                <th>Cabang</th><th className="num">Selesai Tepat Waktu</th><th className="num">Tidak Selesai</th>
               </tr>
             </thead>
             <tbody>
               {sortedSummaryRows.map((s) => (
                 <tr key={s.location_id}>
-                  <td>{s.location_name}</td>
+                  <td className="cell-primary">{s.location_name}</td>
                   <td>{s.pj_name}</td>
                   <td>{s.spv_name}</td>
-                  <td>{s.total}</td>
-                  <td>{s.branch_name}</td>
-                  <td>{s.selesai_tepat_waktu}</td>
-                  <td>{s.tidak_selesai}</td>
+                  <td className="num">{s.total}</td>
+                  <td className="cell-muted nowrap">{s.branch_name}</td>
+                  <td className="num" style={{ color: 'var(--green)', fontWeight: 600 }}>{s.selesai_tepat_waktu}</td>
+                  <td className="num" style={{ color: s.tidak_selesai > 0 ? 'var(--red)' : 'var(--muted)', fontWeight: 600 }}>{s.tidak_selesai}</td>
                 </tr>
               ))}
               {summaryRows.length === 0 && !busy && (
@@ -190,7 +192,7 @@ export default function Report({ me, onSessionEnd }) {
       </div>
 
       <div className="admin-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>📄 Detail Temuan</h3>
           {canExportExcel && (
             <a className="btn btn-outline btn-sm" href={detailExcelUrl}>⬇ Unduh Excel Detail</a>
@@ -200,8 +202,8 @@ export default function Report({ me, onSessionEnd }) {
           <table className="loc-table report-table">
             <thead>
               <tr>
-                <th>Tanggal</th><th>Jenis</th><th>Kode Area / Mitra</th><th>Cabang</th><th>Temuan</th>
-                <th>Inspector</th><th>Status</th><th>Terlambat</th><th>Penanganan</th>
+                <th className="nowrap">Tanggal</th><th>Jenis</th><th>Kode Area / Mitra</th><th className="nowrap">Cabang</th><th>Temuan</th>
+                <th>Inspector</th><th className="nowrap">Status</th><th className="nowrap">Terlambat</th><th>Penanganan</th>
               </tr>
             </thead>
             <tbody>

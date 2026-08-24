@@ -109,8 +109,9 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   background: var(--card); border-radius: var(--radius);
   padding: 14px 12px; text-align: center;
   border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
 }
-.summary-card .num { font-size: 26px; font-weight: 700; }
+.summary-card .num { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .summary-card .lbl { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .summary-card.s-baru .num { color: var(--red); }
 .summary-card.s-dikerjakan .num { color: var(--amber); }
@@ -121,6 +122,17 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .filter-row select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }
+
+.segmented {
+  display: inline-flex; background: #f1f5f9; border-radius: 9px; padding: 3px; gap: 2px;
+}
+.segmented button {
+  background: none; border: none; padding: 7px 14px; border-radius: 7px;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+.segmented button.active { background: #fff; color: var(--teal-dark); box-shadow: 0 1px 2px rgba(15,23,42,0.08); }
+.segmented button:not(.active):hover { color: var(--text); }
 
 .cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (min-width: 760px) { .cards { grid-template-columns: repeat(2, 1fr); } }
@@ -181,13 +193,39 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .photo-full { max-width: 100%; border-radius: 8px; }
 
 /* ------ admin table ------ */
-.admin-section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
-.admin-section h3 { font-size: 16px; margin-bottom: 12px; }
-.loc-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.loc-table th, .loc-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-.loc-table th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.admin-section {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+.admin-section h3 { font-size: 15.5px; font-weight: 700; margin-bottom: 14px; letter-spacing: -0.01em; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.loc-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.loc-table th, .loc-table td {
+  text-align: left; padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.loc-table td { color: var(--text); }
+.loc-table th {
+  font-size: 11px; color: var(--muted); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  background: #f8fafc; position: sticky; top: 0; z-index: 1;
+  border-bottom: 1px solid var(--border);
+}
+.loc-table th:first-child { border-top-left-radius: 10px; }
+.loc-table th:last-child { border-top-right-radius: 10px; }
+.loc-table tbody tr:last-child td { border-bottom: none; }
+.loc-table tbody tr:nth-child(even) { background: #fafbfc; }
+.loc-table tbody tr:hover { background: #f0fdfa; }
 .loc-table .inactive { opacity: 0.5; }
-.table-wrap { overflow-x: auto; }
+.loc-table td.nowrap, .loc-table th.nowrap { white-space: nowrap; }
+.loc-table td.num, .loc-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loc-table th.sortable { cursor: pointer; user-select: none; }
+.loc-table th.sortable:hover { color: var(--teal); }
+.loc-table th.sortable .arrow { color: var(--teal); margin-left: 3px; }
+.loc-table .cell-primary { font-weight: 600; }
+.loc-table .cell-muted { color: var(--muted); font-size: 12.5px; }
 
 .preview-img { max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 8px; }
 

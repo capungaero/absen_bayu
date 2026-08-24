@@ -933,6 +933,7 @@ class Temuan extends CI_Controller {
         $from = $this->input->get('from') ?: date('Y-m-01');
         $to   = $this->input->get('to') ?: date('Y-m-d');
         $rows = $this->_aggregate_report($branch_id, $from, $to);
+        $chart_data = $this->_fold_top7($this->_aggregate_chart($branch_id, $from, $to)['byDivision']);
 
         require_once FCPATH . 'lib/vendor/autoload.php';
         $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
@@ -951,35 +952,102 @@ class Temuan extends CI_Controller {
         }
         foreach (range('A', 'H') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
 
+        // Tabel sumber + pie chart native Excel (Distribusi per Divisi), ditaruh di kolom J:K
+        // biar tetap kelihatan sebagai data tabel juga -- bukan cuma jadi sumber chart tersembunyi.
+        $this->_add_pie_chart($sheet, $chart_data, 'Distribusi Temuan per Divisi', 'J1', 'chart_divisi');
+
+        $this->_add_detail_sheet($ss, $branch_id, $from, $to);
+        $ss->setActiveSheetIndex(0);
+
         $filename = 'Rekap_Temuan_' . $from . '_sd_' . $to . '.xlsx';
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="' . $filename . '"');
         header('Cache-Control: max-age=0');
-        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($ss))->save('php://output');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($ss);
+        $writer->setIncludeCharts(true);
+        $writer->save('php://output');
         exit;
     }
 
-    // GET temuan/report_detail_excel?branch_id=&from=&to=&token= — unduh detail temuan .xlsx
-    public function report_detail_excel() {
-        if (!$this->_auth()) return;
-        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
-            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
+    /** Lipat entri ke-8 dst jadi satu baris "Lainnya" (parity dgn PieChart.jsx MAX_SLICES). */
+    private function _fold_top7($pairs) {
+        $max = 7;
+        if (count($pairs) <= $max) { return $pairs; }
+        $head = array_slice($pairs, 0, $max);
+        $other_count = array_sum(array_column(array_slice($pairs, $max), 'count'));
+        $head[] = ['name' => 'Lainnya', 'count' => $other_count];
+        return $head;
+    }
+
+    /** Tulis tabel {name,count} + native pie chart Excel mulai dari $anchorCell (kolom kiri-atas tabel). */
+    private function _add_pie_chart($sheet, $pairs, $title, $anchorCell, $chart_id) {
+        [$col, $row] = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::coordinateFromString($anchorCell);
+        $col2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(
+            \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($col) + 1
+        );
+        $sheet->setCellValue("{$col}{$row}", 'Divisi');
+        $sheet->setCellValue("{$col2}{$row}", 'Jumlah');
+        $sheet->getStyle("{$col}{$row}:{$col2}{$row}")->getFont()->setBold(true);
+        $n = count($pairs);
+        if ($n === 0) { return; }
+        foreach ($pairs as $i => $p) {
+            $rr = $row + 1 + $i;
+            $sheet->setCellValue("{$col}{$rr}", $p['name']);
+            $sheet->setCellValue("{$col2}{$rr}", $p['count']);
         }
-        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $lastRow = $row + $n;
+        $sheetTitle = $sheet->getTitle();
+
+        $labels = [new \PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues(
+            \PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues::DATASERIES_TYPE_STRING,
+            "'{$sheetTitle}'!\${$col2}\${$row}", null, 1
+        )];
+        $categories = [new \PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues(
+            \PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues::DATASERIES_TYPE_STRING,
+            "'{$sheetTitle}'!\${$col}\$" . ($row + 1) . ":\${$col}\${$lastRow}", null, $n
+        )];
+        $values = [new \PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues(
+            \PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues::DATASERIES_TYPE_NUMBER,
+            "'{$sheetTitle}'!\${$col2}\$" . ($row + 1) . ":\${$col2}\${$lastRow}", null, $n
+        )];
+        $series = new \PhpOffice\PhpSpreadsheet\Chart\DataSeries(
+            \PhpOffice\PhpSpreadsheet\Chart\DataSeries::TYPE_PIECHART, null, [0], $labels, $categories, $values
+        );
+        $plot_area = new \PhpOffice\PhpSpreadsheet\Chart\PlotArea(null, [$series]);
+        $legend = new \PhpOffice\PhpSpreadsheet\Chart\Legend(\PhpOffice\PhpSpreadsheet\Chart\Legend::POSITION_RIGHT, null, false);
+        $chart = new \PhpOffice\PhpSpreadsheet\Chart\Chart(
+            $chart_id, new \PhpOffice\PhpSpreadsheet\Chart\Title($title), $legend, $plot_area
+        );
+        $chart->setTopLeftPosition($col . ($lastRow + 3));
+        $chart->setBottomRightPosition(
+            \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(
+                \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($col) + 5
+            ) . ($lastRow + 20)
+        );
+        $sheet->addChart($chart);
+    }
+
+    /** Ambil baris detail (izin visibilitas sesuai role) siap ditulis ke sheet Excel. */
+    private function _detail_rows_for_excel($branch_id, $from, $to) {
         $vis_filters = $this->_visibility_filters();
-        $from = $this->input->get('from') ?: date('Y-m-01');
-        $to   = $this->input->get('to') ?: date('Y-m-d');
-        $rows = array_map([$this, '_row_out'], $this->temuan->list_temuan(array_merge([
+        return array_map([$this, '_row_out'], $this->temuan->list_temuan(array_merge([
             'branch_id'       => $branch_id,
             'from'            => $from,
             'to'              => $to,
             'include_deleted' => true,
         ], $vis_filters), 5000, 0));
+    }
 
-        require_once FCPATH . 'lib/vendor/autoload.php';
-        $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        $sheet = $ss->getActiveSheet();
+    /** Tambah sheet "Detail Temuan" ke workbook $ss yang sudah ada (dipakai report_excel gabungan). */
+    private function _add_detail_sheet($ss, $branch_id, $from, $to) {
+        $sheet = $ss->createSheet();
         $sheet->setTitle('Detail Temuan');
+        $this->_fill_detail_sheet($sheet, $this->_detail_rows_for_excel($branch_id, $from, $to));
+        return $sheet;
+    }
+
+    /** Isi header + baris detail temuan ke $sheet yang sudah ada. */
+    private function _fill_detail_sheet($sheet, $rows) {
         $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area / Mitra', 'Cabang', 'Keterangan',
                     'Link Foto Temuan', 'Link Foto Pengerjaan',
                     'Inspector (Pembuat Laporan)', 'Status', 'Terlambat',
@@ -1018,6 +1086,24 @@ class Temuan extends CI_Controller {
             $r++;
         }
         foreach (range('A', 'T') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+    }
+
+    // GET temuan/report_detail_excel?branch_id=&from=&to=&token= — unduh detail temuan .xlsx
+    public function report_detail_excel() {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
+            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
+        }
+        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $from = $this->input->get('from') ?: date('Y-m-01');
+        $to   = $this->input->get('to') ?: date('Y-m-d');
+        $rows = $this->_detail_rows_for_excel($branch_id, $from, $to);
+
+        require_once FCPATH . 'lib/vendor/autoload.php';
+        $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $ss->getActiveSheet();
+        $sheet->setTitle('Detail Temuan');
+        $this->_fill_detail_sheet($sheet, $rows);
 
         $filename = 'Detail_Temuan_' . $from . '_sd_' . $to . '.xlsx';
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
