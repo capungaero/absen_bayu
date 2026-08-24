@@ -1182,18 +1182,17 @@ class Temuan extends CI_Controller {
     }
 
     /**
-     * Pivot rekap Excel: kolom per JENIS TEMUAN (bukan agregat tunggal). Jenis dgn
-     * requires_action=1 (mode objek, ada PJ/Pengawas & deadline) dapat 2 sub-kolom
-     * Jumlah+Tidak Selesai; jenis requires_action=0 (biasanya mode individu, langsung
-     * selesai saat lapor) cukup 1 kolom Jumlah -- Tidak Selesai tak bermakna buatnya.
-     * Baris dipisah 2 bagian: per Kode Area (mode objek) lalu per Mitra/karyawan
-     * (mode individu, dikelompokkan per orang yang ditandai -- satu temuan multi-mitra
-     * pecah jadi beberapa baris, satu per mitra).
+     * Pivot rekap Excel: kolom per JENIS TEMUAN (bukan agregat tunggal). SEMUA jenis
+     * seragam 2 sub-kolom merged "Jumlah" + "Tidak Selesai" (termasuk jenis mode
+     * individu spt Case/Indisipliner -- walau saat ini requires_action=0 & langsung
+     * 'selesai' saat lapor sehingga Tidak Selesai-nya akan selalu 0, kolomnya tetap
+     * ditampilkan biar formatnya seragam dgn jenis mode objek). Baris dipisah 2
+     * bagian: per Kode Area (mode objek) lalu per Mitra/karyawan (mode individu,
+     * dikelompokkan per orang yang ditandai -- satu temuan multi-mitra pecah jadi
+     * beberapa baris, satu per mitra).
      */
     private function _build_jenis_pivot($branch_id, $from, $to) {
         $types = $this->temuan->get_types(true);
-        $two_col_types = array_values(array_filter($types, function ($t) { return (int)$t['requires_action'] === 1; }));
-        $one_col_types = array_values(array_filter($types, function ($t) { return (int)$t['requires_action'] === 0; }));
 
         $areas = [];
         foreach ($this->temuan->get_pivot_rows_objek($branch_id, $from, $to) as $r) {
@@ -1222,8 +1221,7 @@ class Temuan extends CI_Controller {
         }
 
         return [
-            'two_col_types' => $two_col_types,
-            'one_col_types' => $one_col_types,
+            'types'  => $types,
             'areas'  => array_values($areas),
             'mitras' => array_values($mitras),
         ];
@@ -1249,7 +1247,7 @@ class Temuan extends CI_Controller {
                 \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i + 1) . '1', $h
             );
         }
-        foreach ($pivot['two_col_types'] as $t) {
+        foreach ($pivot['types'] as $t) {
             $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1);
             $c2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 2);
             $sheet->setCellValue($c1 . '1', $t['name']);
@@ -1257,12 +1255,6 @@ class Temuan extends CI_Controller {
             $sheet->setCellValue($c1 . '2', 'Jumlah');
             $sheet->setCellValue($c2 . '2', 'Tidak Selesai');
             $col += 2;
-        }
-        foreach ($pivot['one_col_types'] as $t) {
-            $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1);
-            $sheet->setCellValue($c1 . '1', $t['name']);
-            $sheet->mergeCells("{$c1}1:{$c1}2");
-            $col += 1;
         }
         $last_col_idx = $col;
         $last_col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($last_col_idx);
@@ -1291,7 +1283,7 @@ class Temuan extends CI_Controller {
             $sheet->setCellValue('D' . $row, $entry['col1']);
             $sheet->setCellValue('E' . $row, $entry['col2']);
             $c = $n_fixed;
-            foreach ($pivot['two_col_types'] as $t) {
+            foreach ($pivot['types'] as $t) {
                 $cnt = $entry['counts'][$t['id']] ?? null;
                 $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
                 $c2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 2);
@@ -1300,12 +1292,6 @@ class Temuan extends CI_Controller {
                     $sheet->setCellValue($c2 . $row, $cnt['tidak_selesai']);
                 }
                 $c += 2;
-            }
-            foreach ($pivot['one_col_types'] as $t) {
-                $cnt = $entry['counts'][$t['id']] ?? null;
-                $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
-                if ($cnt) { $sheet->setCellValue($c1 . $row, $cnt['total']); }
-                $c += 1;
             }
             $row++;
         };
