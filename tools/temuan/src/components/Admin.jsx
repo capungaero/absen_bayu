@@ -702,18 +702,34 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Notif WA pakai NO KERJA (bukan no pribadi di master karyawan -- karyawan
+  // dilarang bawa HP). Saat menugaskan orang yang belum punya no kerja
+  // tersimpan, minta input dulu; batal input = batal centang.
+  const askWorkPhone = (uid) => {
+    const emp = employees.find((u) => Number(u.id) === uid);
+    if (emp?.work_phone || (form.work_phones || {})[uid]) return true;
+    const no = window.prompt(
+      `No. WA KERJA untuk ${emp?.name || 'karyawan ini'} (bukan no pribadi):`, '');
+    const phone = (no || '').trim();
+    if (!phone) return false;
+    setForm((f) => ({ ...f, work_phones: { ...(f.work_phones || {}), [uid]: phone } }));
+    return true;
+  };
+
   const togglePj = (uid) => {
+    const has = (form.pj_user_ids || []).includes(uid);
+    if (!has && !askWorkPhone(uid)) return;
     setForm((f) => {
       const cur = f.pj_user_ids || [];
-      const has = cur.includes(uid);
       return { ...f, pj_user_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
     });
   };
 
   const toggleSpv = (uid) => {
+    const has = (form.spv_user_ids || []).includes(uid);
+    if (!has && !askWorkPhone(uid)) return;
     setForm((f) => {
       const cur = f.spv_user_ids || [];
-      const has = cur.includes(uid);
       const next = has ? cur.filter((x) => x !== uid) : [...cur, uid];
       let primary = f.primary_spv_id;
       if (has && primary === uid) primary = next[0] ?? null; // Utama dihapus -> pindah ke sisa pertama
@@ -745,6 +761,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         contact_ids: form.contact_ids || [],
         division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
+        work_phones: form.work_phones || {},
       });
       onSaved();
     } catch (err) {
@@ -780,6 +797,10 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
                   onChange={() => togglePj(Number(u.id))}
                 />
                 {u.name}{u.position_name ? ` (${u.position_name})` : ''}
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
+                  {(form.work_phones || {})[Number(u.id)] || u.work_phone
+                    ? `📱 ${(form.work_phones || {})[Number(u.id)] || u.work_phone}` : 'belum ada no kerja'}
+                </span>
               </label>
             ))}
             {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
@@ -799,6 +820,10 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
                   onChange={() => toggleSpv(Number(u.id))}
                 />
                 {u.name}{u.position_name ? ` (${u.position_name})` : ''}
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
+                  {(form.work_phones || {})[Number(u.id)] || u.work_phone
+                    ? `📱 ${(form.work_phones || {})[Number(u.id)] || u.work_phone}` : 'belum ada no kerja'}
+                </span>
               </label>
             ))}
             {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}

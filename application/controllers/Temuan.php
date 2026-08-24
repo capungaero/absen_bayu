@@ -211,7 +211,10 @@ class Temuan extends CI_Controller {
     public function employees() {
         if (!$this->_auth()) return;
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
-        $this->db->select("users.id, TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS name, position.position_name, users.location")
+        // work_phone = no WA KERJA dari temuan_work_phone (BUKAN users.phone pribadi)
+        // -- dipakai FE buat tahu siapa yang belum punya no saat ditugaskan PJ/Pengawas.
+        $this->db->select("users.id, TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS name, position.position_name, users.location,
+                           (SELECT wp.phone FROM temuan_work_phone wp WHERE wp.user_id = users.id) AS work_phone")
                  ->join('position', 'position.id = users.position_id', 'left')
                  ->where('users.active', 1);
         if ($branch_id !== null) {
@@ -389,9 +392,44 @@ class Temuan extends CI_Controller {
                 $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
             }
         }
+        // No KERJA wajib utk tiap PJ/Pengawas yang ditugaskan (notif WA TIDAK
+        // pakai users.phone pribadi -- karyawan dilarang bawa HP). FE mengirim
+        // work_phones {user_id: no} utk yang belum punya; yang sudah tersimpan
+        // di temuan_work_phone tidak perlu dikirim ulang.
+        $pj_ids  = array_map('intval', $p['pj_user_ids'] ?? []);
+        $spv_ids = array_map('intval', $p['spv_user_ids'] ?? (!empty($p['spv_user_id']) ? [$p['spv_user_id']] : []));
+        $assigned_ids = array_values(array_unique(array_merge($pj_ids, $spv_ids)));
+
+        $provided = [];
+        foreach ((array)($p['work_phones'] ?? []) as $uid => $phone) {
+            $phone = trim((string)$phone);
+            if ((int)$uid && $phone !== '') { $provided[(int)$uid] = $phone; }
+        }
+
+        if (!empty($assigned_ids)) {
+            $have = $this->temuan->get_work_phone_map($assigned_ids);
+            $missing = [];
+            foreach ($assigned_ids as $uid) {
+                if (empty($have[$uid]) && empty($provided[$uid])) { $missing[] = $uid; }
+            }
+            if (!empty($missing)) {
+                $names = $this->db->select("TRIM(CONCAT(first_name,' ',COALESCE(last_name,''))) AS name")
+                                  ->where_in('id', $missing)->get('users')->result_array();
+                $this->_json([
+                    'status' => false,
+                    'message' => 'No. WA kerja belum diisi untuk: '
+                        . implode(', ', array_column($names, 'name'))
+                        . '. Isi no kerja dulu (bukan no pribadi).',
+                ], 422);
+                return;
+            }
+            foreach ($provided as $uid => $phone) {
+                if (in_array($uid, $assigned_ids, true)) { $this->temuan->set_work_phone($uid, $phone); }
+            }
+        }
+
         $saved_id = $this->temuan->save_location($data, $id);
-        $this->temuan->set_location_pjs($saved_id, $p['pj_user_ids'] ?? []);
-        $spv_ids = $p['spv_user_ids'] ?? (!empty($p['spv_user_id']) ? [$p['spv_user_id']] : []);
+        $this->temuan->set_location_pjs($saved_id, $pj_ids);
         $primary_spv_id = !empty($p['primary_spv_id']) ? (int)$p['primary_spv_id'] : null;
         $this->temuan->set_location_spvs($saved_id, $spv_ids, $primary_spv_id);
         $this->temuan->set_location_contacts($saved_id, $p['contact_ids'] ?? []);
@@ -1169,20 +1207,28 @@ class Temuan extends CI_Controller {
         $progress_types = ['temuan_lapor', 'temuan_selesai', 'temuan_extend_request', 'temuan_extend_approved', 'temuan_extend_rejected'];
         if (in_array($type, $progress_types, true) && empty($cfg['notify_done_enabled'])) return;
 
-        // Target notif: nomor Pengawas Utama area tsb + kontak notifikasi WA yang dipilih
-        // manual utk area itu (Kelola -> Kode Area). Kalau keduanya kosong (area tak punya
-        // Pengawas Utama/nomor, tak ada kontak dipilih, atau temuan mode individu tanpa
-        // area), fallback ke daftar nomor bersama (Kelola -> Notifikasi).
-        $phones = [];
+        // Target notif: nomor bersama (Kelola -> Notifikasi, target_phones) SELALU ikut di
+        // semua kasus, digabung (bukan fallback) dengan nomor yang ditag khusus area tsb --
+        // semua PJ + Pengawas Utama saja (bukan backup) + kontak WA yang dicentang buat
+        // lokasi itu (Kelola -> Kode Area). Mode individu: + nomor Pengawas ad-hoc yang
+        // dipilih saat lapor.
+        $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
         if (!empty($row['location_id'])) {
-            $primary_phone = $this->temuan->get_primary_spv_phone($row['location_id']);
-            if ($primary_phone) { $phones[] = $primary_phone; }
-            $phones = array_merge($phones, $this->temuan->get_location_contact_phones($row['location_id']));
+            $primary = $this->temuan->get_primary_spv_phone($row['location_id']);
+            $phones = array_merge(
+                $phones,
+                $this->temuan->get_location_pj_phones($row['location_id']),
+                $primary ? [$primary] : [],
+                $this->temuan->get_location_contact_phones($row['location_id'])
+            );
+        }
+        if (!empty($row['individu_spv_id'])) {
+            // No KERJA (temuan_work_phone), BUKAN users.phone pribadi. Pengawas
+            // ad-hoc tanpa no kerja tersimpan = tidak dikirimi WA (tanpa fallback).
+            $wp = $this->temuan->get_work_phone((int)$row['individu_spv_id']);
+            if ($wp) { $phones[] = $wp; }
         }
         $phones = array_values(array_unique(array_filter(array_map('trim', $phones))));
-        if (empty($phones)) {
-            $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
-        }
         if (empty($phones)) return;
 
         $this->load->model('wa_model', 'wa');

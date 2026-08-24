@@ -19,6 +19,9 @@ class Temuan_model extends CI_Model {
     protected $division_table  = 'temuan_division';
     protected $wa_contact_table = 'temuan_wa_contact';
     protected $location_contact_table = 'temuan_location_contact';
+    // No. WA KERJA per user (PJ/Pengawas) -- notif WA DILARANG pakai users.phone
+    // (no pribadi; karyawan dilarang bawa HP). Diisi admin saat menugaskan.
+    protected $work_phone_table = 'temuan_work_phone';
 
     public function __construct() {
         parent::__construct();
@@ -151,6 +154,15 @@ class Temuan_model extends CI_Model {
                 SET `due_at` = CONCAT(DATE_ADD(DATE(`created_at`), INTERVAL 1 DAY), ' 23:59:59')
                 WHERE `due_at` IS NULL");
         }
+
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->work_phone_table}` (
+                `user_id` INT NOT NULL,
+                `phone` VARCHAR(30) NOT NULL,
+                `updated_at` DATETIME NULL,
+                PRIMARY KEY (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
 
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->inspector_table}` (
@@ -420,14 +432,65 @@ class Temuan_model extends CI_Model {
 
     /** Apakah user jadi SPV di minimal satu area aktif. */
     /** Nomor HP Pengawas Utama area tsb (untuk notif WA); null kalau tak ada/kosong. */
+    // Notif WA memakai NO KERJA ({$this->work_phone_table}) -- BUKAN users.phone
+    // (no pribadi; karyawan dilarang bawa HP, keputusan user 24 Agu 2026).
+    // Tidak ada fallback: PJ/Pengawas tanpa no kerja tidak dikirimi WA.
     public function get_primary_spv_phone($location_id) {
         if (empty($location_id)) { return null; }
-        $row = $this->db->select('u.phone')
+        $row = $this->db->select('wp.phone')
                         ->from("{$this->location_spv_table} ls")
-                        ->join('users u', 'u.id = ls.user_id')
+                        ->join("{$this->work_phone_table} wp", 'wp.user_id = ls.user_id')
                         ->where('ls.location_id', (int)$location_id)
                         ->where('ls.is_primary', 1)
                         ->limit(1)->get()->row_array();
+        return ($row && !empty($row['phone'])) ? $row['phone'] : null;
+    }
+
+    /** No KERJA semua PJ area tsb -- utk notif WA. */
+    public function get_location_pj_phones($location_id) {
+        if (empty($location_id)) { return []; }
+        $rows = $this->db->select('wp.phone')
+                        ->from("{$this->location_pj_table} lp")
+                        ->join("{$this->work_phone_table} wp", 'wp.user_id = lp.user_id')
+                        ->where('lp.location_id', (int)$location_id)
+                        ->get()->result_array();
+        return array_values(array_filter(array_map(function ($r) { return $r['phone']; }, $rows)));
+    }
+
+    /** Peta {user_id: no_kerja} utk daftar user tertentu (atau semua kalau null). */
+    public function get_work_phone_map($user_ids = null) {
+        if (is_array($user_ids) && empty($user_ids)) { return []; }
+        if (is_array($user_ids)) {
+            $this->db->where_in('user_id', array_map('intval', $user_ids));
+        }
+        $rows = $this->db->get($this->work_phone_table)->result_array();
+        $map = [];
+        foreach ($rows as $r) { $map[(int)$r['user_id']] = $r['phone']; }
+        return $map;
+    }
+
+    public function set_work_phone($user_id, $phone) {
+        $user_id = (int)$user_id;
+        $phone = trim((string)$phone);
+        if (!$user_id || $phone === '') { return false; }
+        $this->db->query(
+            "INSERT INTO `{$this->work_phone_table}` (user_id, phone, updated_at) VALUES (?, ?, NOW())
+             ON DUPLICATE KEY UPDATE phone = VALUES(phone), updated_at = NOW()",
+            [$user_id, $phone]
+        );
+        return true;
+    }
+
+    public function get_work_phone($user_id) {
+        $row = $this->db->where('user_id', (int)$user_id)->get($this->work_phone_table)->row_array();
+        return ($row && !empty($row['phone'])) ? $row['phone'] : null;
+    }
+
+    /** Nomor HP user tertentu -- utk notif WA; null kalau tak ada/kosong. */
+    public function get_user_phone($user_id) {
+        $user_id = (int)$user_id;
+        if ($user_id <= 0) { return null; }
+        $row = $this->db->select('phone')->where('id', $user_id)->get('users')->row_array();
         return ($row && !empty($row['phone'])) ? $row['phone'] : null;
     }
 
