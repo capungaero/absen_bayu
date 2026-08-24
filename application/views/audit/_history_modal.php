@@ -35,7 +35,18 @@
     document.getElementById('auditHistoryContent').style.display = 'none';
     document.getElementById('auditHistoryContent').innerHTML = '';
 
-    var modal = new bootstrap.Modal(document.getElementById('modalAuditHistory'));
+    var modalEl = document.getElementById('modalAuditHistory');
+    // Halaman pemanggil (mis. hr/presence/detail, kalender panjang) kadang
+    // punya <div class="row"> yang belum tertutup saat partial ini di-include,
+    // sehingga modal jadi ANAK LANGSUNG .row -- kena override Bootstrap
+    // ".row > *{position:relative}" yang menimpa ".modal{position:fixed}".
+    // Akibatnya modal render inline di posisi DOM-nya (jauh di bawah,
+    // di luar layar) alih-alih fixed-center di viewport. Pindahkan ke
+    // <body> sekali saja biar tak lagi tersandera struktur halaman.
+    if (modalEl.parentElement !== document.body) {
+      document.body.appendChild(modalEl);
+    }
+    var modal = new bootstrap.Modal(modalEl);
     modal.show();
 
     fetch(HISTORY_BASE + '/' + presenceId, {
