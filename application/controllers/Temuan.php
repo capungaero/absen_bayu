@@ -932,29 +932,20 @@ class Temuan extends CI_Controller {
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
         $from = $this->input->get('from') ?: date('Y-m-01');
         $to   = $this->input->get('to') ?: date('Y-m-d');
-        $rows = $this->_aggregate_report($branch_id, $from, $to);
+        $pivot = $this->_build_jenis_pivot($branch_id, $from, $to);
         $chart_data = $this->_fold_top7($this->_aggregate_chart($branch_id, $from, $to)['byDivision']);
 
         require_once FCPATH . 'lib/vendor/autoload.php';
         $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $ss->getActiveSheet();
         $sheet->setTitle('Rekap Temuan');
-        $headers = ['No', 'Kode Area', 'Cabang', 'PJ Area', 'Pengawas Area', 'Jumlah Temuan', 'Selesai Tepat Waktu', 'Tidak Selesai'];
-        $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:H1')->getFont()->setBold(true);
-        $r = 2;
-        foreach ($rows as $i => $row) {
-            $sheet->fromArray([
-                $i + 1, $row['location_name'], $row['branch_name'], $row['pj_name'], $row['spv_name'],
-                $row['total'], $row['selesai_tepat_waktu'], $row['tidak_selesai'],
-            ], null, 'A' . $r);
-            $r++;
-        }
-        foreach (range('A', 'H') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+        $last_col_idx = $this->_write_rekap_sheet($sheet, $pivot);
 
-        // Tabel sumber + pie chart native Excel (Distribusi per Divisi), ditaruh di kolom J:K
-        // biar tetap kelihatan sebagai data tabel juga -- bukan cuma jadi sumber chart tersembunyi.
-        $this->_add_pie_chart($sheet, $chart_data, 'Distribusi Temuan per Divisi', 'J1', 'chart_divisi');
+        // Tabel sumber + pie chart native Excel (Distribusi per Divisi) ditaruh 2 kolom
+        // setelah tabel pivot (bukan hardcode 'J1' -- lebar tabel pivot berubah-ubah
+        // mengikuti jumlah jenis temuan aktif).
+        $chart_col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($last_col_idx + 2);
+        $this->_add_pie_chart($sheet, $chart_data, 'Distribusi Temuan per Divisi', $chart_col . '1', 'chart_divisi');
 
         $this->_add_detail_sheet($ss, $branch_id, $from, $to);
         $ss->setActiveSheetIndex(0);
@@ -1188,6 +1179,155 @@ class Temuan extends CI_Controller {
             'byArea'     => $to_pairs($by_area),
             'byJenis'    => $to_pairs($by_jenis),
         ];
+    }
+
+    /**
+     * Pivot rekap Excel: kolom per JENIS TEMUAN (bukan agregat tunggal). Jenis dgn
+     * requires_action=1 (mode objek, ada PJ/Pengawas & deadline) dapat 2 sub-kolom
+     * Jumlah+Tidak Selesai; jenis requires_action=0 (biasanya mode individu, langsung
+     * selesai saat lapor) cukup 1 kolom Jumlah -- Tidak Selesai tak bermakna buatnya.
+     * Baris dipisah 2 bagian: per Kode Area (mode objek) lalu per Mitra/karyawan
+     * (mode individu, dikelompokkan per orang yang ditandai -- satu temuan multi-mitra
+     * pecah jadi beberapa baris, satu per mitra).
+     */
+    private function _build_jenis_pivot($branch_id, $from, $to) {
+        $types = $this->temuan->get_types(true);
+        $two_col_types = array_values(array_filter($types, function ($t) { return (int)$t['requires_action'] === 1; }));
+        $one_col_types = array_values(array_filter($types, function ($t) { return (int)$t['requires_action'] === 0; }));
+
+        $areas = [];
+        foreach ($this->temuan->get_pivot_rows_objek($branch_id, $from, $to) as $r) {
+            $key = $r['location_id'];
+            if (!isset($areas[$key])) {
+                $areas[$key] = [
+                    'label' => $r['location_name'], 'branch_name' => $r['branch_name'],
+                    'col1' => $r['pj_name'] ?: '-', 'col2' => $r['spv_name'] ?: '-',
+                    'counts' => [],
+                ];
+            }
+            $this->_pivot_tally($areas[$key]['counts'], $r);
+        }
+
+        $mitras = [];
+        foreach ($this->temuan->get_pivot_rows_individu($branch_id, $from, $to) as $r) {
+            $key = $r['subject_user_id'];
+            if (!isset($mitras[$key])) {
+                $mitras[$key] = [
+                    'label' => null, 'branch_name' => $r['branch_name'],
+                    'col1' => $r['subject_name'], 'col2' => $r['individu_spv_name'] ?: '-',
+                    'counts' => [],
+                ];
+            }
+            $this->_pivot_tally($mitras[$key]['counts'], $r);
+        }
+
+        return [
+            'two_col_types' => $two_col_types,
+            'one_col_types' => $one_col_types,
+            'areas'  => array_values($areas),
+            'mitras' => array_values($mitras),
+        ];
+    }
+
+    private function _pivot_tally(&$counts, $r) {
+        $tid = $r['type_id'];
+        if (!isset($counts[$tid])) { $counts[$tid] = ['total' => 0, 'tidak_selesai' => 0]; }
+        $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
+        $is_late = $this->_compute_is_late($r, $effective_due);
+        $counts[$tid]['total']++;
+        if (!($r['status'] === 'selesai' && !$is_late)) { $counts[$tid]['tidak_selesai']++; }
+    }
+
+    /** Tulis header 2-baris (grup jenis) + data pivot ke $sheet. Return index kolom terakhir (1-based). */
+    private function _write_rekap_sheet($sheet, $pivot) {
+        $fixed_headers = ['No', 'Kode Area', 'Cabang', 'PJ Area / Mitra', 'Pengawas Area'];
+        $n_fixed = count($fixed_headers);
+        $col = $n_fixed; // 1-based index kolom berikutnya sesudah kolom tetap
+
+        foreach ($fixed_headers as $i => $h) {
+            $sheet->setCellValue(
+                \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i + 1) . '1', $h
+            );
+        }
+        foreach ($pivot['two_col_types'] as $t) {
+            $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1);
+            $c2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 2);
+            $sheet->setCellValue($c1 . '1', $t['name']);
+            $sheet->mergeCells("{$c1}1:{$c2}1");
+            $sheet->setCellValue($c1 . '2', 'Jumlah');
+            $sheet->setCellValue($c2 . '2', 'Tidak Selesai');
+            $col += 2;
+        }
+        foreach ($pivot['one_col_types'] as $t) {
+            $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1);
+            $sheet->setCellValue($c1 . '1', $t['name']);
+            $sheet->mergeCells("{$c1}1:{$c1}2");
+            $col += 1;
+        }
+        $last_col_idx = $col;
+        $last_col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($last_col_idx);
+
+        // Style header: fill hijau muda, bold, center, wrap, border tipis di semua sel A1:<last>2.
+        $sheet->getStyle("A1:{$last_col}2")->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 10],
+            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C6E0B4']],
+            'alignment' => ['horizontal' => 'center', 'vertical' => 'center', 'wrapText' => true],
+            'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+        ]);
+        $sheet->mergeCells("A1:A2");
+        $sheet->mergeCells("B1:B2");
+        $sheet->mergeCells("C1:C2");
+        $sheet->mergeCells("D1:D2");
+        $sheet->mergeCells("E1:E2");
+        $sheet->getRowDimension(1)->setRowHeight(28);
+        $sheet->getRowDimension(2)->setRowHeight(20);
+
+        $no = 1;
+        $row = 3;
+        $write_data_row = function ($entry) use ($sheet, $pivot, $n_fixed, &$no, &$row) {
+            $sheet->setCellValue('A' . $row, $no++);
+            $sheet->setCellValue('B' . $row, $entry['label'] ?: '');
+            $sheet->setCellValue('C' . $row, $entry['branch_name']);
+            $sheet->setCellValue('D' . $row, $entry['col1']);
+            $sheet->setCellValue('E' . $row, $entry['col2']);
+            $c = $n_fixed;
+            foreach ($pivot['two_col_types'] as $t) {
+                $cnt = $entry['counts'][$t['id']] ?? null;
+                $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
+                $c2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 2);
+                if ($cnt) {
+                    $sheet->setCellValue($c1 . $row, $cnt['total']);
+                    $sheet->setCellValue($c2 . $row, $cnt['tidak_selesai']);
+                }
+                $c += 2;
+            }
+            foreach ($pivot['one_col_types'] as $t) {
+                $cnt = $entry['counts'][$t['id']] ?? null;
+                $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
+                if ($cnt) { $sheet->setCellValue($c1 . $row, $cnt['total']); }
+                $c += 1;
+            }
+            $row++;
+        };
+        foreach ($pivot['areas'] as $entry) { $write_data_row($entry); }
+        foreach ($pivot['mitras'] as $entry) { $write_data_row($entry); }
+
+        if ($row > 3) {
+            $sheet->getStyle("A3:{$last_col}" . ($row - 1))->applyFromArray([
+                'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+                'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+            ]);
+            $sheet->getStyle("B3:B" . ($row - 1))->getAlignment()->setHorizontal('left');
+            $sheet->getStyle("D3:D" . ($row - 1))->getAlignment()->setHorizontal('left');
+        }
+
+        for ($i = 1; $i <= $last_col_idx; $i++) {
+            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+        }
+        $sheet->getColumnDimension('A')->setAutoSize(false)->setWidth(4);
+        $sheet->freezePane('B3');
+
+        return $last_col_idx;
     }
 
     /** PJ area kini bisa banyak orang; pj_user_ids = string "1,5,9" dari _select_full(). */

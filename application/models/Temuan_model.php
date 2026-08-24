@@ -998,6 +998,55 @@ class Temuan_model extends CI_Model {
         return $this->db->get()->result_array();
     }
 
+    /** Baris temuan mode OBJEK (per Kode Area) utk pivot rekap per-jenis di Excel. */
+    public function get_pivot_rows_objek($branch_id, $from, $to) {
+        $this->db
+            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
+                      t.type_id, ty.name AS type_name, ty.requires_action AS type_requires_action,
+                      l.id AS location_id, l.name AS location_name, b.id AS branch_id, b.branch_name,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
+                        WHERE lp2.location_id = l.id) AS pj_name,
+                      (SELECT TRIM(CONCAT(u5.first_name,' ',COALESCE(u5.last_name,'')))
+                         FROM {$this->location_spv_table} ls JOIN users u5 ON u5.id = ls.user_id
+                        WHERE ls.location_id = l.id AND ls.is_primary = 1 LIMIT 1) AS spv_name")
+            ->from("{$this->temuan_table} t")
+            ->join("{$this->location_table} l", 'l.id = t.location_id', 'inner')
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'inner')
+            ->join('branch b', 'b.id = t.branch_id', 'left')
+            ->where('t.is_deleted', 0)
+            ->where('t.status !=', 'ditolak')
+            ->where('ty.target_mode', 'objek')
+            ->where('t.created_at >=', $from . ' 00:00:00')
+            ->where('t.created_at <=', $to . ' 23:59:59');
+        if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
+        return $this->db->get()->result_array();
+    }
+
+    /** Baris temuan mode INDIVIDU (per Mitra), satu baris per (temuan,mitra) -- utk pivot rekap Excel. */
+    public function get_pivot_rows_individu($branch_id, $from, $to) {
+        $this->db
+            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
+                      t.type_id, ty.name AS type_name, ty.requires_action AS type_requires_action,
+                      sj.user_id AS subject_user_id,
+                      TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) AS subject_name,
+                      b.id AS branch_id, b.branch_name,
+                      TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name")
+            ->from("{$this->temuan_table} t")
+            ->join("{$this->subject_table} sj", 'sj.temuan_id = t.id', 'inner')
+            ->join('users u3', 'u3.id = sj.user_id', 'inner')
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'inner')
+            ->join('branch b', 'b.id = t.branch_id', 'left')
+            ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
+            ->where('t.is_deleted', 0)
+            ->where('t.status !=', 'ditolak')
+            ->where('ty.target_mode', 'individu')
+            ->where('t.created_at >=', $from . ' 00:00:00')
+            ->where('t.created_at <=', $to . ' 23:59:59');
+        if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
+        return $this->db->get()->result_array();
+    }
+
     public function update_temuan($id, $data) {
         $data['updated_at'] = date('Y-m-d H:i:s');
         $this->db->where('id', $id)->update($this->temuan_table, $data);
