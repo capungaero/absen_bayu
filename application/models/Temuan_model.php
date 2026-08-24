@@ -1023,6 +1023,29 @@ class Temuan_model extends CI_Model {
         return $this->db->get()->result_array();
     }
 
+    /** Baris temuan mode OBJEK, satu baris per (temuan,PJ) -- utk rekap per-orang (PJ area bisa >1 orang). */
+    public function get_pivot_rows_objek_per_pj($branch_id, $from, $to) {
+        $this->db
+            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
+                      t.type_id, ty.name AS type_name, ty.requires_action AS type_requires_action,
+                      lp.user_id AS pj_user_id,
+                      TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) AS pj_name,
+                      b.id AS branch_id, b.branch_name")
+            ->from("{$this->temuan_table} t")
+            ->join("{$this->location_table} l", 'l.id = t.location_id', 'inner')
+            ->join("{$this->location_pj_table} lp", 'lp.location_id = l.id', 'inner')
+            ->join('users u2', 'u2.id = lp.user_id', 'inner')
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'inner')
+            ->join('branch b', 'b.id = t.branch_id', 'left')
+            ->where('t.is_deleted', 0)
+            ->where('t.status !=', 'ditolak')
+            ->where('ty.target_mode', 'objek')
+            ->where('t.created_at >=', $from . ' 00:00:00')
+            ->where('t.created_at <=', $to . ' 23:59:59');
+        if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
+        return $this->db->get()->result_array();
+    }
+
     /** Baris temuan mode INDIVIDU (per Mitra), satu baris per (temuan,mitra) -- utk pivot rekap Excel. */
     public function get_pivot_rows_individu($branch_id, $from, $to) {
         $this->db

@@ -947,6 +947,10 @@ class Temuan extends CI_Controller {
         $chart_col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($last_col_idx + 2);
         $this->_add_pie_chart($sheet, $chart_data, 'Distribusi Temuan per Divisi', $chart_col . '1', 'chart_divisi');
 
+        $people_sheet = $ss->createSheet();
+        $people_sheet->setTitle('Rekap per Orang');
+        $this->_write_people_sheet($people_sheet, $pivot);
+
         $this->_add_detail_sheet($ss, $branch_id, $from, $to);
         $ss->setActiveSheetIndex(0);
 
@@ -1208,7 +1212,8 @@ class Temuan extends CI_Controller {
         }
 
         $mitras = [];
-        foreach ($this->temuan->get_pivot_rows_individu($branch_id, $from, $to) as $r) {
+        $individu_rows = $this->temuan->get_pivot_rows_individu($branch_id, $from, $to);
+        foreach ($individu_rows as $r) {
             $key = $r['subject_user_id'];
             if (!isset($mitras[$key])) {
                 $mitras[$key] = [
@@ -1220,10 +1225,36 @@ class Temuan extends CI_Controller {
             $this->_pivot_tally($mitras[$key]['counts'], $r);
         }
 
+        // Rekap per orang (utk KPI): satu orang bisa muncul lewat dua jalur --
+        // sbg PJ area (temuan mode objek, area bisa >1 PJ, tiap PJ dihitung penuh
+        // krn tanggung jawab bersama) DAN sbg Mitra yang ditandai langsung (mode
+        // individu). Digabung jadi satu baris per orang, jumlah kasus lintas jenis.
+        $people = [];
+        foreach ($this->temuan->get_pivot_rows_objek_per_pj($branch_id, $from, $to) as $r) {
+            $key = $r['pj_user_id'];
+            if (!isset($people[$key])) {
+                $people[$key] = ['name' => $r['pj_name'], 'branch_name' => $r['branch_name'], 'counts' => []];
+            }
+            $this->_pivot_tally($people[$key]['counts'], $r);
+        }
+        foreach ($individu_rows as $r) {
+            $key = $r['subject_user_id'];
+            if (!isset($people[$key])) {
+                $people[$key] = ['name' => $r['subject_name'], 'branch_name' => $r['branch_name'], 'counts' => []];
+            }
+            $this->_pivot_tally($people[$key]['counts'], $r);
+        }
+        usort($people, function ($a, $b) {
+            $ta = array_sum(array_column($a['counts'], 'total'));
+            $tb = array_sum(array_column($b['counts'], 'total'));
+            return $tb <=> $ta ?: strcasecmp($a['name'], $b['name']);
+        });
+
         return [
             'types'  => $types,
             'areas'  => array_values($areas),
             'mitras' => array_values($mitras),
+            'people' => array_values($people),
         ];
     }
 
@@ -1305,6 +1336,91 @@ class Temuan extends CI_Controller {
             ]);
             $sheet->getStyle("B3:B" . ($row - 1))->getAlignment()->setHorizontal('left');
             $sheet->getStyle("D3:D" . ($row - 1))->getAlignment()->setHorizontal('left');
+        }
+
+        for ($i = 1; $i <= $last_col_idx; $i++) {
+            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+        }
+        $sheet->getColumnDimension('A')->setAutoSize(false)->setWidth(4);
+        $sheet->freezePane('B3');
+
+        return $last_col_idx;
+    }
+
+    /**
+     * Sheet "Rekap per Orang" -- satu baris per karyawan, total kasus lintas jenis
+     * digabung (mis. temuan rak sbg PJ + temuan indisipliner sbg mitra jadi satu
+     * baris orang yang sama). Dipakai utk penyusunan KPI. Kolom Total Kasus di
+     * ujung kanan = jumlah semua jenis (bukan cuma yang requires_action).
+     */
+    private function _write_people_sheet($sheet, $pivot) {
+        $fixed_headers = ['No', 'Nama', 'Cabang'];
+        $n_fixed = count($fixed_headers);
+        $col = $n_fixed;
+
+        foreach ($fixed_headers as $i => $h) {
+            $sheet->setCellValue(
+                \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i + 1) . '1', $h
+            );
+        }
+        foreach ($pivot['types'] as $t) {
+            $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1);
+            $c2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 2);
+            $sheet->setCellValue($c1 . '1', $t['name']);
+            $sheet->mergeCells("{$c1}1:{$c2}1");
+            $sheet->setCellValue($c1 . '2', 'Jumlah');
+            $sheet->setCellValue($c2 . '2', 'Tidak Selesai');
+            $col += 2;
+        }
+        $total_col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1);
+        $sheet->setCellValue($total_col . '1', 'Total Kasus');
+        $sheet->mergeCells("{$total_col}1:{$total_col}2");
+        $col += 1;
+        $last_col_idx = $col;
+        $last_col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($last_col_idx);
+
+        $sheet->getStyle("A1:{$last_col}2")->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 10],
+            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C6E0B4']],
+            'alignment' => ['horizontal' => 'center', 'vertical' => 'center', 'wrapText' => true],
+            'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+        ]);
+        $sheet->mergeCells('A1:A2');
+        $sheet->mergeCells('B1:B2');
+        $sheet->mergeCells('C1:C2');
+        $sheet->getRowDimension(1)->setRowHeight(28);
+        $sheet->getRowDimension(2)->setRowHeight(20);
+
+        $no = 1;
+        $row = 3;
+        foreach ($pivot['people'] as $entry) {
+            $sheet->setCellValue('A' . $row, $no++);
+            $sheet->setCellValue('B' . $row, $entry['name']);
+            $sheet->setCellValue('C' . $row, $entry['branch_name']);
+            $c = $n_fixed;
+            $total_kasus = 0;
+            foreach ($pivot['types'] as $t) {
+                $cnt = $entry['counts'][$t['id']] ?? null;
+                $c1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
+                $c2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 2);
+                if ($cnt) {
+                    $sheet->setCellValue($c1 . $row, $cnt['total']);
+                    $sheet->setCellValue($c2 . $row, $cnt['tidak_selesai']);
+                    $total_kasus += $cnt['total'];
+                }
+                $c += 2;
+            }
+            $sheet->setCellValue($total_col . $row, $total_kasus);
+            $row++;
+        }
+
+        if ($row > 3) {
+            $sheet->getStyle("A3:{$last_col}" . ($row - 1))->applyFromArray([
+                'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+                'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+            ]);
+            $sheet->getStyle("B3:B" . ($row - 1))->getAlignment()->setHorizontal('left');
+            $sheet->getStyle("{$total_col}3:{$total_col}" . ($row - 1))->getFont()->setBold(true);
         }
 
         for ($i = 1; $i <= $last_col_idx; $i++) {
