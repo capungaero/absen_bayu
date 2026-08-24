@@ -909,6 +909,20 @@ class Temuan extends CI_Controller {
         ]);
     }
 
+    // GET temuan/report_chart?branch_id=&from=&to= — agregat pie chart (Divisi/Area/Jenis)
+    // Dihitung server-side dari SEMUA baris rentang (bukan dari list halaman /report yang
+    // dibatasi 500) biar pie chart tidak diam-diam kepotong kalau data > 500 baris.
+    public function report_chart() {
+        if (!$this->_auth()) return;
+        $branch_id = $this->_scope_branch($this->input->get('branch_id'));
+        $from = $this->input->get('from') ?: date('Y-m-01');
+        $to   = $this->input->get('to') ?: date('Y-m-d');
+        $this->_json([
+            'status' => true, 'from' => $from, 'to' => $to,
+            'chart'  => $this->_aggregate_chart($branch_id, $from, $to, $this->_visibility_filters()),
+        ]);
+    }
+
     // GET temuan/report_excel?branch_id=&from=&to=&token= — unduh rekap bulanan .xlsx
     public function report_excel() {
         if (!$this->_auth()) return;
@@ -1045,6 +1059,49 @@ class Temuan extends CI_Controller {
             }
         }
         return array_values($groups);
+    }
+
+    /**
+     * Agregat pie chart per Divisi / Kode Area / Jenis Temuan, hitung dari SEMUA baris
+     * (get_report_rows tanpa limit) -- bukan dari list /report yang dibatasi 500, biar
+     * pie chart tak diam-diam kepotong. Sama seperti _aggregate_report: mode individu &
+     * temuan tanpa lokasi TIDAK ikut Divisi/Area (tak punya keduanya), tapi tetap ikut
+     * Jenis (jenis temuan tak bergantung lokasi).
+     */
+    private function _aggregate_chart($branch_id, $from, $to, $vis_filters = []) {
+        $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
+        $vis_uid = !empty($vis_filters['visible_to']) ? (int)$vis_filters['visible_to'] : 0;
+        $by_division = [];
+        $by_area = [];
+        $by_jenis = [];
+        foreach ($rows as $r) {
+            $has_location = $r['type_target_mode'] !== 'individu' && !empty($r['location_id']);
+            $visible_location = !$vis_uid || ($has_location && ($this->_is_location_pj($r, $vis_uid) || $this->_is_location_spv($r, $vis_uid)));
+            if ($has_location && $visible_location) {
+                $div_key = $r['division_name'] ?: 'Tanpa Divisi';
+                $by_division[$div_key] = ($by_division[$div_key] ?? 0) + 1;
+                $area_key = $r['location_name'];
+                $by_area[$area_key] = ($by_area[$area_key] ?? 0) + 1;
+            }
+            // Jenis: karyawan biasa (bukan PJ/Pengawas/inspector/admin) hanya lihat area
+            // yang ditugaskan -- temuan individu/tanpa lokasi tak punya area, jadi tak
+            // dihitung buat user ter-scope ($vis_uid) supaya konsisten dgn tabel Ringkasan.
+            if (!$vis_uid || $visible_location) {
+                $jenis_key = $r['type_name'] ?: ($r['category_name'] ?: 'Lainnya');
+                $by_jenis[$jenis_key] = ($by_jenis[$jenis_key] ?? 0) + 1;
+            }
+        }
+        $to_pairs = function ($map) {
+            arsort($map);
+            $out = [];
+            foreach ($map as $name => $count) { $out[] = ['name' => $name, 'count' => $count]; }
+            return $out;
+        };
+        return [
+            'byDivision' => $to_pairs($by_division),
+            'byArea'     => $to_pairs($by_area),
+            'byJenis'    => $to_pairs($by_jenis),
+        ];
     }
 
     /** PJ area kini bisa banyak orang; pj_user_ids = string "1,5,9" dari _select_full(). */

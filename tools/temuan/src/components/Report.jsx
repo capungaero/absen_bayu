@@ -1,6 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { apiGet, API, getToken } from '../api.js';
 import { STATUS_LABEL, fmtTime } from './Dashboard.jsx';
+import PieChart from './PieChart.jsx';
+
+const CHART_DIMENSIONS = [
+  { key: 'byDivision', label: 'Divisi' },
+  { key: 'byArea', label: 'Area (Kode Area)' },
+  { key: 'byJenis', label: 'Jenis Temuan' },
+];
+
+const SORT_COLUMNS = [
+  { key: 'location_name', label: 'Kode Area' },
+  { key: 'pj_name', label: 'PJ Area' },
+  { key: 'spv_name', label: 'Pengawas Area' },
+  { key: 'total', label: 'Jumlah Temuan' },
+];
 
 export default function Report({ me, onSessionEnd }) {
   const firstOfMonth = new Date().toISOString().slice(0, 8) + '01';
@@ -12,6 +26,10 @@ export default function Report({ me, onSessionEnd }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [summaryRows, setSummaryRows] = useState([]);
+  const [chart, setChart] = useState(null);
+  const [chartDim, setChartDim] = useState('byDivision');
+  const [sortKey, setSortKey] = useState('total');
+  const [sortDir, setSortDir] = useState('desc');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -23,13 +41,15 @@ export default function Report({ me, onSessionEnd }) {
     setBusy(true);
     setError('');
     try {
-      const [data, sum] = await Promise.all([
+      const [data, sum, ch] = await Promise.all([
         apiGet('/report', { from, to, branch_id: branchId }),
         apiGet('/report_summary', { from, to, branch_id: branchId }),
+        apiGet('/report_chart', { from, to, branch_id: branchId }),
       ]);
       setRows(data.rows);
       setSummary(data.summary);
       setSummaryRows(sum.rows);
+      setChart(ch.chart);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
@@ -39,6 +59,32 @@ export default function Report({ me, onSessionEnd }) {
   }, [from, to, branchId, onSessionEnd]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortedSummaryRows = useMemo(() => {
+    const list = [...summaryRows];
+    list.sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      let cmp;
+      if (sortKey === 'total') {
+        cmp = (Number(av) || 0) - (Number(bv) || 0);
+      } else {
+        cmp = String(av || '').localeCompare(String(bv || ''), 'id', { sensitivity: 'base' });
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [summaryRows, sortKey, sortDir]);
+
+  const toggleSort = (key) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'total' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortArrow = (key) => (sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼');
 
   const canExportExcel = me.is_admin || me.is_inspector;
   const qs = `from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
@@ -92,23 +138,45 @@ export default function Report({ me, onSessionEnd }) {
       )}
 
       <div className="admin-section">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>🥧 Distribusi Temuan</h3>
+          <div className="filter-row" style={{ margin: 0 }}>
+            {CHART_DIMENSIONS.map((d) => (
+              <button
+                key={d.key}
+                className={`btn btn-sm ${chartDim === d.key ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setChartDim(d.key)}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <PieChart data={chart ? chart[chartDim] : []} />
+      </div>
+
+      <div className="admin-section">
         <h3>📋 Ringkasan per Kode Area</h3>
         <div className="table-wrap">
           <table className="loc-table">
             <thead>
               <tr>
-                <th>Kode Area</th><th>Cabang</th><th>PJ Area</th><th>Pengawas Area</th>
-                <th>Jumlah Temuan</th><th>Selesai Tepat Waktu</th><th>Tidak Selesai</th>
+                {SORT_COLUMNS.map((c) => (
+                  <th key={c.key} onClick={() => toggleSort(c.key)} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                    {c.label}{sortArrow(c.key)}
+                  </th>
+                ))}
+                <th>Cabang</th><th>Selesai Tepat Waktu</th><th>Tidak Selesai</th>
               </tr>
             </thead>
             <tbody>
-              {summaryRows.map((s) => (
+              {sortedSummaryRows.map((s) => (
                 <tr key={s.location_id}>
                   <td>{s.location_name}</td>
-                  <td>{s.branch_name}</td>
                   <td>{s.pj_name}</td>
                   <td>{s.spv_name}</td>
                   <td>{s.total}</td>
+                  <td>{s.branch_name}</td>
                   <td>{s.selesai_tepat_waktu}</td>
                   <td>{s.tidak_selesai}</td>
                 </tr>

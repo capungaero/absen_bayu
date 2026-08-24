@@ -833,7 +833,7 @@ class Temuan_model extends CI_Model {
 
     private function _select_full() {
         $this->db
-            ->select("t.*, l.name AS location_name, b.branch_name,
+            ->select("t.*, l.name AS location_name, b.branch_name, dv.name AS division_name,
                       ty.name AS type_name, ty.target_mode AS type_target_mode,
                       ty.category_id AS type_category_id, cat.name AS category_name,
                       ty.requires_action AS type_requires_action,
@@ -862,6 +862,7 @@ class Temuan_model extends CI_Model {
                       TRIM(CONCAT(exd.first_name,' ',COALESCE(exd.last_name,''))) AS extension_decided_by_name")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+            ->join("{$this->division_table} dv", 'dv.id = l.division_id', 'left')
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
@@ -964,7 +965,7 @@ class Temuan_model extends CI_Model {
         $this->db
             ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
                       ty.name AS type_name, ty.target_mode AS type_target_mode, cat.name AS category_name,
-                      l.id AS location_id, l.name AS location_name, b.branch_name,
+                      l.id AS location_id, l.name AS location_name, b.branch_name, dv.name AS division_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                         WHERE lp2.location_id = l.id) AS pj_name,
@@ -984,6 +985,7 @@ class Temuan_model extends CI_Model {
                         WHERE sj2.temuan_id = t.id) AS subject_names")
             ->from("{$this->temuan_table} t")
             ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+            ->join("{$this->division_table} dv", 'dv.id = l.division_id', 'left')
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
