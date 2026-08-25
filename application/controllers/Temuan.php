@@ -222,7 +222,8 @@ class Temuan extends CI_Controller {
                             OR EXISTS(SELECT 1 FROM temuan_wa_contact_division tcd
                                         JOIN temuan_division td ON td.id = tcd.division_id
                                         JOIN temuan_wa_contact twc2 ON twc2.id = tcd.contact_id
-                                       WHERE LOWER(td.name) = LOWER(position.position_name) AND twc2.is_active = 1)
+                                       WHERE LOWER(td.name) = LOWER(position.position_name)
+                                         AND td.is_active = 1 AND twc2.is_active = 1)
                            ) AS has_notify_coverage")
                  ->join('position', 'position.id = users.position_id', 'left')
                  ->where('users.active', 1);
@@ -1659,26 +1660,28 @@ class Temuan extends CI_Controller {
             }
         }
 
-        // Dedup per nomor: kalau satu nomor kepilih lewat >1 jalur (mis. jadi PJ
-        // sekaligus dicentang sbg Kontak), kirim SATU pesan saja pakai peran paling
-        // spesifik (pj/pengawas > kontak > bersama) -- bukan kirim dobel.
-        $role_priority = ['pj' => 0, 'pengawas' => 1, 'kontak' => 2, 'bersama' => 3];
-        $by_phone = [];
-        foreach ($targets as $t) {
-            $phone = trim((string)$t['phone']);
-            if ($phone === '') { continue; }
-            if (!isset($by_phone[$phone]) || $role_priority[$t['role']] < $role_priority[$by_phone[$phone]]) {
-                $by_phone[$phone] = $t['role'];
-            }
-        }
-        if (empty($by_phone)) return;
-
         $this->load->model('wa_model', 'wa');
         $wa_cfg = $this->wa->get_config();
         if (empty($wa_cfg) || empty($wa_cfg['secret']) || empty($wa_cfg['is_active'])) return;
 
         $this->load->library('hermes_wa');
         $wa = new Hermes_wa(['api_key' => $wa_cfg['secret']]);
+
+        // Dedup per nomor TERNORMALISASI (08xx dan 628xx = orang yang sama --
+        // admin bebas ngetik format mana pun di tiap sumber): kalau satu nomor
+        // kepilih lewat >1 jalur (mis. jadi PJ sekaligus dicentang sbg Kontak),
+        // kirim SATU pesan saja pakai peran paling spesifik
+        // (pj/pengawas > kontak > bersama) -- bukan kirim dobel.
+        $role_priority = ['pj' => 0, 'pengawas' => 1, 'kontak' => 2, 'bersama' => 3];
+        $by_phone = [];
+        foreach ($targets as $t) {
+            $phone = $wa->normalize_phone(trim((string)$t['phone']));
+            if ($phone === '') { continue; }
+            if (!isset($by_phone[$phone]) || $role_priority[$t['role']] < $role_priority[$by_phone[$phone]]) {
+                $by_phone[$phone] = $t['role'];
+            }
+        }
+        if (empty($by_phone)) return;
 
         foreach ($by_phone as $phone => $role) {
             $message = $this->_build_message($type, $row, $role);
@@ -1806,7 +1809,7 @@ class Temuan extends CI_Controller {
         $msg  = "✅ *TEMUAN SELESAI (ACC)*\n";
         $msg .= str_repeat("─", 30) . "\n";
         $msg .= "🏢 Cabang    : {$row['branch_name']}\n";
-        $msg .= "📍 Lokasi    : {$row['location_name']}\n";
+        $msg .= $this->_target_line($row);
         $msg .= "📝 Keterangan: {$row['description']}\n";
         $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
         $msg .= "🆗 ACC oleh  : {$row['acc_by_name']}\n";

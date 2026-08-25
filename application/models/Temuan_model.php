@@ -725,6 +725,7 @@ class Temuan_model extends CI_Model {
                            ->join("{$this->wa_contact_division_table} cd", 'cd.division_id = dv.id')
                            ->join("{$this->wa_contact_table} c", 'c.id = cd.contact_id')
                            ->where('u.id', $user_id)
+                           ->where('dv.is_active', 1)
                            ->where('c.is_active', 1)
                            ->get()->result_array();
         $phones = array_merge(array_column($direct, 'phone'), array_column($via_division, 'phone'));
