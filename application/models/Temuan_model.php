@@ -19,6 +19,11 @@ class Temuan_model extends CI_Model {
     protected $division_table  = 'temuan_division';
     protected $wa_contact_table = 'temuan_wa_contact';
     protected $location_contact_table = 'temuan_location_contact';
+    // HP kantor dipakai bareng: satu kontak WA bisa terasosiasi ke banyak
+    // karyawan langsung, dan/atau ke satu/banyak "divisi" (temuan_division,
+    // dicocokkan ke position.position_name -- lihat get_employee_notify_phones).
+    protected $wa_contact_employee_table = 'temuan_wa_contact_employee';
+    protected $wa_contact_division_table = 'temuan_wa_contact_division';
     // No. WA KERJA per user (PJ/Pengawas) -- notif WA DILARANG pakai users.phone
     // (no pribadi; karyawan dilarang bawa HP). Diisi admin saat menugaskan.
     protected $work_phone_table = 'temuan_work_phone';
@@ -348,6 +353,26 @@ class Temuan_model extends CI_Model {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
         $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->wa_contact_employee_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `contact_id` INT UNSIGNED NOT NULL,
+                `user_id` INT NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_contact_user` (`contact_id`, `user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->wa_contact_division_table}` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `contact_id` INT UNSIGNED NOT NULL,
+                `division_id` INT UNSIGNED NOT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_contact_division` (`contact_id`, `division_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+        $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->location_contact_table}` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `location_id` INT UNSIGNED NOT NULL,
@@ -636,9 +661,74 @@ class Temuan_model extends CI_Model {
     // ====================================================================
 
     public function get_wa_contacts($active_only = false) {
-        $this->db->from($this->wa_contact_table);
+        $this->db->select("{$this->wa_contact_table}.*,
+            (SELECT GROUP_CONCAT(ce.user_id) FROM {$this->wa_contact_employee_table} ce
+              WHERE ce.contact_id = {$this->wa_contact_table}.id) AS employee_ids,
+            (SELECT GROUP_CONCAT(TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) SEPARATOR ', ')
+               FROM {$this->wa_contact_employee_table} ce2 JOIN users u ON u.id = ce2.user_id
+              WHERE ce2.contact_id = {$this->wa_contact_table}.id) AS employee_names,
+            (SELECT GROUP_CONCAT(cd.division_id) FROM {$this->wa_contact_division_table} cd
+              WHERE cd.contact_id = {$this->wa_contact_table}.id) AS division_ids,
+            (SELECT GROUP_CONCAT(dv.name SEPARATOR ', ')
+               FROM {$this->wa_contact_division_table} cd2 JOIN {$this->division_table} dv ON dv.id = cd2.division_id
+              WHERE cd2.contact_id = {$this->wa_contact_table}.id) AS division_names")
+                 ->from($this->wa_contact_table);
         if ($active_only) { $this->db->where('is_active', 1); }
         return $this->db->order_by('name')->get()->result_array();
+    }
+
+    /** Ganti seluruh daftar karyawan terasosiasi langsung ke kontak WA tsb. */
+    public function set_wa_contact_employees($contact_id, $user_ids) {
+        $contact_id = (int)$contact_id;
+        $this->db->where('contact_id', $contact_id)->delete($this->wa_contact_employee_table);
+        $user_ids = array_unique(array_filter(array_map('intval', (array)$user_ids)));
+        if (empty($user_ids)) { return; }
+        $now = date('Y-m-d H:i:s');
+        $rows = array_map(function ($uid) use ($contact_id, $now) {
+            return ['contact_id' => $contact_id, 'user_id' => $uid, 'created_at' => $now];
+        }, $user_ids);
+        $this->db->insert_batch($this->wa_contact_employee_table, $rows);
+    }
+
+    /** Ganti seluruh daftar divisi terasosiasi ke kontak WA tsb (semua karyawan posisi itu ikut). */
+    public function set_wa_contact_divisions($contact_id, $division_ids) {
+        $contact_id = (int)$contact_id;
+        $this->db->where('contact_id', $contact_id)->delete($this->wa_contact_division_table);
+        $division_ids = array_unique(array_filter(array_map('intval', (array)$division_ids)));
+        if (empty($division_ids)) { return; }
+        $now = date('Y-m-d H:i:s');
+        $rows = array_map(function ($did) use ($contact_id, $now) {
+            return ['contact_id' => $contact_id, 'division_id' => $did, 'created_at' => $now];
+        }, $division_ids);
+        $this->db->insert_batch($this->wa_contact_division_table, $rows);
+    }
+
+    /**
+     * Semua no. HP kantor yang terasosiasi ke karyawan ini -- langsung (ditandai
+     * per-orang) ATAU lewat divisi (temuan_division.name dicocokkan ke
+     * position.position_name, case-insensitive -- divisi di sini SAMA DENGAN
+     * posisi/jabatan karyawan, bukan roster terpisah). Satu karyawan bisa dapat
+     * >1 nomor (mis. rangkap jabatan/divisi). Kontak nonaktif tak ikut.
+     */
+    public function get_employee_notify_phones($user_id) {
+        $user_id = (int)$user_id;
+        $direct = $this->db->select('c.phone')
+                           ->from("{$this->wa_contact_employee_table} ce")
+                           ->join("{$this->wa_contact_table} c", 'c.id = ce.contact_id')
+                           ->where('ce.user_id', $user_id)
+                           ->where('c.is_active', 1)
+                           ->get()->result_array();
+        $via_division = $this->db->select('c.phone')
+                           ->from('users u')
+                           ->join('position p', 'p.id = u.position_id')
+                           ->join("{$this->division_table} dv", 'LOWER(dv.name) = LOWER(p.position_name)')
+                           ->join("{$this->wa_contact_division_table} cd", 'cd.division_id = dv.id')
+                           ->join("{$this->wa_contact_table} c", 'c.id = cd.contact_id')
+                           ->where('u.id', $user_id)
+                           ->where('c.is_active', 1)
+                           ->get()->result_array();
+        $phones = array_merge(array_column($direct, 'phone'), array_column($via_division, 'phone'));
+        return array_values(array_unique(array_filter(array_map('trim', $phones))));
     }
 
     public function get_wa_contact($id) {
@@ -658,6 +748,8 @@ class Temuan_model extends CI_Model {
 
     public function delete_wa_contact($id) {
         $this->db->where('contact_id', $id)->delete($this->location_contact_table);
+        $this->db->where('contact_id', $id)->delete($this->wa_contact_employee_table);
+        $this->db->where('contact_id', $id)->delete($this->wa_contact_division_table);
         $this->db->where('id', $id)->delete($this->wa_contact_table);
     }
 
@@ -849,6 +941,8 @@ class Temuan_model extends CI_Model {
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u4.first_name,' ',COALESCE(u4.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_spv_table} ls2 JOIN users u4 ON u4.id = ls2.user_id
                         WHERE ls2.location_id = l.id) AS spv_name,
+                      (SELECT ls3.user_id FROM {$this->location_spv_table} ls3
+                        WHERE ls3.location_id = l.id AND ls3.is_primary = 1 LIMIT 1) AS primary_spv_id,
                       (SELECT GROUP_CONCAT(sj.user_id) FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id) AS subject_user_ids,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
                          FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id

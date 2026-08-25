@@ -410,7 +410,12 @@ class Temuan extends CI_Controller {
             $have = $this->temuan->get_work_phone_map($assigned_ids);
             $missing = [];
             foreach ($assigned_ids as $uid) {
-                if (empty($have[$uid]) && empty($provided[$uid])) { $missing[] = $uid; }
+                if (!empty($have[$uid]) || !empty($provided[$uid])) { continue; }
+                // Belum ada no kerja pribadi -- tapi kalau sudah tercakup HP kantor
+                // (Kelola -> Kontak WA, ditandai langsung atau lewat divisi/posisi),
+                // tak perlu diminta lagi.
+                if (!empty($this->temuan->get_employee_notify_phones($uid))) { continue; }
+                $missing[] = $uid;
             }
             if (!empty($missing)) {
                 $names = $this->db->select("TRIM(CONCAT(first_name,' ',COALESCE(last_name,''))) AS name")
@@ -519,6 +524,15 @@ class Temuan extends CI_Controller {
         $data = ['name' => $name, 'phone' => $phone, 'is_active' => isset($p['is_active']) ? (int)!!$p['is_active'] : 1];
         $id = !empty($p['id']) ? (int)$p['id'] : null;
         $saved_id = $this->temuan->save_wa_contact($data, $id);
+        // Siapa yang pakai HP kantor ini: karyawan langsung + seluruh divisi (posisi) --
+        // dua-duanya opsional. Field TIDAK dikirim = pertahankan asosiasi lama (mis.
+        // toggle status Aktif/Nonaktif saja); dikirim (termasuk array kosong) = replace-all.
+        if (array_key_exists('employee_ids', $p)) {
+            $this->temuan->set_wa_contact_employees($saved_id, $p['employee_ids']);
+        }
+        if (array_key_exists('division_ids', $p)) {
+            $this->temuan->set_wa_contact_divisions($saved_id, $p['division_ids']);
+        }
         $this->_json(['status' => true, 'id' => (int)$saved_id]);
     }
 
@@ -1606,17 +1620,34 @@ class Temuan extends CI_Controller {
             foreach ($this->temuan->get_location_pj_phones($row['location_id']) as $p) {
                 $targets[] = ['phone' => $p, 'role' => 'pj'];
             }
+            // No kerja pribadi (di atas) DIGABUNG (bukan fallback) dengan HP kantor
+            // yang terasosiasi ke orang itu (Kelola -> Kontak WA, langsung atau lewat
+            // divisi/posisi) -- satu orang bisa dapat notif di >1 nomor sekaligus.
+            foreach (explode(',', (string)($row['pj_user_ids'] ?? '')) as $uid) {
+                if (!$uid) { continue; }
+                foreach ($this->temuan->get_employee_notify_phones((int)$uid) as $p) {
+                    $targets[] = ['phone' => $p, 'role' => 'pj'];
+                }
+            }
             $primary = $this->temuan->get_primary_spv_phone($row['location_id']);
             if ($primary) { $targets[] = ['phone' => $primary, 'role' => 'pengawas']; }
+            if (!empty($row['primary_spv_id'])) {
+                foreach ($this->temuan->get_employee_notify_phones((int)$row['primary_spv_id']) as $p) {
+                    $targets[] = ['phone' => $p, 'role' => 'pengawas'];
+                }
+            }
             foreach ($this->temuan->get_location_contact_phones($row['location_id']) as $p) {
                 $targets[] = ['phone' => $p, 'role' => 'kontak'];
             }
         }
         if (!empty($row['individu_spv_id'])) {
-            // No KERJA (temuan_work_phone), BUKAN users.phone pribadi. Pengawas
-            // ad-hoc tanpa no kerja tersimpan = tidak dikirimi WA (tanpa fallback).
+            // No KERJA (temuan_work_phone) + HP kantor terasosiasi (langsung/divisi).
+            // Pengawas ad-hoc tanpa nomor sama sekali = tidak dikirimi WA.
             $wp = $this->temuan->get_work_phone((int)$row['individu_spv_id']);
             if ($wp) { $targets[] = ['phone' => $wp, 'role' => 'pengawas']; }
+            foreach ($this->temuan->get_employee_notify_phones((int)$row['individu_spv_id']) as $p) {
+                $targets[] = ['phone' => $p, 'role' => 'pengawas'];
+            }
         }
 
         // Dedup per nomor: kalau satu nomor kepilih lewat >1 jalur (mis. jadi PJ

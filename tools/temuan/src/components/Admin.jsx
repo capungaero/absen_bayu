@@ -477,13 +477,21 @@ function DivisionAdmin({ onSessionEnd }) {
 
 function WaContactAdmin({ onSessionEnd }) {
   const [contacts, setContacts] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const d = await apiGet('/wa_contacts', { all: 1 });
-      setContacts(d.rows);
+      const [c, e, d] = await Promise.all([
+        apiGet('/wa_contacts', { all: 1 }),
+        apiGet('/employees'),
+        apiGet('/divisions'),
+      ]);
+      setContacts(c.rows);
+      setEmployees(e.rows);
+      setDivisions(d.rows);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
@@ -511,6 +519,8 @@ function WaContactAdmin({ onSessionEnd }) {
         name: editing.name.trim(),
         phone: editing.phone.trim(),
         is_active: editing.is_active ? 1 : 0,
+        employee_ids: editing.employee_ids || [],
+        division_ids: editing.division_ids || [],
       });
       setEditing(null);
       load();
@@ -520,35 +530,61 @@ function WaContactAdmin({ onSessionEnd }) {
     }
   };
 
+  const toggleEditingEmployee = (uid) => {
+    setEditing((f) => {
+      const cur = f.employee_ids || [];
+      const has = cur.includes(uid);
+      return { ...f, employee_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
+    });
+  };
+  const toggleEditingDivision = (did) => {
+    setEditing((f) => {
+      const cur = f.division_ids || [];
+      const has = cur.includes(did);
+      return { ...f, division_ids: has ? cur.filter((x) => x !== did) : [...cur, did] };
+    });
+  };
+
   return (
     <div className="admin-section">
       <h3>📱 Kontak Notifikasi WA</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Nomor HP + nama yang bisa dipilih sebagai penerima notif WA untuk Kode Area tertentu
-        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah).
+        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah). Untuk HP KANTOR yang dipakai
+        bareng: tandai karyawan dan/atau divisi (posisi) di bawah — mereka otomatis dapat
+        notif ke nomor ini tanpa perlu diisi manual no kerja per orang lagi.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ name: '', phone: '', is_active: 1 })}>
+        onClick={() => setEditing({ name: '', phone: '', is_active: 1, employee_ids: [], division_ids: [] })}>
         + Tambah Kontak
       </button>
       <div className="table-wrap">
         <table className="loc-table">
-          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Karyawan/Divisi Terasosiasi</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {contacts.map((c) => (
               <tr key={c.id} className={Number(c.is_active) ? '' : 'inactive'}>
                 <td>{c.name}</td>
                 <td>{c.phone}</td>
+                <td className="wrap" style={{ fontSize: 12.5 }}>
+                  {c.employee_names && <div>👤 {c.employee_names}</div>}
+                  {c.division_names && <div style={{ color: 'var(--muted)' }}>🏷 Divisi: {c.division_names}</div>}
+                  {!c.employee_names && !c.division_names && <span style={{ color: 'var(--muted)' }}>—</span>}
+                </td>
                 <td>{Number(c.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(c)}>Edit</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({
+                    ...c,
+                    employee_ids: c.employee_ids ? c.employee_ids.split(',').map(Number) : [],
+                    division_ids: c.division_ids ? c.division_ids.split(',').map(Number) : [],
+                  })}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(c)}>Hapus</button>
                 </td>
               </tr>
             ))}
             {contacts.length === 0 && (
-              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
+              <tr><td colSpan="5" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
             )}
           </tbody>
         </table>
@@ -570,6 +606,41 @@ function WaContactAdmin({ onSessionEnd }) {
               <input type="checkbox" checked={!!Number(editing.is_active)} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked ? 1 : 0 })} />
               Aktif
             </label>
+
+            <div className="field">
+              <label>Karyawan yang pakai nomor ini (bisa lebih dari satu)</label>
+              <div className="pj-checklist">
+                {employees.map((u) => (
+                  <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={(editing.employee_ids || []).includes(Number(u.id))}
+                      onChange={() => toggleEditingEmployee(Number(u.id))}
+                    />
+                    {u.name}{u.position_name ? ` (${u.position_name})` : ''}
+                  </label>
+                ))}
+                {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Tidak ada karyawan.</div>}
+              </div>
+            </div>
+
+            <div className="field">
+              <label>Divisi (semua karyawan posisi ini otomatis ikut, bisa lebih dari satu)</label>
+              <div className="pj-checklist">
+                {divisions.map((d) => (
+                  <label key={d.id} className="check-row" style={{ marginBottom: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={(editing.division_ids || []).includes(Number(d.id))}
+                      onChange={() => toggleEditingDivision(Number(d.id))}
+                    />
+                    {d.name}
+                  </label>
+                ))}
+                {divisions.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Belum ada divisi -- kelola di bagian Divisi.</div>}
+              </div>
+            </div>
+
             <div className="modal-actions">
               <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Batal</button>
               <button className="btn btn-primary btn-sm" onClick={save}>Simpan</button>
