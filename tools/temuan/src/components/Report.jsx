@@ -16,6 +16,18 @@ const SORT_COLUMNS = [
   { key: 'total', label: 'Jumlah Temuan' },
 ];
 
+const DETAIL_SORT_COLUMNS = [
+  { key: 'created_at', label: 'Tanggal', className: 'nowrap' },
+  { key: 'type_name', label: 'Jenis' },
+  { key: 'area_mitra', label: 'Kode Area / Mitra' },
+  { key: 'branch_name', label: 'Cabang', className: 'nowrap' },
+  { key: 'reporter_name', label: 'Inspector' },
+  { key: 'status', label: 'Status', className: 'nowrap' },
+  { key: 'is_late', label: 'Terlambat', className: 'nowrap' },
+];
+
+const normalize = (s) => String(s || '').toLowerCase();
+
 export default function Report({ me, onSessionEnd }) {
   const firstOfMonth = new Date().toISOString().slice(0, 8) + '01';
   const today = new Date().toISOString().slice(0, 10);
@@ -30,6 +42,9 @@ export default function Report({ me, onSessionEnd }) {
   const [chartDim, setChartDim] = useState('byDivision');
   const [sortKey, setSortKey] = useState('total');
   const [sortDir, setSortDir] = useState('desc');
+  const [detailSortKey, setDetailSortKey] = useState('created_at');
+  const [detailSortDir, setDetailSortDir] = useState('desc');
+  const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -60,8 +75,19 @@ export default function Report({ me, onSessionEnd }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const q = normalize(search).trim();
+
   const sortedSummaryRows = useMemo(() => {
-    const list = [...summaryRows];
+    let list = summaryRows;
+    if (q) {
+      list = list.filter((s) =>
+        normalize(s.location_name).includes(q) ||
+        normalize(s.pj_name).includes(q) ||
+        normalize(s.spv_name).includes(q) ||
+        normalize(s.branch_name).includes(q)
+      );
+    }
+    list = [...list];
     list.sort((a, b) => {
       const av = a[sortKey], bv = b[sortKey];
       let cmp;
@@ -73,7 +99,7 @@ export default function Report({ me, onSessionEnd }) {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return list;
-  }, [summaryRows, sortKey, sortDir]);
+  }, [summaryRows, sortKey, sortDir, q]);
 
   const toggleSort = (key) => {
     if (key === sortKey) {
@@ -83,6 +109,48 @@ export default function Report({ me, onSessionEnd }) {
       setSortDir(key === 'total' ? 'desc' : 'asc');
     }
   };
+
+  const toggleDetailSort = (key) => {
+    if (key === detailSortKey) {
+      setDetailSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setDetailSortKey(key);
+      setDetailSortDir(key === 'created_at' ? 'desc' : 'asc');
+    }
+  };
+
+  const areaOrMitra = (r) => (r.type_target_mode === 'individu' ? (r.subject_names || '-') : (r.location_name || '-'));
+
+  const filteredDetailRows = useMemo(() => {
+    let list = rows;
+    if (q) {
+      list = list.filter((r) =>
+        normalize(r.type_name).includes(q) ||
+        normalize(areaOrMitra(r)).includes(q) ||
+        normalize(r.branch_name).includes(q) ||
+        normalize(r.description).includes(q) ||
+        normalize(r.reporter_name).includes(q) ||
+        normalize(STATUS_LABEL[r.status] || r.status).includes(q)
+      );
+    }
+    list = [...list];
+    list.sort((a, b) => {
+      let av, bv;
+      if (detailSortKey === 'area_mitra') { av = areaOrMitra(a); bv = areaOrMitra(b); }
+      else if (detailSortKey === 'status') { av = STATUS_LABEL[a.status] || a.status; bv = STATUS_LABEL[b.status] || b.status; }
+      else { av = a[detailSortKey]; bv = b[detailSortKey]; }
+      let cmp;
+      if (detailSortKey === 'created_at') {
+        cmp = new Date(av || 0) - new Date(bv || 0);
+      } else if (detailSortKey === 'is_late') {
+        cmp = (av ? 1 : 0) - (bv ? 1 : 0);
+      } else {
+        cmp = String(av || '').localeCompare(String(bv || ''), 'id', { sensitivity: 'base' });
+      }
+      return detailSortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [rows, detailSortKey, detailSortDir, q]);
 
   const canExportExcel = me.is_admin || me.is_inspector;
   const qs = `from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
@@ -121,6 +189,20 @@ export default function Report({ me, onSessionEnd }) {
         <button className="btn btn-outline btn-sm" onClick={load} disabled={busy}>↻ Muat ulang</button>
         {canExportExcel && (
           <a className="btn btn-primary btn-sm" href={excelUrl}>⬇ Unduh Excel Ringkasan</a>
+        )}
+      </div>
+
+      <div className="filter-row">
+        <input
+          type="search"
+          placeholder="🔎 Cari kode area, mitra, PJ, Pengawas, jenis, keterangan..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="date-input"
+          style={{ flex: 1, minWidth: 240 }}
+        />
+        {search && (
+          <button className="btn btn-outline btn-sm" onClick={() => setSearch('')}>✕ Bersihkan</button>
         )}
       </div>
 
@@ -183,8 +265,8 @@ export default function Report({ me, onSessionEnd }) {
                   <td className="num" style={{ color: s.tidak_selesai > 0 ? 'var(--red)' : 'var(--muted)', fontWeight: 600 }}>{s.tidak_selesai}</td>
                 </tr>
               ))}
-              {summaryRows.length === 0 && !busy && (
-                <tr><td colSpan="7" style={{ color: 'var(--muted)' }}>Tidak ada data pada rentang ini.</td></tr>
+              {sortedSummaryRows.length === 0 && !busy && (
+                <tr><td colSpan="7" style={{ color: 'var(--muted)' }}>{q ? 'Tidak ada yang cocok dengan pencarian.' : 'Tidak ada data pada rentang ini.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -202,24 +284,25 @@ export default function Report({ me, onSessionEnd }) {
           <table className="loc-table report-table">
             <thead>
               <tr>
-                <th className="nowrap">Tanggal</th><th>Jenis</th><th>Kode Area / Mitra</th><th className="nowrap">Cabang</th><th>Temuan</th>
-                <th>Inspector</th><th className="nowrap">Status</th><th className="nowrap">Terlambat</th><th>Penanganan</th>
+                {DETAIL_SORT_COLUMNS.map((c) => (
+                  <th
+                    key={c.key}
+                    className={`sortable${c.className ? ' ' + c.className : ''}`}
+                    onClick={() => toggleDetailSort(c.key)}
+                  >
+                    {c.label}{detailSortKey === c.key && <span className="arrow">{detailSortDir === 'asc' ? '▲' : '▼'}</span>}
+                  </th>
+                ))}
+                <th>Temuan</th><th>Penanganan</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {filteredDetailRows.map((r) => (
                 <tr key={r.id} className={Number(r.is_deleted) ? 'inactive' : ''}>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
                   <td>{r.type_name || '-'}</td>
-                  <td>{r.type_target_mode === 'individu' ? (r.subject_names || '-') : r.location_name}</td>
+                  <td>{areaOrMitra(r)}</td>
                   <td>{r.branch_name}</td>
-                  <td>
-                    {r.description}
-                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                      {r.photo_url && <a href={r.photo_url} target="_blank" rel="noreferrer">📎 foto temuan</a>}
-                      {r.done_photo_url && <a href={r.done_photo_url} target="_blank" rel="noreferrer">📎 foto pengerjaan</a>}
-                    </div>
-                  </td>
                   <td>{r.reporter_name}</td>
                   <td>
                     <span className={`badge badge-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
@@ -232,13 +315,20 @@ export default function Report({ me, onSessionEnd }) {
                       <span className={`badge ${r.is_late ? 'badge-telat' : 'badge-selesai'}`}>{r.is_late ? 'Telat' : 'Tepat waktu'}</span>
                     )}
                   </td>
+                  <td>
+                    {r.description}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                      {r.photo_url && <a href={r.photo_url} target="_blank" rel="noreferrer">📎 foto temuan</a>}
+                      {r.done_photo_url && <a href={r.done_photo_url} target="_blank" rel="noreferrer">📎 foto pengerjaan</a>}
+                    </div>
+                  </td>
                   <td style={{ fontSize: 13 }}>
                     {handling(r).map((p, i) => <div key={i}>{p}</div>)}
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && !busy && (
-                <tr><td colSpan="9" style={{ color: 'var(--muted)' }}>Tidak ada temuan pada rentang ini.</td></tr>
+              {filteredDetailRows.length === 0 && !busy && (
+                <tr><td colSpan="9" style={{ color: 'var(--muted)' }}>{q ? 'Tidak ada yang cocok dengan pencarian.' : 'Tidak ada temuan pada rentang ini.'}</td></tr>
               )}
             </tbody>
           </table>
