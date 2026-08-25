@@ -776,9 +776,18 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
   // Notif WA pakai NO KERJA (bukan no pribadi di master karyawan -- karyawan
   // dilarang bawa HP). Saat menugaskan orang yang belum punya no kerja
   // tersimpan, minta input dulu; batal input = batal centang.
+  const phoneHint = (u) => {
+    const manual = (form.work_phones || {})[Number(u.id)] || u.work_phone;
+    if (manual) return `📱 ${manual}`;
+    if (Number(u.has_notify_coverage)) return '📱 HP kantor (Kontak WA)';
+    return 'belum ada no kerja';
+  };
+
   const askWorkPhone = (uid) => {
     const emp = employees.find((u) => Number(u.id) === uid);
-    if (emp?.work_phone || (form.work_phones || {})[uid]) return true;
+    // Tercakup HP kantor (Kelola -> Kontak WA, langsung atau lewat divisi/posisi)
+    // -- no kerja pribadi tak perlu diminta lagi.
+    if (emp?.work_phone || Number(emp?.has_notify_coverage) || (form.work_phones || {})[uid]) return true;
     const no = window.prompt(
       `No. WA KERJA untuk ${emp?.name || 'karyawan ini'} (bukan no pribadi):`, '');
     const phone = (no || '').trim();
@@ -869,8 +878,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
                 />
                 {u.name}{u.position_name ? ` (${u.position_name})` : ''}
                 <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
-                  {(form.work_phones || {})[Number(u.id)] || u.work_phone
-                    ? `📱 ${(form.work_phones || {})[Number(u.id)] || u.work_phone}` : 'belum ada no kerja'}
+                  {phoneHint(u)}
                 </span>
               </label>
             ))}
@@ -892,8 +900,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
                 />
                 {u.name}{u.position_name ? ` (${u.position_name})` : ''}
                 <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
-                  {(form.work_phones || {})[Number(u.id)] || u.work_phone
-                    ? `📱 ${(form.work_phones || {})[Number(u.id)] || u.work_phone}` : 'belum ada no kerja'}
+                  {phoneHint(u)}
                 </span>
               </label>
             ))}

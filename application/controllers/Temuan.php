@@ -211,10 +211,19 @@ class Temuan extends CI_Controller {
     public function employees() {
         if (!$this->_auth()) return;
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
-        // work_phone = no WA KERJA dari temuan_work_phone (BUKAN users.phone pribadi)
-        // -- dipakai FE buat tahu siapa yang belum punya no saat ditugaskan PJ/Pengawas.
+        // work_phone = no WA KERJA dari temuan_work_phone (BUKAN users.phone pribadi).
+        // has_notify_coverage = TERCAKUP HP kantor (Kelola -> Kontak WA) via asosiasi
+        // langsung ATAU divisi (posisi) -- kalau true, FE tak perlu minta no kerja lagi.
         $this->db->select("users.id, TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS name, position.position_name, users.location,
-                           (SELECT wp.phone FROM temuan_work_phone wp WHERE wp.user_id = users.id) AS work_phone")
+                           (SELECT wp.phone FROM temuan_work_phone wp WHERE wp.user_id = users.id) AS work_phone,
+                           (EXISTS(SELECT 1 FROM temuan_wa_contact_employee tce
+                                     JOIN temuan_wa_contact twc ON twc.id = tce.contact_id
+                                    WHERE tce.user_id = users.id AND twc.is_active = 1)
+                            OR EXISTS(SELECT 1 FROM temuan_wa_contact_division tcd
+                                        JOIN temuan_division td ON td.id = tcd.division_id
+                                        JOIN temuan_wa_contact twc2 ON twc2.id = tcd.contact_id
+                                       WHERE LOWER(td.name) = LOWER(position.position_name) AND twc2.is_active = 1)
+                           ) AS has_notify_coverage")
                  ->join('position', 'position.id = users.position_id', 'left')
                  ->where('users.active', 1);
         if ($branch_id !== null) {
