@@ -1596,25 +1596,42 @@ class Temuan extends CI_Controller {
         // semua kasus, digabung (bukan fallback) dengan nomor yang ditag khusus area tsb --
         // semua PJ + Pengawas Utama saja (bukan backup) + kontak WA yang dicentang buat
         // lokasi itu (Kelola -> Kode Area). Mode individu: + nomor Pengawas ad-hoc yang
-        // dipilih saat lapor.
-        $phones = array_filter(array_map('trim', explode(',', (string)$cfg['target_phones'])));
+        // dipilih saat lapor. Tiap nomor dilacak PERANnya (pj/pengawas/kontak/bersama)
+        // biar isi pesan bisa dipersonalisasi -- lihat _build_message().
+        $targets = [];
+        foreach (array_filter(array_map('trim', explode(',', (string)$cfg['target_phones']))) as $p) {
+            $targets[] = ['phone' => $p, 'role' => 'bersama'];
+        }
         if (!empty($row['location_id'])) {
+            foreach ($this->temuan->get_location_pj_phones($row['location_id']) as $p) {
+                $targets[] = ['phone' => $p, 'role' => 'pj'];
+            }
             $primary = $this->temuan->get_primary_spv_phone($row['location_id']);
-            $phones = array_merge(
-                $phones,
-                $this->temuan->get_location_pj_phones($row['location_id']),
-                $primary ? [$primary] : [],
-                $this->temuan->get_location_contact_phones($row['location_id'])
-            );
+            if ($primary) { $targets[] = ['phone' => $primary, 'role' => 'pengawas']; }
+            foreach ($this->temuan->get_location_contact_phones($row['location_id']) as $p) {
+                $targets[] = ['phone' => $p, 'role' => 'kontak'];
+            }
         }
         if (!empty($row['individu_spv_id'])) {
             // No KERJA (temuan_work_phone), BUKAN users.phone pribadi. Pengawas
             // ad-hoc tanpa no kerja tersimpan = tidak dikirimi WA (tanpa fallback).
             $wp = $this->temuan->get_work_phone((int)$row['individu_spv_id']);
-            if ($wp) { $phones[] = $wp; }
+            if ($wp) { $targets[] = ['phone' => $wp, 'role' => 'pengawas']; }
         }
-        $phones = array_values(array_unique(array_filter(array_map('trim', $phones))));
-        if (empty($phones)) return;
+
+        // Dedup per nomor: kalau satu nomor kepilih lewat >1 jalur (mis. jadi PJ
+        // sekaligus dicentang sbg Kontak), kirim SATU pesan saja pakai peran paling
+        // spesifik (pj/pengawas > kontak > bersama) -- bukan kirim dobel.
+        $role_priority = ['pj' => 0, 'pengawas' => 1, 'kontak' => 2, 'bersama' => 3];
+        $by_phone = [];
+        foreach ($targets as $t) {
+            $phone = trim((string)$t['phone']);
+            if ($phone === '') { continue; }
+            if (!isset($by_phone[$phone]) || $role_priority[$t['role']] < $role_priority[$by_phone[$phone]]) {
+                $by_phone[$phone] = $t['role'];
+            }
+        }
+        if (empty($by_phone)) return;
 
         $this->load->model('wa_model', 'wa');
         $wa_cfg = $this->wa->get_config();
@@ -1623,8 +1640,8 @@ class Temuan extends CI_Controller {
         $this->load->library('hermes_wa');
         $wa = new Hermes_wa(['api_key' => $wa_cfg['secret']]);
 
-        $message = $this->_build_message($type, $row);
-        foreach ($phones as $phone) {
+        foreach ($by_phone as $phone => $role) {
+            $message = $this->_build_message($type, $row, $role);
             $result = $wa->send($phone, $message);
             $this->wa->insert_log([
                 'type'       => $type,
@@ -1647,7 +1664,40 @@ class Temuan extends CI_Controller {
         return "📍 Lokasi    : {$row['location_name']}\n";
     }
 
-    private function _build_message($type, $row) {
+    /**
+     * Isi pesan dipersonalisasi per PERAN penerima (PJ Area/Pengawas/Kontak/Tim
+     * Operasional) -- fakta inti (cabang, lokasi, status, dll) tetap sama utk
+     * semua, cuma baris aksi/framing di paling atas yang beda, biar penerima
+     * langsung tahu apa yang diharapkan darinya tanpa baca detail dulu.
+     */
+    private function _build_message($type, $row, $role = 'bersama') {
+        $action = $this->_role_action_line($type, $role);
+        $body = $this->_build_message_body($type, $row);
+        return $action ? ($action . "\n" . $body) : $body;
+    }
+
+    private function _role_action_line($type, $role) {
+        $lines = [
+            'temuan_baru' => [
+                'pj'       => "👉 *Kamu PJ area ini* -- mohon segera *Kerjakan* atau *Tolak* (sertakan alasan) di aplikasi Temuan.\n",
+                'pengawas' => "👉 *Kamu Pengawas area ini* -- mohon pantau penanganannya.\n",
+            ],
+            'temuan_lapor' => [
+                'pj'       => "✅ Bagianmu sudah selesai, tinggal menunggu ACC dari inspector.\n",
+                'pengawas' => "👉 Mohon pantau apakah laporan penyelesaian ini sudah tepat.\n",
+            ],
+            'temuan_selesai' => [
+                'pj'       => "🎉 Kasus yang kamu tangani sudah di-ACC & ditutup. Terima kasih!\n",
+                'pengawas' => "🎉 Kasus di areamu sudah di-ACC & ditutup.\n",
+            ],
+            'temuan_extend_request' => [
+                'pengawas' => "👉 FYI pengajuan tambahan waktu di areamu -- keputusan ada di Admin/Inspector.\n",
+            ],
+        ];
+        return $lines[$type][$role] ?? '';
+    }
+
+    private function _build_message_body($type, $row) {
         $when = date('d/m/Y H:i');
         if ($type === 'temuan_baru') {
             $msg  = "🚨 *TEMUAN BARU*\n";
