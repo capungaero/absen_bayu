@@ -29,27 +29,14 @@
             </div>
             <div class="card-body">
 
-                <h6>Checklist Tugas</h6>
-                <?php if (empty($items)): ?>
-                    <p class="text-muted">Tidak ada item.</p>
+                <h6>Bukti Foto Kertas Kerja</h6>
+                <?php if (empty($header['photo_path'])): ?>
+                    <p class="text-muted">Belum ada foto.</p>
                 <?php else: ?>
-                    <ul class="list-group mb-3">
-                        <?php foreach ($items as $it): ?>
-                            <li class="list-group-item d-flex align-items-center">
-                                <?php if ($it['is_done']): ?>
-                                    <i class="mdi mdi-checkbox-marked text-success me-2"></i>
-                                    <span class="text-decoration-line-through text-muted"><?= htmlspecialchars($it['item_text']) ?></span>
-                                <?php else: ?>
-                                    <i class="mdi mdi-checkbox-blank-outline text-muted me-2"></i>
-                                    <span><?= htmlspecialchars($it['item_text']) ?></span>
-                                <?php endif; ?>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
+                    <a href="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" target="_blank">
+                        <img src="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" class="img-fluid rounded mb-3" style="max-height:500px" alt="foto kertas kerja">
+                    </a>
                 <?php endif; ?>
-
-                <h6>Catatan</h6>
-                <p><?= nl2br(htmlspecialchars($header['notes'] ?: '-')) ?></p>
 
                 <?php if (!empty($header['status']) && $header['status'] === 'read'): ?>
                     <small class="text-muted">Dibaca <?= indonesian_date($header['read_at'], true) ?></small>

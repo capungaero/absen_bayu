@@ -1,29 +1,25 @@
 <?php
-/** Mobile Kertas Kerja — to-do list harian (checklist + catatan). */
-$current_items = !empty($current['items']) ? $current['items'] : [];
-if (empty($current_items)) {
-    $current_items = [['item_text' => '', 'is_done' => 0]];
-}
+/** Mobile Kertas Kerja — bukti = FOTO kertas kerja tulisan tangan (bukan input teks). */
 ?>
 
 <div class="section-title"><i class="material-icons">checklist</i> Kertas Kerja Hari Ini</div>
 
 <div class="m-card">
-    <form id="form-kertas-kerja">
+    <form id="form-kertas-kerja" enctype="multipart/form-data">
         <div class="m-form-group">
             <label class="m-form-label">Tanggal</label>
             <input type="date" name="kerja_date" id="kk-date" class="m-form-control" value="<?= $today ?>" max="<?= $today ?>" required>
         </div>
 
-        <label class="m-form-label">Checklist Tugas</label>
-        <div id="kk-items"></div>
-        <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="kk-add-item">
-            <i class="material-icons" style="font-size:16px;vertical-align:-3px">add</i> Tambah Item
-        </button>
-
         <div class="m-form-group">
-            <label class="m-form-label">Catatan</label>
-            <textarea name="notes" class="m-form-control" rows="3" placeholder="Catatan tambahan (opsional)..."><?= htmlspecialchars($current['notes'] ?? '') ?></textarea>
+            <label class="m-form-label">Foto Kertas Kerja <span class="text-muted" style="font-weight:400">— wajib</span></label>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Tulis tugas hari ini di kertas, lalu foto sebagai bukti.</p>
+            <label class="photo-input">
+                <i class="material-icons">add_a_photo</i>
+                <span id="kk-photo-text"><?= !empty($current['photo_path']) ? 'Ganti foto' : 'Ambil / pilih foto' ?></span>
+                <input type="file" name="kk_photo" id="kk_photo" accept="image/*" capture="environment" <?= empty($current['photo_path']) ? 'required' : '' ?>>
+            </label>
+            <img id="kk_preview" class="photo-preview" <?php if (!empty($current['photo_path'])): ?>src="<?= base_url('assets/images/kertas_kerja/'.$current['photo_path']) ?>" style="display:block" <?php endif; ?>>
         </div>
 
         <button type="submit" class="btn m-btn-primary m-btn-sm" style="width:100%">
@@ -39,9 +35,13 @@ if (empty($current_items)) {
     <?php else: foreach ($history as $h): ?>
         <div class="status-card <?= $h['status'] === 'read' ? 'approved' : 'pending' ?>">
             <div class="d-flex justify-content-between align-items-center">
-                <div>
+                <div class="d-flex align-items-center" style="gap:10px">
+                    <?php if (!empty($h['photo_path'])): ?>
+                        <a href="<?= base_url('assets/images/kertas_kerja/'.$h['photo_path']) ?>" target="_blank">
+                            <img src="<?= base_url('assets/images/kertas_kerja/'.$h['photo_path']) ?>" style="width:40px;height:40px;object-fit:cover;border-radius:6px" alt="foto kertas kerja">
+                        </a>
+                    <?php endif; ?>
                     <div class="status-date"><?= date('d M Y', strtotime($h['kerja_date'])) ?></div>
-                    <div style="font-size:12px;color:var(--text-muted)"><?= (int)$h['total_done'] ?> / <?= (int)$h['total_item'] ?> item selesai</div>
                 </div>
                 <span class="m-badge <?= $h['status'] === 'read' ? 'success' : 'warning' ?>">
                     <?= $h['status'] === 'read' ? 'Sudah Dibaca' : 'Baru' ?>
@@ -51,47 +51,16 @@ if (empty($current_items)) {
     <?php endforeach; endif; ?>
 </div>
 
-<template id="kk-item-template">
-    <div class="kk-item d-flex align-items-center mb-2" style="gap:8px">
-        <input type="checkbox" class="kk-item-done" style="width:20px;height:20px;flex-shrink:0">
-        <input type="text" class="m-form-control kk-item-text" placeholder="Tugas ke-__" style="flex:1">
-        <button type="button" class="btn btn-sm btn-outline-danger kk-item-remove" style="flex-shrink:0"><i class="material-icons" style="font-size:16px">close</i></button>
-    </div>
-</template>
-
 <script>
 $(function(){
-    var seed = <?= json_encode($current_items) ?>;
-
-    function addRow(text, done){
-        var tpl = document.getElementById('kk-item-template');
-        var $row = $(tpl.content.firstElementChild.cloneNode(true));
-        $row.find('.kk-item-text').val(text || '');
-        // Bukan !!done -- is_done dari PHP/DB berupa string "0"/"1", dan string
-        // "0" itu truthy di JS (!!"0" === true), jadi checkbox salah render
-        // checked utk item yg belum selesai kalau pakai !!done.
-        $row.find('.kk-item-done').prop('checked', done == 1);
-        $('#kk-items').append($row);
-        renumber();
-    }
-
-    function renumber(){
-        $('#kk-items .kk-item').each(function(i){
-            $(this).find('.kk-item-text').attr('name', 'item_text[' + i + ']')
-                .attr('placeholder', 'Tugas ke-' + (i + 1));
-            $(this).find('.kk-item-done').attr('name', 'is_done[' + i + ']').val('1');
-        });
-    }
-
-    seed.forEach(function(it){ addRow(it.item_text, it.is_done); });
-    if (seed.length === 0) { addRow('', false); }
-
-    $('#kk-add-item').on('click', function(){ addRow('', false); });
-
-    $(document).on('click', '.kk-item-remove', function(){
-        if ($('#kk-items .kk-item').length <= 1) { return; }
-        $(this).closest('.kk-item').remove();
-        renumber();
+    $('#kk_photo').on('change', function(){
+        var f = this.files[0];
+        if (f) {
+            $('#kk-photo-text').text(f.name);
+            var r = new FileReader();
+            r.onload = function(e){ $('#kk_preview').attr('src', e.target.result).show(); };
+            r.readAsDataURL(f);
+        }
     });
 
     $('#form-kertas-kerja').on('submit', function(e){

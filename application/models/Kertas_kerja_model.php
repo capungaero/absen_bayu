@@ -26,11 +26,9 @@ class Kertas_kerja_model extends CI_Model {
 			->get('kertas_kerja_item')->result_array();
 	}
 
-	/** Riwayat N hari terakhir (header saja, tanpa item -- ringkas utk list). */
+	/** Riwayat N hari terakhir (header saja, ringkas utk list). */
 	public function get_history($user_id, $limit = 10) {
-		$rows = $this->db->select('kertas_kerja.*,
-				(SELECT COUNT(*) FROM kertas_kerja_item WHERE kertas_kerja_item.kertas_kerja_id = kertas_kerja.id) AS total_item,
-				(SELECT COUNT(*) FROM kertas_kerja_item WHERE kertas_kerja_item.kertas_kerja_id = kertas_kerja.id AND is_done = 1) AS total_done', false)
+		$rows = $this->db->select('kertas_kerja.*')
 			->where('user_id', $user_id)
 			->order_by('kerja_date', 'DESC')
 			->limit($limit)
@@ -40,16 +38,14 @@ class Kertas_kerja_model extends CI_Model {
 
 	/**
 	 * Upsert kertas kerja 1 hari: satu baris header per (user_id, kerja_date).
-	 * Submit ulang hari sama = replace notes + delete/reinsert item (pola sama
-	 * Employee::change_cluster()), status di-reset 'new' -- admin/SPV lihat sbg
+	 * Bukti = FOTO kertas kerja tulisan tangan (bukan input checklist teks --
+	 * karyawan tidak mengetik apa pun, cuma unggah foto). Submit ulang hari
+	 * sama = ganti foto, status di-reset 'new' -- admin/SPV lihat sbg
 	 * belum-dibaca lagi kalau ada perubahan.
 	 *
-	 * @param  array $items  [['text' => ..., 'is_done' => 0|1], ...]
 	 * @return int  id kertas_kerja
 	 */
-	public function save($user_id, $date, $notes, array $items) {
-		$this->db->trans_begin();
-
+	public function save($user_id, $date, $photo_path) {
 		$existing = $this->db->where(['user_id' => $user_id, 'kerja_date' => $date])
 			->get($this->table)->row_array();
 		$now = date('Y-m-d H:i:s');
@@ -58,47 +54,48 @@ class Kertas_kerja_model extends CI_Model {
 			$this->db->insert($this->table, [
 				'user_id'    => $user_id,
 				'kerja_date' => $date,
-				'notes'      => $notes,
+				'photo_path' => $photo_path,
 				'status'     => 'new',
 				'created_at' => $now,
 			]);
-			$kk_id = $this->db->insert_id();
-		} else {
-			$kk_id = (int)$existing['id'];
-			$this->db->where('id', $kk_id)->update($this->table, [
-				'notes'      => $notes,
-				'status'     => 'new',
-				'read_by'    => null,
-				'read_at'    => null,
-				'updated_at' => $now,
-			]);
-			$this->db->where('kertas_kerja_id', $kk_id)->delete('kertas_kerja_item');
+			return $this->db->insert_id();
 		}
 
-		if (!empty($items)) {
-			$rows = [];
-			foreach (array_values($items) as $i => $item) {
-				$text = trim((string)$item['text']);
-				if ($text === '') { continue; }
-				$rows[] = [
-					'kertas_kerja_id' => $kk_id,
-					'item_text'       => $text,
-					'is_done'         => !empty($item['is_done']) ? 1 : 0,
-					'sort_order'      => $i,
-					'created_at'      => $now,
-				];
-			}
-			if (!empty($rows)) {
-				$this->db->insert_batch('kertas_kerja_item', $rows);
-			}
-		}
-
-		if ($this->db->trans_status() === false) {
-			$this->db->trans_rollback();
-			return false;
-		}
-		$this->db->trans_commit();
+		$kk_id = (int)$existing['id'];
+		$this->db->where('id', $kk_id)->update($this->table, [
+			'photo_path' => $photo_path,
+			'status'     => 'new',
+			'read_by'    => null,
+			'read_at'    => null,
+			'updated_at' => $now,
+		]);
 		return $kk_id;
+	}
+
+	/**
+	 * Rekap kepatuhan per KARYAWAN (bukan per submission): semua karyawan yang
+	 * di-flag wajib_kertas_kerja, LEFT JOIN status pengisian di tanggal $date.
+	 * Dipakai admin/SPV lihat siapa SUDAH vs BELUM bikin kertas kerja hari itu.
+	 */
+	public function get_rekap($date, $find = [], $spv_user_id = null) {
+		$q = $this->db->select("users.id AS user_id,
+				TRIM(CONCAT(users.first_name,' ',COALESCE(users.last_name,''))) AS first_name,
+				users.employee_code, branch.branch_name, position.position_name,
+				kk.id AS kk_id, kk.photo_path, kk.status, kk.created_at, kk.updated_at", false)
+			->from('users')
+			->join('position', 'position.id = users.position_id')
+			->join('branch', 'branch.id = position.branch_id')
+			->join($this->table . ' kk', "kk.user_id = users.id AND kk.kerja_date = " . $this->db->escape($date), 'left')
+			->where('users.wajib_kertas_kerja', 1)
+			->where('users.active', 1);
+
+		if (!empty($find)) { $q->where($find); }
+		if ($spv_user_id !== null) {
+			$ids = $this->_spv_employee_ids($spv_user_id);
+			$q->where_in('users.id', empty($ids) ? [0] : $ids);
+		}
+
+		return $q->order_by('users.first_name', 'ASC')->get()->result_array();
 	}
 
 	public function mark_read($id, $by_user_id) {
@@ -132,11 +129,10 @@ class Kertas_kerja_model extends CI_Model {
 		// TIDAK punya where_in()/order_by(); manggil $dt->order_by() di statement
 		// terpisah = fatal error "Call to undefined method DatatablesBuilder::order_by()").
 		$q = $dt->select('kertas_kerja.id, kertas_kerja.user_id, kertas_kerja.kerja_date, kertas_kerja.status,
-				kertas_kerja.created_at, kertas_kerja.updated_at,
+				kertas_kerja.photo_path, kertas_kerja.created_at, kertas_kerja.updated_at,
 				DATE_FORMAT(kertas_kerja.created_at, "%d %M %Y %H:%i") AS created_at_string,
-				users.first_name, users.employee_code, branch_name, position_name,
-				(SELECT COUNT(*) FROM kertas_kerja_item WHERE kertas_kerja_item.kertas_kerja_id = kertas_kerja.id) AS total_item,
-				(SELECT COUNT(*) FROM kertas_kerja_item WHERE kertas_kerja_item.kertas_kerja_id = kertas_kerja.id AND is_done = 1) AS total_done', false)
+				TRIM(CONCAT(users.first_name," ",COALESCE(users.last_name,""))) AS first_name,
+				users.employee_code, branch_name, position_name', false)
 			->from($this->table)
 			->join('users', 'users.id = kertas_kerja.user_id')
 			->join('position', 'position.id = users.position_id')
@@ -161,8 +157,10 @@ class Kertas_kerja_model extends CI_Model {
 			->column('<b>TANGGAL</b>', 'kerja_date', function ($data, $row) {
 				return indonesian_date($row['kerja_date']);
 			})
-			->column('<b>ITEM SELESAI</b>', 'total_done', function ($data, $row) {
-				return $row['total_done'].' / '.$row['total_item'];
+			->column('<b>BUKTI FOTO</b>', 'photo_path', function ($data, $row) {
+				if (empty($row['photo_path'])) { return '<span class="text-muted">-</span>'; }
+				$url = base_url('assets/images/kertas_kerja/'.$row['photo_path']);
+				return '<a href="'.$url.'" target="_blank"><img src="'.$url.'" style="width:44px;height:44px;object-fit:cover;border-radius:4px" alt="foto"></a>';
 			})
 			->column('<b>STATUS</b>', 'status', function ($data, $row) {
 				return $row['status'] === 'read'

@@ -272,6 +272,7 @@ $route['cancel_status_overtime/(:num)'] = 'hr/Overtime/cancel_status/$1';
 
 // KERTAS KERJA
 $route['hr/kertas_kerja']               = 'hr/KertasKerja/index';
+$route['hr/kertas_kerja/rekap']         = 'hr/KertasKerja/rekap';
 $route['hr/kertas_kerja/detail/(:num)'] = 'hr/KertasKerja/detail/$1';
 $route['hr/kertas_kerja/mark_read']     = 'hr/KertasKerja/mark_read';
 

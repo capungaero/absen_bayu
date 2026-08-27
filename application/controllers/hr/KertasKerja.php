@@ -45,6 +45,34 @@ class KertasKerja extends CI_Controller {
 		$this->template->load('layout/admin', 'hr/kertaskerja/list/index', $data);
 	}
 
+	/** Rekap kepatuhan PER KARYAWAN yang wajib isi -- siapa sudah/belum bikin di tanggal terpilih. */
+	public function rekap() {
+		$date = $this->input->get('date') ?: date('Y-m-d');
+		if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { $date = date('Y-m-d'); }
+
+		$find = [];
+		$spv_user_id = null;
+
+		if ($this->role === 'admin') {
+			$branch_id = $this->input->get('branch_id') ? (int)$this->input->get('branch_id') : 0;
+			if ($branch_id) { $find['position.branch_id'] = $branch_id; }
+			$data['branch'] = $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
+			$data['branch_id'] = $branch_id;
+		} elseif ($this->role === 'admin-branch') {
+			$find['position.branch_id'] = (int)$this->userdata->branch_id;
+		} else {
+			$spv_user_id = (int)$this->userdata->user_id;
+		}
+
+		$data['rows'] = $this->kk->get_rekap($date, $find, $spv_user_id);
+		$data['date'] = $date;
+		$data['role'] = $this->role;
+		$data['total_sudah'] = count(array_filter($data['rows'], function ($r) { return !empty($r['kk_id']); }));
+		$data['total_belum'] = count($data['rows']) - $data['total_sudah'];
+
+		$this->template->load('layout/admin', 'hr/kertaskerja/list/rekap', $data);
+	}
+
 	public function detail($id) {
 		$header = $this->db->where('id', $id)->get('kertas_kerja')->row_array();
 		if (empty($header)) { show_404(); return; }
@@ -52,7 +80,6 @@ class KertasKerja extends CI_Controller {
 		if (!$this->_can_view($header['user_id'])) { show_404(); return; }
 
 		$data['header']   = $header;
-		$data['items']    = $this->kk->get_items($id);
 		$data['employee'] = $this->db->where('id', $header['user_id'])->get('users')->row_array();
 
 		$this->template->load('layout/admin', 'hr/kertaskerja/list/detail', $data);

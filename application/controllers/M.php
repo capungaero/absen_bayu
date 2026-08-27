@@ -347,6 +347,8 @@ class M extends CI_Controller {
         $this->_view('kertas_kerja', $data + ['active_menu' => 'kertas_kerja']);
     }
 
+    // Bukti kertas kerja = FOTO kertas tulisan tangan yang diunggah, bukan input
+    // checklist teks -- karyawan tidak mengetik apa pun.
     public function submit_kertas_kerja() {
         if (!$this->wajib_kertas_kerja || !$this->input->is_ajax_request() || $this->input->method() !== 'post') {
             return $this->_json(['status' => false, 'message' => 'Akses ditolak']);
@@ -360,20 +362,28 @@ class M extends CI_Controller {
             return $this->_json(['status' => false, 'message' => strip_tags(validation_errors())]);
         }
 
-        $item_text = isset($p['item_text']) && is_array($p['item_text']) ? $p['item_text'] : [];
-        $is_done   = isset($p['is_done']) && is_array($p['is_done']) ? $p['is_done'] : [];
-
-        $items = [];
-        foreach ($item_text as $i => $text) {
-            if (trim((string)$text) === '') { continue; }
-            $items[] = ['text' => $text, 'is_done' => !empty($is_done[$i])];
+        if (empty($_FILES['kk_photo']['name'])) {
+            return $this->_json(['status' => false, 'message' => 'Foto kertas kerja wajib diunggah.']);
         }
 
-        if (empty($items)) {
-            return $this->_json(['status' => false, 'message' => 'Isi minimal 1 item tugas']);
-        }
+        $config['upload_path']   = './assets/images/kertas_kerja/';
+        $config['allowed_types'] = 'png|jpeg|jpg';
+        $config['file_name']     = 'kk_' . $this->userdata->user_id . '_' . generateRandom(5) . '_' . time();
+        $config['max_size']      = 10240;
+        $config['max_width']     = 10000;
+        $config['max_height']    = 10000;
+        $this->load->library('upload', $config);
 
-        $ok = $this->kk->save($this->userdata->user_id, $p['kerja_date'], isset($p['notes']) ? $p['notes'] : '', $items);
+        if (!$this->upload->do_upload('kk_photo')) {
+            return $this->_json(['status' => false, 'message' => strip_tags($this->upload->display_errors())]);
+        }
+        $upl = $this->upload->data();
+        $cfg = ['image_library' => 'gd2', 'source_image' => $upl['full_path'],
+                'quality' => '80%', 'maintain_ratio' => TRUE, 'width' => 1000];
+        $this->load->library('image_lib', $cfg);
+        $this->image_lib->resize();
+
+        $ok = $this->kk->save($this->userdata->user_id, $p['kerja_date'], $upl['file_name']);
 
         return $this->_json($ok !== false
             ? ['status' => true, 'message' => 'Kertas kerja berhasil disimpan']

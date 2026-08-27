@@ -15,8 +15,11 @@
 <div class="row">
     <div class="col-md-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex align-items-center justify-content-between">
                 <h6 class="card-title mb-0">Daftar Kertas Kerja Mitra Kerja</h6>
+                <a href="<?= site_url('hr/kertas_kerja/rekap') ?>" class="btn btn-sm btn-outline-primary">
+                    <i class="mdi mdi-clipboard-check-outline"></i> Rekap per Karyawan
+                </a>
             </div>
             <div class="card-body">
 
