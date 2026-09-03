@@ -51,7 +51,7 @@
                         <label>Tanggal</label>
                         <input type="date" name="date" class="form-control" value="<?= $date ?>" max="<?= date('Y-m-d') ?>" onchange="this.form.submit()">
                     </div>
-                    <?php if ($role === 'admin'): ?>
+                    <?php if (in_array($role, ['admin', 'kk-admin'])): ?>
                     <div class="col-md-3">
                         <label>Cabang</label>
                         <select class="form-control select-plugin" name="branch_id" onchange="this.form.submit()">
@@ -71,47 +71,44 @@
                                 <th>#</th>
                                 <th>Mitra Kerja</th>
                                 <th>Cabang</th>
-                                <th>Status</th>
-                                <th>Bukti Foto</th>
-                                <th>Waktu Isi</th>
-                                <th></th>
+                                <th>Slot 1<?php /* label diganti Pagi/Sore per baris kalau count>1 */ ?></th>
+                                <th>Slot 2</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($rows)): ?>
-                                <tr><td colspan="7" class="text-center text-muted">Belum ada karyawan yang di-flag wajib Kertas Kerja.</td></tr>
-                            <?php else: foreach ($rows as $i => $r): $sudah = !empty($r['kk_id']); ?>
-                                <tr class="<?= $sudah ? '' : 'table-light' ?>">
+                                <tr><td colspan="5" class="text-center text-muted">Belum ada karyawan yang di-flag wajib Kertas Kerja.</td></tr>
+                            <?php else: foreach ($rows as $i => $r): $count = (int)$r['kertas_kerja_count']; ?>
+                                <tr class="<?= $r['done_count'] >= $count ? '' : 'table-light' ?>">
                                     <td><?= $i + 1 ?></td>
                                     <td>
                                         <?= htmlspecialchars($r['first_name']) ?>
                                         <br><small class="text-muted"><?= htmlspecialchars($r['employee_code']) ?> &middot; <?= htmlspecialchars($r['position_name']) ?></small>
                                     </td>
                                     <td><?= htmlspecialchars($r['branch_name']) ?></td>
-                                    <td>
-                                        <?php if (!$sudah): ?>
-                                            <span class="badge bg-danger">Belum Membuat</span>
-                                        <?php elseif ($r['status'] === 'read'): ?>
-                                            <span class="badge bg-success">Sudah Dibaca</span>
-                                        <?php else: ?>
-                                            <span class="badge bg-warning">Sudah Isi, Belum Dibaca</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php if ($sudah && !empty($r['photo_path'])): ?>
-                                            <a href="<?= base_url('assets/images/kertas_kerja/'.$r['photo_path']) ?>" target="_blank">
-                                                <img src="<?= base_url('assets/images/kertas_kerja/'.$r['photo_path']) ?>" style="width:40px;height:40px;object-fit:cover;border-radius:4px" alt="foto">
-                                            </a>
-                                        <?php else: ?>
-                                            <span class="text-muted">-</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?= $sudah ? indonesian_date($r['created_at'], true) : '-' ?></td>
-                                    <td>
-                                        <?php if ($sudah): ?>
-                                            <a class="btn btn-sm btn-primary" href="<?= site_url('hr/kertas_kerja/detail/'.$r['kk_id']) ?>"><i class="fa fa-search"></i></a>
-                                        <?php endif; ?>
-                                    </td>
+                                    <?php for ($slot = 1; $slot <= 2; $slot++): ?>
+                                        <td>
+                                            <?php if ($slot > $count): ?>
+                                                <span class="text-muted">&mdash;</span>
+                                            <?php else: $s = $r['slots'][$slot]; ?>
+                                                <?php if (empty($s)): ?>
+                                                    <span class="badge bg-danger">Belum</span>
+                                                <?php else: ?>
+                                                    <?php if ($s['submission_type'] === 'teks'): ?>
+                                                        <a href="<?= site_url('hr/kertas_kerja/detail/'.$s['id']) ?>" class="badge bg-secondary" title="<?= htmlspecialchars($s['notes']) ?>">TEKS</a>
+                                                    <?php else: ?>
+                                                        <a href="<?= site_url('hr/kertas_kerja/detail/'.$s['id']) ?>">
+                                                            <img src="<?= base_url('assets/images/kertas_kerja/'.$s['photo_path']) ?>" style="width:32px;height:32px;object-fit:cover;border-radius:4px" alt="foto">
+                                                        </a>
+                                                    <?php endif; ?>
+                                                    <span class="badge <?= $s['status'] === 'read' ? 'bg-success' : 'bg-warning' ?>"><?= $s['status'] === 'read' ? 'Dibaca' : 'Baru' ?></span>
+                                                    <?php if (!empty($s['uploaded_by_name'])): ?>
+                                                        <br><small class="text-muted"><i class="fa fa-user-friends"></i> oleh <?= htmlspecialchars($s['uploaded_by_name']) ?></small>
+                                                    <?php endif; ?>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endfor; ?>
                                 </tr>
                             <?php endforeach; endif; ?>
                         </tbody>

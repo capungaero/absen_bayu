@@ -28,6 +28,7 @@ class M extends CI_Controller {
         $this->role        = $this->ion_auth->get_users_groups()->row()->name;
         $this->is_approver = in_array($this->role, $this->approver_roles);
         $this->wajib_kertas_kerja = !empty($this->userdata->wajib_kertas_kerja);
+        $this->kertas_kerja_count = max(1, (int)($this->userdata->kertas_kerja_count ?: 1));
 
         $this->load->model('user_model', 'employee');
         $this->load->model('shift_model', 'shift');
@@ -35,6 +36,11 @@ class M extends CI_Controller {
         $this->load->model('leave_model', 'leave');
         $this->load->model('payroll_model', 'payroll');
         $this->load->model('kertas_kerja_model', 'kk');
+
+        // Leader team: karyawan yg jadi wakil upload utk anggota tim (mis. karyawan
+        // tanpa HP/gaptek serahkan kertas fisik ke leader utk difoto & dilaporkan).
+        $this->kk_members  = $this->kk->get_members($this->userdata->user_id);
+        $this->is_kk_leader = !empty($this->kk_members);
     }
 
     // =====================================================================
@@ -48,7 +54,7 @@ class M extends CI_Controller {
         $data['is_approver'] = $this->is_approver;
         $data['userdata']    = $this->userdata;
         $data['pending_total'] = $this->is_approver ? $this->_pending_count() : 0;
-        $data['kertas_kerja_enabled'] = $this->wajib_kertas_kerja;
+        $data['kertas_kerja_enabled'] = $this->wajib_kertas_kerja || $this->is_kk_leader;
         $data['contents']    = $this->load->view('m/' . $view, $data, TRUE);
         $this->load->view('layout/mobile', $data);
     }
@@ -338,19 +344,31 @@ class M extends CI_Controller {
     // =====================================================================
 
     public function kertas_kerja() {
-        if (!$this->wajib_kertas_kerja) { show_404(); return; }
+        if (!$this->wajib_kertas_kerja && !$this->is_kk_leader) { show_404(); return; }
 
         $user_id = $this->userdata->user_id;
-        $data['today']   = date('Y-m-d');
-        $data['current'] = $this->kk->get_by_user_date($user_id, $data['today']);
+        $data['today']              = date('Y-m-d');
+        $data['wajib_kertas_kerja'] = $this->wajib_kertas_kerja;
+        $data['is_leader']          = $this->is_kk_leader;
+
+        if ($this->wajib_kertas_kerja) {
+            $data['kertas_kerja_count'] = $this->kertas_kerja_count;
+            $data['slots'] = $this->kk->get_slots_by_user_date($user_id, $data['today'], $this->kertas_kerja_count);
+        }
+        if ($this->is_kk_leader) {
+            $data['members'] = $this->kk->get_members_with_status($user_id, $data['today']);
+        }
+
         $data['history'] = $this->kk->get_history($user_id, 10);
         $this->_view('kertas_kerja', $data + ['active_menu' => 'kertas_kerja']);
     }
 
-    // Bukti kertas kerja = FOTO kertas tulisan tangan yang diunggah, bukan input
-    // checklist teks -- karyawan tidak mengetik apa pun.
+    // Bukti kertas kerja = FOTO kertas tulisan tangan ATAU teks rencana kerja
+    // langsung -- karyawan pilih salah satu tiap submit (submission_type). Bisa
+    // upload/isi sendiri (slot 1..kertas_kerja_count) atau diwakilkan leader tim
+    // utk anggotanya.
     public function submit_kertas_kerja() {
-        if (!$this->wajib_kertas_kerja || !$this->input->is_ajax_request() || $this->input->method() !== 'post') {
+        if (!$this->input->is_ajax_request() || $this->input->method() !== 'post') {
             return $this->_json(['status' => false, 'message' => 'Akses ditolak']);
         }
 
@@ -362,28 +380,67 @@ class M extends CI_Controller {
             return $this->_json(['status' => false, 'message' => strip_tags(validation_errors())]);
         }
 
-        if (empty($_FILES['kk_photo']['name'])) {
-            return $this->_json(['status' => false, 'message' => 'Foto kertas kerja wajib diunggah.']);
+        $me = (int)$this->userdata->user_id;
+        $target_user_id = !empty($p['target_user_id']) ? (int)$p['target_user_id'] : $me;
+        $is_self = $target_user_id === $me;
+        $uploaded_by = null;
+
+        if ($is_self) {
+            if (!$this->wajib_kertas_kerja) {
+                return $this->_json(['status' => false, 'message' => 'Anda tidak wajib mengisi Kertas Kerja']);
+            }
+            $target_count = $this->kertas_kerja_count;
+        } else {
+            if (!$this->kk->is_leader_of($me, $target_user_id)) {
+                return $this->_json(['status' => false, 'message' => 'Anda bukan leader tim anggota ini']);
+            }
+            $flag = $this->kk->get_employee_flag($target_user_id);
+            if (empty($flag) || !$flag['wajib_kertas_kerja']) {
+                return $this->_json(['status' => false, 'message' => 'Anggota ini tidak wajib mengisi Kertas Kerja']);
+            }
+            $target_count = $flag['kertas_kerja_count'];
+            $uploaded_by = $me;
         }
 
-        $config['upload_path']   = './assets/images/kertas_kerja/';
-        $config['allowed_types'] = 'png|jpeg|jpg';
-        $config['file_name']     = 'kk_' . $this->userdata->user_id . '_' . generateRandom(5) . '_' . time();
-        $config['max_size']      = 10240;
-        $config['max_width']     = 10000;
-        $config['max_height']    = 10000;
-        $this->load->library('upload', $config);
-
-        if (!$this->upload->do_upload('kk_photo')) {
-            return $this->_json(['status' => false, 'message' => strip_tags($this->upload->display_errors())]);
+        $slot_no = (int)($p['slot_no'] ?: 1);
+        if ($slot_no < 1 || $slot_no > $target_count) {
+            return $this->_json(['status' => false, 'message' => 'Slot tidak valid']);
         }
-        $upl = $this->upload->data();
-        $cfg = ['image_library' => 'gd2', 'source_image' => $upl['full_path'],
-                'quality' => '80%', 'maintain_ratio' => TRUE, 'width' => 1000];
-        $this->load->library('image_lib', $cfg);
-        $this->image_lib->resize();
 
-        $ok = $this->kk->save($this->userdata->user_id, $p['kerja_date'], $upl['file_name']);
+        $submission_type = ($p['submission_type'] ?? 'foto') === 'teks' ? 'teks' : 'foto';
+        $photo_filename = null;
+        $notes = null;
+
+        if ($submission_type === 'teks') {
+            $notes = trim((string)($p['notes'] ?? ''));
+            if (strlen($notes) < 5) {
+                return $this->_json(['status' => false, 'message' => 'Teks rencana kerja minimal 5 karakter.']);
+            }
+        } else {
+            if (empty($_FILES['kk_photo']['name'])) {
+                return $this->_json(['status' => false, 'message' => 'Foto kertas kerja wajib diunggah.']);
+            }
+
+            $config['upload_path']   = './assets/images/kertas_kerja/';
+            $config['allowed_types'] = 'png|jpeg|jpg';
+            $config['file_name']     = 'kk_' . $target_user_id . '_' . generateRandom(5) . '_' . time();
+            $config['max_size']      = 10240;
+            $config['max_width']     = 10000;
+            $config['max_height']    = 10000;
+            $this->load->library('upload', $config);
+
+            if (!$this->upload->do_upload('kk_photo')) {
+                return $this->_json(['status' => false, 'message' => strip_tags($this->upload->display_errors())]);
+            }
+            $upl = $this->upload->data();
+            $cfg = ['image_library' => 'gd2', 'source_image' => $upl['full_path'],
+                    'quality' => '80%', 'maintain_ratio' => TRUE, 'width' => 1000];
+            $this->load->library('image_lib', $cfg);
+            $this->image_lib->resize();
+            $photo_filename = $upl['file_name'];
+        }
+
+        $ok = $this->kk->save($target_user_id, $p['kerja_date'], $submission_type, $photo_filename, $notes, $slot_no, $uploaded_by);
 
         return $this->_json($ok !== false
             ? ['status' => true, 'message' => 'Kertas kerja berhasil disimpan']

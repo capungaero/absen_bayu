@@ -21,6 +21,12 @@ class Dashboard extends CI_Controller{
 			return;
 		}
 
+		// Akun kk-admin: khusus Kertas Kerja saja, tak punya akses dashboard/menu lain.
+		if ($this->role === 'kk-admin') {
+			redirect('kertas_kerja');
+			return;
+		}
+
 		if(in_array($this->role, ['admin', 'admin-branch', 'finance', 'hr', 'inventory', 'employee', 'supervisor'])){
 
 			$branch_id = $this->userdata->branch_id;

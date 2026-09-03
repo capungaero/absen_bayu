@@ -218,6 +218,14 @@
 
                                 <?php $role = $this->ion_auth->get_users_groups()->row()->name; ?>
 
+                                <?php if($role === 'kk-admin'){ ?>
+                                    <li class="nav-item">
+                                        <a class="nav-link" href="https://absen.4dm1n.my.id/kertaskerja/" target="_blank">
+                                            <i class="mdi mdi-checkbox-marked-outline me-2"></i>Kertas Kerja
+                                        </a>
+                                    </li>
+                                <?php } ?>
+
                                 <?php if(in_array($role, ['admin', 'admin-branch'])){ ?>
                                     <li class="nav-item dropdown">
                                         <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-pages" role="button">
@@ -244,7 +252,6 @@
                                             </div>
 
                                             <a href="<?= site_url('master_data/employee') ?>" class="dropdown-item"><i class="dripicons-user"></i> Mitra Kerja</a>
-                                            <a href="<?= site_url('kertas_kerja_setting') ?>" class="dropdown-item"><i class="mdi mdi-checkbox-marked-outline"></i> Setting Kertas Kerja</a>
                                         </div>
                                     </li>
                                 <?php } ?>
@@ -331,6 +338,7 @@
                                         </a>
                                         <div class="dropdown-menu" aria-labelledby="topnav-sync">
                                             <a href="<?= site_url('sync') ?>" class="dropdown-item"><i class="mdi mdi-server"></i> Mesin Absensi</a>
+                                            <a href="<?= site_url('absensi_mentah') ?>" class="dropdown-item"><i class="mdi mdi-clock-check-outline"></i> Absensi Mentah</a>
                                             <a href="<?= site_url('attendance') ?>" class="dropdown-item"><i class="mdi mdi-account-check"></i> Data Kehadiran</a>
                                             <?php if($role === 'admin'): ?>
                                             <a href="<?= site_url('audit_log') ?>" class="dropdown-item"><i class="mdi mdi-history"></i> Log Perubahan</a>
@@ -361,7 +369,7 @@
                                               <span class="badge bg-danger ms-1"><?= $rpt_unread ?></span>
                                               <?php endif; ?>
                                             </a>
-                                            <a href="<?= site_url('hr/kertas_kerja') ?>" class="dropdown-item">
+                                            <a href="https://absen.4dm1n.my.id/kertaskerja/" target="_blank" class="dropdown-item">
                                               <i class="mdi mdi-checkbox-marked-outline"></i> Kertas Kerja
                                               <?php
                                                 // Scope sesuai role -- duplikat sengaja dari
@@ -408,6 +416,10 @@
                                             <a href="<?= base_url('tools/pph21_manual/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-table-edit"></i> Input Manual PPh21</a>
                                             <a href="<?= base_url('tools/pph21_nonpegawai/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-account-clock"></i> PPh21 Tidak Tetap &amp; Tenaga Ahli</a>
                                             <a href="<?= base_url('tools/temuan/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-flag-variant"></i> Temuan</a>
+                                            <a href="<?= base_url('kasir/') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-cash-register"></i> Temuan Kasir</a>
+                                            <?php if (in_array($role, ['admin', 'admin-branch'])) { ?>
+                                            <a href="https://absen.4dm1n.my.id/kertaskerja/" target="_blank" class="dropdown-item"><i class="mdi mdi-checkbox-marked-outline"></i> Kertas Kerja</a>
+                                            <?php } ?>
                                         </div>
                                     </li>
                                 <?php } ?>

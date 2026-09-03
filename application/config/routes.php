@@ -323,6 +323,7 @@ $route['temuan/employees']       = 'Temuan/employees';
 $route['temuan/inspectors']       = 'Temuan/inspectors';
 $route['temuan/inspector_add']    = 'Temuan/inspector_add';
 $route['temuan/inspector_delete'] = 'Temuan/inspector_delete';
+$route['temuan/inspector_set_level'] = 'Temuan/inspector_set_level';
 $route['temuan/categories']       = 'Temuan/categories';
 $route['temuan/category_save']    = 'Temuan/category_save';
 $route['temuan/category_delete']  = 'Temuan/category_delete';
@@ -402,10 +403,14 @@ $route['bpjs/toggle_office']  = 'Bpjs/toggle_office';
 $route['bpjs/acc']            = 'Bpjs/acc';
 $route['bpjs/sync']           = 'Bpjs/sync_period';
 
-$route['kertas_kerja_setting']              = 'KertasKerjaSetting/index';
-$route['kertas_kerja_setting/toggle']       = 'KertasKerjaSetting/toggle_wajib';
-$route['kertas_kerja_setting/spv/assign']   = 'KertasKerjaSetting/assign_spv';
-$route['kertas_kerja_setting/spv/unassign'] = 'KertasKerjaSetting/unassign_spv';
+$route['kertas_kerja']                         = 'KertasKerjaApp/index';
+$route['kertas_kerja_setting']                 = 'KertasKerjaSetting/index';
+$route['kertas_kerja_setting/toggle']          = 'KertasKerjaSetting/toggle_wajib';
+$route['kertas_kerja_setting/set_count']       = 'KertasKerjaSetting/set_count';
+$route['kertas_kerja_setting/spv/assign']      = 'KertasKerjaSetting/assign_spv';
+$route['kertas_kerja_setting/spv/unassign']    = 'KertasKerjaSetting/unassign_spv';
+$route['kertas_kerja_setting/leader/assign']   = 'KertasKerjaSetting/assign_leader';
+$route['kertas_kerja_setting/leader/unassign'] = 'KertasKerjaSetting/unassign_leader';
 
 $route['panel/master_data/user'] 	= 'User';
 $route['insert_user']		   		= 'User/insert';

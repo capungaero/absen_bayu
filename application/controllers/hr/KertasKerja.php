@@ -19,7 +19,7 @@ class KertasKerja extends CI_Controller {
 		$this->role     = $this->ion_auth->get_users_groups()->row()->name;
 		$this->userdata = $this->ion_auth->user()->row();
 
-		if (!in_array($this->role, ['admin', 'admin-branch', 'supervisor'])) {
+		if (!in_array($this->role, ['admin', 'admin-branch', 'supervisor', 'kk-admin'])) {
 			redirect('dashboard');
 		}
 	}
@@ -28,7 +28,7 @@ class KertasKerja extends CI_Controller {
 		$find = [];
 		$spv_user_id = null;
 
-		if ($this->role === 'admin') {
+		if (in_array($this->role, ['admin', 'kk-admin'])) {
 			$branch_id = $this->input->get('branch_id') ? (int)$this->input->get('branch_id') : 0;
 			if ($branch_id) { $find['position.branch_id'] = $branch_id; }
 			$data['branch'] = $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
@@ -53,7 +53,7 @@ class KertasKerja extends CI_Controller {
 		$find = [];
 		$spv_user_id = null;
 
-		if ($this->role === 'admin') {
+		if (in_array($this->role, ['admin', 'kk-admin'])) {
 			$branch_id = $this->input->get('branch_id') ? (int)$this->input->get('branch_id') : 0;
 			if ($branch_id) { $find['position.branch_id'] = $branch_id; }
 			$data['branch'] = $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
@@ -67,14 +67,16 @@ class KertasKerja extends CI_Controller {
 		$data['rows'] = $this->kk->get_rekap($date, $find, $spv_user_id);
 		$data['date'] = $date;
 		$data['role'] = $this->role;
-		$data['total_sudah'] = count(array_filter($data['rows'], function ($r) { return !empty($r['kk_id']); }));
+		$data['total_sudah'] = count(array_filter($data['rows'], function ($r) { return $r['done_count'] >= (int)$r['kertas_kerja_count']; }));
 		$data['total_belum'] = count($data['rows']) - $data['total_sudah'];
 
 		$this->template->load('layout/admin', 'hr/kertaskerja/list/rekap', $data);
 	}
 
 	public function detail($id) {
-		$header = $this->db->where('id', $id)->get('kertas_kerja')->row_array();
+		$header = $this->db->select('kertas_kerja.*, leader.first_name AS uploaded_by_name')
+			->join('users leader', 'leader.id = kertas_kerja.uploaded_by', 'left')
+			->where('kertas_kerja.id', $id)->get('kertas_kerja')->row_array();
 		if (empty($header)) { show_404(); return; }
 
 		if (!$this->_can_view($header['user_id'])) { show_404(); return; }
@@ -106,7 +108,7 @@ class KertasKerja extends CI_Controller {
 
 	/** Cek scope: admin=semua, admin-branch=cabangnya, supervisor=assignment-nya. */
 	private function _can_view($employee_user_id) {
-		if ($this->role === 'admin') { return true; }
+		if (in_array($this->role, ['admin', 'kk-admin'])) { return true; }
 
 		if ($this->role === 'admin-branch') {
 			return $this->db->where('users.id', $employee_user_id)

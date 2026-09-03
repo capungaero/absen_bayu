@@ -23,7 +23,7 @@
             </div>
             <div class="card-body">
 
-                <?php if ($role === 'admin'): ?>
+                <?php if (in_array($role, ['admin', 'kk-admin'])): ?>
                 <form method="get" action="<?= site_url('hr/kertas_kerja') ?>" class="row mb-3">
                     <div class="col-md-4">
                         <label>Cabang</label>

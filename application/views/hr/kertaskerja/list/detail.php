@@ -20,6 +20,9 @@
                     <?= htmlspecialchars($employee['first_name']) ?>
                     <small class="text-muted">(<?= htmlspecialchars($employee['employee_code']) ?>)</small>
                     &mdash; <?= indonesian_date($header['kerja_date']) ?>
+                    <?php if ((int)$employee['kertas_kerja_count'] > 1): ?>
+                        <span class="badge bg-secondary"><?= $header['slot_no'] == 1 ? 'Pagi' : 'Sore' ?></span>
+                    <?php endif; ?>
                 </h6>
                 <?php if ($header['status'] === 'read'): ?>
                     <span class="badge bg-success">Sudah Dibaca</span>
@@ -29,13 +32,28 @@
             </div>
             <div class="card-body">
 
-                <h6>Bukti Foto Kertas Kerja</h6>
-                <?php if (empty($header['photo_path'])): ?>
-                    <p class="text-muted">Belum ada foto.</p>
+                <?php if (!empty($header['uploaded_by_name'])): ?>
+                    <div class="alert alert-info py-2" style="font-size:13px">
+                        <i class="mdi mdi-account-supervisor"></i> Diupload oleh leader team: <b><?= htmlspecialchars($header['uploaded_by_name']) ?></b> (mewakili <?= htmlspecialchars($employee['first_name']) ?>)
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($header['submission_type'] === 'teks'): ?>
+                    <h6>Rencana Kerja (Teks)</h6>
+                    <?php if (empty($header['notes'])): ?>
+                        <p class="text-muted">Belum ada teks.</p>
+                    <?php else: ?>
+                        <div class="border rounded p-3 mb-3" style="white-space:pre-wrap;background:#f8f9fa"><?= htmlspecialchars($header['notes']) ?></div>
+                    <?php endif; ?>
                 <?php else: ?>
-                    <a href="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" target="_blank">
-                        <img src="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" class="img-fluid rounded mb-3" style="max-height:500px" alt="foto kertas kerja">
-                    </a>
+                    <h6>Bukti Foto Kertas Kerja</h6>
+                    <?php if (empty($header['photo_path'])): ?>
+                        <p class="text-muted">Belum ada foto.</p>
+                    <?php else: ?>
+                        <a href="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" target="_blank">
+                            <img src="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" class="img-fluid rounded mb-3" style="max-height:500px" alt="foto kertas kerja">
+                        </a>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if (!empty($header['status']) && $header['status'] === 'read'): ?>
