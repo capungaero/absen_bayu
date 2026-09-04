@@ -343,24 +343,12 @@ class M extends CI_Controller {
     // KERTAS KERJA (to-do list harian, hanya utk karyawan yg di-flag admin)
     // =====================================================================
 
+    // Halaman lama dimatikan -- diganti app standalone (satu jalur submit,
+    // hindari drift antara 2 UI yang nulis ke tabel kertas_kerja yang sama).
+    // Method ini sengaja TIDAK dihapus (cuma redirect) biar link lama/bookmark
+    // karyawan tidak fatal error, langsung diarahkan ke app baru.
     public function kertas_kerja() {
-        if (!$this->wajib_kertas_kerja && !$this->is_kk_leader) { show_404(); return; }
-
-        $user_id = $this->userdata->user_id;
-        $data['today']              = date('Y-m-d');
-        $data['wajib_kertas_kerja'] = $this->wajib_kertas_kerja;
-        $data['is_leader']          = $this->is_kk_leader;
-
-        if ($this->wajib_kertas_kerja) {
-            $data['kertas_kerja_count'] = $this->kertas_kerja_count;
-            $data['slots'] = $this->kk->get_slots_by_user_date($user_id, $data['today'], $this->kertas_kerja_count);
-        }
-        if ($this->is_kk_leader) {
-            $data['members'] = $this->kk->get_members_with_status($user_id, $data['today']);
-        }
-
-        $data['history'] = $this->kk->get_history($user_id, 10);
-        $this->_view('kertas_kerja', $data + ['active_menu' => 'kertas_kerja']);
+        redirect('https://absen.4dm1n.my.id/kertaskerja/', 'location', 301);
     }
 
     // Bukti kertas kerja = FOTO kertas tulisan tangan ATAU teks rencana kerja
