@@ -90,9 +90,11 @@ $route['api/admin/presence/update_workhour'] = 'Api_admin/update_workhour';
 $route['api/admin/presence/update_shift']    = 'Api_admin/update_shift';
 $route['api/admin/presence/cancel']          = 'Api_admin/cancel';
 $route['api/admin/leave']                    = 'Api_admin_hr/leave_list';
+$route['api/admin/leave/create']             = 'Api_admin_hr/leave_create';
 $route['api/admin/leave/approve']            = 'Api_admin_hr/leave_approve';
 $route['api/admin/leave/deny']               = 'Api_admin_hr/leave_deny';
 $route['api/admin/overtime']                 = 'Api_admin_hr/overtime_list';
+$route['api/admin/overtime/create']          = 'Api_admin_hr/overtime_create';
 $route['api/admin/overtime/approve']         = 'Api_admin_hr/overtime_approve';
 $route['api/admin/overtime/deny']            = 'Api_admin_hr/overtime_deny';
 $route['api/admin/payroll']                  = 'Api_admin_hr/payroll_list';
@@ -306,7 +308,9 @@ $route['payroll_import/targets']  = 'PayrollImporter/targets';
 $route['payroll_import/parse']    = 'PayrollImporter/parse';
 $route['payroll_import/commit']   = 'PayrollImporter/commit';
 
-// DAT Reader (baca .dat mesin → mirror+work editable → dorong ke presence, auth via CI3 session)
+// DAT Reader (tap mentah → klasifikasi window shift → harian editable → presence,
+// auth via CI3 session; CSRF dikecualikan, cek role+cabang ada di controller)
+$route['absensi_mentah']         = 'DatReader/index';
 $route['dat_reader/branches']    = 'DatReader/branches';
 $route['dat_reader/period']      = 'DatReader/period';
 $route['dat_reader/attendance_machines'] = 'DatReader/attendance_machines';
@@ -314,7 +318,12 @@ $route['dat_reader/sync_upload'] = 'DatReader/sync_upload';
 $route['dat_reader/sync_cloud']  = 'DatReader/sync_cloud';
 $route['dat_reader/data']        = 'DatReader/data';
 $route['dat_reader/save']        = 'DatReader/save';
-$route['dat_reader/push']        = 'DatReader/push';
+$route['dat_reader/derive']      = 'DatReader/derive';
+$route['dat_reader/reclassify']  = 'DatReader/reclassify';
+$route['dat_reader/taps']        = 'DatReader/taps';
+$route['dat_reader/tap_add']     = 'DatReader/tap_add';
+$route['dat_reader/tap_void']    = 'DatReader/tap_void';
+$route['dat_reader/tap_unvoid']  = 'DatReader/tap_unvoid';
 
 // Temuan (laporan masalah toko, auth via token bearer Api_token — sama seperti PWA)
 $route['temuan/me']              = 'Temuan/me';
