@@ -21,10 +21,25 @@ class Presence extends CI_Controller{
 		$this->load->library('attendance_employee_resolver');
 		$this->load->library('cloud_attlog_client');
 		$this->load->library('attlog_parser');
+		$this->load->library('attendance_ingest');
+		$this->load->library('attendance_classifier');
 
 		if(is_cli()){
 			// Mode CLI (cron sync_cron). Tidak ada sesi login; akses hanya mungkin
 			// dari shell server. Pakai identitas admin pertama untuk created_by log.
+			$this->role = 'admin';
+			$admin = $this->db->select('users.id')
+				->from('users')
+				->join('users_groups', 'users_groups.user_id = users.id')
+				->join('groups', 'groups.id = users_groups.group_id')
+				->where('groups.name', 'admin')
+				->order_by('users.id', 'ASC')
+				->get()->row();
+			$this->userdata = (object)['id' => $admin ? (int)$admin->id : 0, 'branch_id' => 0];
+		}elseif(in_array($this->router->fetch_method(), ['sync_api', 'sync_api_status'], true) && $this->_sync_api_authorized()){
+			// Pemanggil sync_api() lewat HTTP dgn Bearer ADMIN_API_KEY (bukan sesi
+			// browser). Harus dicek di sini -- gate ion_auth di bawah akan redirect
+			// duluan sebelum method sync_api() sendiri sempat jalan.
 			$this->role = 'admin';
 			$admin = $this->db->select('users.id')
 				->from('users')
@@ -1690,6 +1705,7 @@ class Presence extends CI_Controller{
 			}
 
 			$dat_files = $this->_save_cloud_attlog_files($process_machines, $month, $year);
+			$this->_ingest_raw_only($process_machines, 'attendance');
 			$excel = $this->_build_attlog_excel($process_machines, $branch_id, $month, $year, $sync_from_date, $sync_to_date);
 			if(!$excel['status']){
 				echo json_encode($excel);
@@ -1967,6 +1983,7 @@ class Presence extends CI_Controller{
 			}
 
 			$dat_files = $this->_save_cloud_attlog_files($process_machines, $month, $year);
+			$this->_ingest_raw_only($process_machines, 'pray');
 			$excel = $this->_build_attlog_excel($process_machines, $branch_id, $month, $year, $sync_from_date, $sync_to_date);
 			if(!$excel['status']){
 				echo json_encode($excel);
@@ -2003,9 +2020,9 @@ class Presence extends CI_Controller{
 	/**
 	 * Sync otomatis untuk cron server (R3). HANYA bisa dijalankan via CLI:
 	 *   /usr/local/bin/php index.php hr/presence/sync_cron
-	 * Memakai ulang seluruh logika sync manual (single source of truth) dengan
-	 * strict freshness = TRUE: mesin dengan dump basi (tap terbaru bukan hari ini)
-	 * dilewati dan .dat-nya tidak disimpan. Periode = bulan berjalan, semua cabang.
+	 * Wrapper tipis di atas _run_sync_core() -- lihat sync_api() untuk pemicu
+	 * lewat HTTP (pengganti absen_sync.py). Logika sync sendiri satu-satunya,
+	 * dipakai bersama kedua pemicu supaya tidak ada dua implementasi yang bisa drift.
 	 */
 	public function sync_cron(){
 		if(!is_cli()){
@@ -2013,32 +2030,162 @@ class Presence extends CI_Controller{
 			return;
 		}
 
-		// Kartu identitas sync utk trigger provenance (lihat upload_pray).
-		$this->db->query("SET @absen_sync_ctx = 1");
-
 		// Lock anti-overlap: kalau run sebelumnya belum selesai, keluar.
-		$lock_path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'absen_sync_cron.lock';
+		// Lock di application/logs (dimiliki user web) BUKAN sys_get_temp_dir():
+		// di VPS /tmp/absen_sync_cron.lock lama dimiliki root sehingga php-fpm
+		// (user www) gagal fopen('c') -- Permission denied (insiden 27 Agu 2026).
+		$lock_path = APPPATH.'logs'.DIRECTORY_SEPARATOR.'absen_sync_cron.lock';
 		$lock = fopen($lock_path, 'c');
 		if($lock === false || !flock($lock, LOCK_EX | LOCK_NB)){
-			fwrite(STDOUT, "[".date('Y-m-d H:i:s')."] Instance sync_cron lain masih berjalan, keluar.\n");
+			fwrite(STDOUT, "[".date('Y-m-d H:i:s')."] Instance sync lain masih berjalan, keluar.\n");
 			return;
 		}
 
 		$log = function($m){ fwrite(STDOUT, '['.date('Y-m-d H:i:s').'] '.$m."\n"); };
+		$this->_run_sync_core($log);
+		flock($lock, LOCK_UN);
+		fclose($lock);
+	}
 
-		$month  = date('m');
-		$year   = date('Y');
+	/** Bearer <ADMIN_API_KEY> milik sync_api() -- dicek di constructor DAN di sini. */
+	private function _sync_api_authorized(){
+		$h = $this->input->get_request_header('Authorization');
+		$token = ($h && preg_match('/Bearer\s+(.+)/i', $h, $m)) ? trim($m[1]) : $this->input->post('token');
+		$this->load->library('Api_admin_key', null, 'adminkey');
+		return $this->adminkey->verify($token);
+	}
+
+	/**
+	 * Sync otomatis lewat HTTP API -- pengganti absen_sync.py (Python) dan cron
+	 * SSH. Pemicunya bisa Task Scheduler Windows, cron mana pun, atau uptime
+	 * monitor yang bisa curl -- tinggal panggil URL ini, tidak perlu shell access
+	 * ke server. Auth sama dgn Api_admin_hr: header Authorization: Bearer
+	 * <ADMIN_API_KEY> (fallback ?token= kalau header tidak bisa diset).
+	 *
+	 *   curl -X POST -H "Authorization: Bearer $ADMIN_API_KEY" \
+	 *        https://domain/hr/presence/sync_api
+	 *
+	 * Dikecualikan dari CSRF secara eksplisit di config.php (URI persis, bukan
+	 * wildcard 'hr/presence/(.*)' -- endpoint tulis lain di controller ini tetap
+	 * wajib CSRF+session).
+	 */
+	public function sync_api(){
+		$this->output->set_content_type('application/json', 'utf-8');
+
+		if(strtolower($this->input->method()) !== 'post'){
+			$this->output->set_status_header(405);
+			echo json_encode(['status' => false, 'message' => 'POST required']);
+			return;
+		}
+
+		// Constructor sudah memverifikasi Bearer token (perlu dicek di sana supaya
+		// gate ion_auth tidak keburu redirect); cek ulang di sini murni jaga-jaga.
+		if(!$this->_sync_api_authorized()){
+			$this->output->set_status_header(401);
+			echo json_encode(['status' => false, 'message' => 'API key tidak valid']);
+			return;
+		}
+
+		// Lock di application/logs (dimiliki user web) BUKAN sys_get_temp_dir():
+		// di VPS /tmp/absen_sync_cron.lock lama dimiliki root sehingga php-fpm
+		// (user www) gagal fopen('c') -- Permission denied (insiden 27 Agu 2026).
+		$lock_path = APPPATH.'logs'.DIRECTORY_SEPARATOR.'absen_sync_cron.lock';
+		$lock = fopen($lock_path, 'c');
+		if($lock === false || !flock($lock, LOCK_EX | LOCK_NB)){
+			echo json_encode(['status' => false, 'message' => 'Sync lain sedang berjalan, coba lagi nanti.']);
+			return;
+		}
+
+		// Sync bisa makan waktu lama (banyak mesin, ratusan-ribuan tap) -- lebih
+		// lama dari batas connection timeout LiteSpeed. litespeed_finish_request()
+		// membalas klien SEKARANG lalu proses lanjut di background di proses PHP
+		// yang sama (exec()/proc_open() semua dimatikan di hosting ini, jadi
+		// spawn proses terpisah tidak mungkin). Hasil ditulis ke log_file; cek
+		// lewat GET hr/presence/sync_api_status.
+		ignore_user_abort(true);
+		set_time_limit(0);
+		$log_file = APPPATH.'logs'.DIRECTORY_SEPARATOR.'sync_api_last.log';
+		echo json_encode([
+			'status' => true,
+			'message' => 'Sync dimulai di background.',
+			'log' => 'GET hr/presence/sync_api_status utk lihat progres/hasil.',
+		]);
+		if(function_exists('litespeed_finish_request')){
+			litespeed_finish_request();       // LiteSpeed (hosting tiffany)
+		}elseif(function_exists('fastcgi_finish_request')){
+			fastcgi_finish_request();         // php-fpm/nginx (VPS)
+		}
+		// Non-LiteSpeed (mis. lokal dev): tetap lanjut sinkron, klien mungkin
+		// timeout duluan tapi sync tetap selesai di server.
+
+		file_put_contents($log_file, '['.date('Y-m-d H:i:s')."] === sync_api mulai ===\n");
+		$log = function($m) use ($log_file){
+			file_put_contents($log_file, '['.date('Y-m-d H:i:s').'] '.$m."\n", FILE_APPEND);
+		};
+		$this->_run_sync_core($log);
+		flock($lock, LOCK_UN);
+		fclose($lock);
+	}
+
+	/**
+	 * Lihat progres/hasil sync_api() terakhir.
+	 *   GET hr/presence/sync_api_status  Header: Authorization: Bearer <ADMIN_API_KEY>
+	 */
+	public function sync_api_status(){
+		$this->output->set_content_type('application/json', 'utf-8');
+		if(!$this->_sync_api_authorized()){
+			$this->output->set_status_header(401);
+			echo json_encode(['status' => false, 'message' => 'API key tidak valid']);
+			return;
+		}
+		$log_file = APPPATH.'logs'.DIRECTORY_SEPARATOR.'sync_api_last.log';
+		if(!is_file($log_file)){
+			echo json_encode(['status' => true, 'log' => [], 'message' => 'Belum pernah sync_api dijalankan.']);
+			return;
+		}
+		$lines = array_filter(explode("\n", file_get_contents($log_file)));
+		$done = !empty($lines) && strpos(end($lines), '=== sync selesai ===') !== false;
+		echo json_encode([
+			'status' => true,
+			'selesai' => $done,
+			'updated_at' => date('Y-m-d H:i:s', filemtime($log_file)),
+			'log' => array_values($lines),
+		]);
+	}
+
+	/**
+	 * Inti logika sync (attendance + sholat + raw ingest + klasifikasi + turunan
+	 * presence). Diekstrak dari sync_cron() supaya sync_cron() (CLI) dan
+	 * sync_api() (HTTP) memakai satu implementasi yang sama persis.
+	 */
+	private function _run_sync_core($log){
+		// Kartu identitas sync utk trigger provenance (lihat upload_pray).
+		$this->db->query("SET @absen_sync_ctx = 1");
+
+		// Periode payroll bulan M = 26 (M-1) s/d 25 M. Mulai tanggal 26, periode
+		// BERJALAN sudah milik bulan berikutnya -- kalau month tetap date('m'),
+		// dari tgl 26 s/d akhir bulan sync membidik periode lama (yang biasanya
+		// sudah dikunci payroll) dan hari-hari baru tidak pernah diproses sampai
+		// bulan berganti. absen_sync.py lama menghitung ini dengan benar; bug
+		// baru kelihatan saat jalur sync pindah ke PHP (insiden 26-29 Agu 2026:
+		// presence kosong padahal tap ada di mesin).
+		if((int)date('d') >= START_PAYROLL_DATE){
+			$month = date('m', strtotime('first day of next month'));
+			$year  = date('Y', strtotime('first day of next month'));
+		}else{
+			$month = date('m');
+			$year  = date('Y');
+		}
 		$today  = date('Y-m-d');
 		$period = attlog_presence_period_range($month, $year);
 		$from   = $period['from'];
 		$to     = $period['to'];
 
 		$branches = $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
-		$log("=== sync_cron mulai (periode $from s/d $to, ".count($branches)." cabang aktif) ===");
+		$log("=== sync mulai (periode $from s/d $to, ".count($branches)." cabang aktif) ===");
 
 		if(empty($branches)){
 			$log('Tidak ada cabang aktif. Berhenti.');
-			flock($lock, LOCK_UN); fclose($lock);
 			return;
 		}
 		$primary = (int)$branches[0]['id'];
@@ -2048,14 +2195,47 @@ class Presence extends CI_Controller{
 		if($download === false){
 			$log('ATTENDANCE: gagal download semua mesin Solution Cloud.');
 		}else{
-			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, true);
-			if(!empty($fresh['stale'])){ $log('ATTENDANCE dump basi dilewati: '.implode(', ', $fresh['stale'])); }
+			// Lapis RAW dulu: simpan + ingest SEMUA mesin, termasuk dump basi.
+			$ingest = $this->_ingest_attlog_machines($download['machines'], $month, $year, 'attendance');
+			$log('ATTENDANCE ingest raw: '.$ingest['files'].' file, tap baru '.$ingest['new_taps'].', sudah ada '.$ingest['dup_taps'].'.');
+			foreach($ingest['lines'] as $line){ $log('  '.$line); }
+			if(!empty($ingest['unresolved_fingers'])){
+				$log('  finger tak dikenal: '.implode(', ', $ingest['unresolved_fingers']));
+			}
+
+			// Klasifikasi hari yang tapnya berubah. Hanya menyentuh attendance_day,
+			// tidak menulis presence — jalur presence di bawah masih yang lama.
+			$classify = $this->attendance_classifier->classify_range([], $from, $to, 'auto', true);
+			$log('ATTENDANCE klasifikasi: '.$classify['days'].' hari (window '.$classify['window']
+				.', posisional/tanpa jadwal '.$classify['positional'].', kosong '.$classify['empty']
+				.', koreksi admin dipertahankan '.$classify['skipped_edited'].').');
+
+			$derive_on = defined('ATTENDANCE_DERIVE_ENABLED') && ATTENDANCE_DERIVE_ENABLED;
+
 			if(!empty($download['failed'])){ $log('ATTENDANCE mesin gagal login: '.implode(', ', $download['failed'])); }
 
-			if(empty($fresh['process'])){
-				$log('ATTENDANCE: tidak ada mesin dengan data segar hari ini, dilewati.');
+			if($derive_on){
+				// Jalur baru: presence diturunkan dari lapis harian, bukan dari
+				// file Excel hasil dump. Kesegaran mesin tidak lagi relevan —
+				// yang dipakai adalah tap yang sudah masuk arsip.
+				$this->load->model('Presence_deriver_model', 'deriver');
+				foreach($branches as $b){
+					if(!$this->_derive_branch_enabled((int)$b['id'])){ continue; }
+					$res = $this->deriver->derive((int)$b['id'], $from, $to, [
+						'actor_id' => isset($this->userdata->id) ? (int)$this->userdata->id : 0,
+					]);
+					$log('DERIVE '.$b['branch_name'].': '.$res['inserted'].' baru, '.$res['updated'].' diperbarui, '
+						.$res['blocked'].' ditolak trigger (baris manual), '.$res['skipped_locked'].' terkunci, '
+						.$res['skipped_leave'].' izin/cuti/sakit, '.$res['skipped_empty'].' tanpa jam, '
+						.count($res['conflicts']).' selisih vs presensi manual.');
+				}
 			}else{
-				$this->_save_cloud_attlog_files($fresh['process'], $month, $year);
+			$fresh = $this->_attlog_partition_fresh($download['machines'], $today, true);
+			if(!empty($fresh['stale'])){ $log('ATTENDANCE dump basi dilewati (jalur presence): '.implode(', ', $fresh['stale'])); }
+
+			if(empty($fresh['process'])){
+				$log('ATTENDANCE: tidak ada mesin dengan data segar hari ini, jalur presence dilewati.');
+			}else{
 				$excel = $this->_build_attlog_excel($fresh['process'], $primary, $month, $year, $from, $to);
 				if(!$excel['status']){
 					$log('ATTENDANCE: '.$excel['message']);
@@ -2070,6 +2250,7 @@ class Presence extends CI_Controller{
 					}
 				}
 			}
+			}
 		}
 
 		// ---- PRESENSI SHOLAT: download global, import PER cabang (window per cabang) ----
@@ -2077,21 +2258,53 @@ class Presence extends CI_Controller{
 		if($pray === false){
 			$log('PRAY: gagal download / tidak ada mesin sholat aktif.');
 		}else{
-			$fresh = $this->_attlog_partition_fresh($pray['machines'], $today, true);
-			if(!empty($fresh['stale'])){ $log('PRAY dump basi dilewati: '.implode(', ', $fresh['stale'])); }
+			// Lapis RAW dulu: simpan + ingest SEMUA mesin, termasuk dump basi (sama
+			// pola ATTENDANCE di atas -- tap tersimpan permanen di attendance_tap
+			// machine_type='pray', lepas dari apakah jalur presence di bawah pakai
+			// derive atau masih jalur lama).
+			$ingest = $this->_ingest_attlog_machines($pray['machines'], $month, $year, 'pray');
+			$log('PRAY ingest raw: '.$ingest['files'].' file, tap baru '.$ingest['new_taps'].', sudah ada '.$ingest['dup_taps'].'.');
 			if(!empty($pray['failed'])){ $log('PRAY mesin gagal login: '.implode(', ', $pray['failed'])); }
 
-			if(empty($fresh['process'])){
-				$log('PRAY: tidak ada mesin dengan data segar hari ini, dilewati.');
+			$pray_derive_on = defined('PRAY_DERIVE_ENABLED') && PRAY_DERIVE_ENABLED;
+
+			if($pray_derive_on){
+				// Klasifikasi hari yang tapnya berubah -- hanya menyentuh pray_day,
+				// tidak menulis presence (sama pola ATTENDANCE klasifikasi di atas).
+				$this->load->library('pray_classifier');
+				$pclassify = $this->pray_classifier->classify_range([], $from, $to, true);
+				$log('PRAY klasifikasi: '.$pclassify['days'].' hari (window '.$pclassify['window']
+					.', kosong '.$pclassify['empty'].', koreksi admin dipertahankan '.$pclassify['skipped_edited'].').');
+
+				$this->load->model('Pray_deriver_model', 'pray_deriver');
+				foreach($branches as $b){
+					if(!$this->_pray_derive_branch_enabled((int)$b['id'])){ continue; }
+					$res = $this->pray_deriver->derive((int)$b['id'], $from, $to, [
+						'actor_id' => isset($this->userdata->id) ? (int)$this->userdata->id : 0,
+					]);
+					$log('PRAY DERIVE '.$b['branch_name'].': '.$res['updated'].' diperbarui, '
+						.$res['blocked'].' ditolak trigger (baris manual), '.$res['skipped_locked'].' terkunci, '
+						.$res['skipped_no_presence'].' belum ada presensi kerja, '.$res['skipped_leave'].' izin/cuti/sakit, '
+						.count($res['conflicts']).' selisih vs presensi manual.');
+				}
 			}else{
-				$this->_save_cloud_attlog_files($fresh['process'], $month, $year);
-				$excel = $this->_build_attlog_excel($fresh['process'], $primary, $month, $year, $from, $to);
-				if(!$excel['status']){
-					$log('PRAY: '.$excel['message']);
+				// Jalur LAMA (belum diverifikasi cocok dgn derive -- default sampai
+				// hasil dry-run derive dikonfirmasi sama dgn jalur ini, lihat catatan
+				// PRAY_DERIVE_ENABLED di constants.php).
+				$fresh = $this->_attlog_partition_fresh($pray['machines'], $today, true);
+				if(!empty($fresh['stale'])){ $log('PRAY dump basi dilewati (jalur presence): '.implode(', ', $fresh['stale'])); }
+
+				if(empty($fresh['process'])){
+					$log('PRAY: tidak ada mesin dengan data segar hari ini, jalur presence dilewati.');
 				}else{
-					foreach($branches as $b){
-						$res = $this->_import_pray_sheet($excel['sheet_data'], (int)$b['id'], $month, $year, 'sync_pray');
-						$log('PRAY '.$b['branch_name'].': '.strip_tags($res['message']));
+					$excel = $this->_build_attlog_excel($fresh['process'], $primary, $month, $year, $from, $to);
+					if(!$excel['status']){
+						$log('PRAY: '.$excel['message']);
+					}else{
+						foreach($branches as $b){
+							$res = $this->_import_pray_sheet($excel['sheet_data'], (int)$b['id'], $month, $year, 'sync_pray');
+							$log('PRAY '.$b['branch_name'].': '.strip_tags($res['message']));
+						}
 					}
 				}
 			}
@@ -2100,9 +2313,131 @@ class Presence extends CI_Controller{
 		$pruned = $this->_prune_attlog_files();
 		if($pruned > 0){ $log("Pembersihan .dat lama: $pruned file (disisakan 1 terbaru per mesin)."); }
 
-		$log('=== sync_cron selesai ===');
-		flock($lock, LOCK_UN);
-		fclose($lock);
+		$log('=== sync selesai ===');
+	}
+
+	/**
+	 * Backfill lapis RAW dari file .dat yang masih tersisa di disk (CLI).
+	 *
+	 *   php index.php hr/presence/ingest_backfill
+	 *
+	 * Aman diulang: file dengan sha256 sama dilewati, tap yang sudah ada tidak
+	 * diduplikasi. Jalankan sekali sebelum cron memangkas file lama, supaya tap
+	 * historis yang masih ada di disk ikut terarsip.
+	 */
+	public function ingest_backfill(){
+		if(!is_cli()){
+			show_404();
+			return;
+		}
+
+		$log = function($m){ fwrite(STDOUT, '['.date('Y-m-d H:i:s').'] '.$m."\n"); };
+		$base = FCPATH.'uploads'.DIRECTORY_SEPARATOR.'attendance';
+		$files = glob($base.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.'attlog_*.dat');
+		if(empty($files)){ $files = []; }
+		sort($files);
+
+		$log('Backfill lapis RAW dari '.$base.' — '.count($files).' file.');
+		$total_new = 0;
+		$total_dup = 0;
+		foreach($files as $path){
+			$sn = $this->attendance_ingest->sn_from_filename($path);
+			if($sn === ''){
+				$log('  LEWAT '.basename($path).' — SN tidak terbaca dari nama file.');
+				continue;
+			}
+
+			$res = $this->attendance_ingest->ingest_file($path, $sn, ['origin' => 'cli']);
+			$total_new += $res['new_taps'];
+			$total_dup += $res['dup_taps'];
+			$log('  '.basename($path).' — '.$res['message']);
+		}
+
+		$log('Selesai. Tap baru: '.$total_new.', sudah ada: '.$total_dup.'.');
+	}
+
+	/**
+	 * Klasifikasi ulang lapis harian dari tap lewat CLI.
+	 *
+	 *   php index.php hr/presence/classify_cli [from] [to] [dirty|all]
+	 *
+	 * Dipakai untuk data historis: UI membatasi satu kali proses 92 hari,
+	 * sementara arsip tap bisa mencakup bertahun-tahun. Dikerjakan per bulan
+	 * supaya penggunaan memori tetap datar.
+	 */
+	public function classify_cli($from = null, $to = null, $scope = 'dirty'){
+		if(!is_cli()){
+			show_404();
+			return;
+		}
+
+		$log = function($m){ fwrite(STDOUT, '['.date('Y-m-d H:i:s').'] '.$m."\n"); };
+		$period = attlog_presence_period_range(date('m'), date('Y'));
+		$from = $from ?: $period['from'];
+		$to   = $to   ?: $period['to'];
+		$only_dirty = $scope !== 'all';
+
+		$log('Klasifikasi '.$from.' s/d '.$to.' (scope '.$scope.').');
+		$total = ['days' => 0, 'window' => 0, 'positional' => 0, 'empty' => 0, 'skipped_edited' => 0];
+
+		$cursor = $from;
+		while($cursor <= $to){
+			$chunk_to = min($to, date('Y-m-t', strtotime($cursor)));
+			$res = $this->attendance_classifier->classify_range([], $cursor, $chunk_to, 'auto', $only_dirty);
+			foreach($total as $k => $v){ $total[$k] += $res[$k]; }
+			if($res['days'] > 0){
+				$log('  '.$cursor.' s/d '.$chunk_to.': '.$res['days'].' hari (window '.$res['window']
+					.', tanpa jadwal '.$res['positional'].', tanpa tap '.$res['empty'].').');
+			}
+			$cursor = date('Y-m-d', strtotime($chunk_to.' +1 day'));
+		}
+
+		$log('Selesai. '.$total['days'].' hari: window '.$total['window'].', tanpa jadwal '.$total['positional']
+			.', tanpa tap '.$total['empty'].', koreksi admin dipertahankan '.$total['skipped_edited'].'.');
+	}
+
+	/**
+	 * Turunkan presence dari lapis harian lewat CLI.
+	 *
+	 *   php index.php hr/presence/derive_cli [dry|run|force] [from] [to] [branch_id]
+	 *
+	 * dry (default) hanya menghitung. force menulis atas nama operator sehingga
+	 * baris presensi yang bertanda manual ikut diperbarui — dipakai sekali untuk
+	 * membersihkan data lama yang salah, bukan untuk operasi harian.
+	 */
+	public function derive_cli($mode = 'dry', $from = null, $to = null, $branch_id = null){
+		if(!is_cli()){
+			show_404();
+			return;
+		}
+
+		$log = function($m){ fwrite(STDOUT, '['.date('Y-m-d H:i:s').'] '.$m."\n"); };
+		$period = attlog_presence_period_range(date('m'), date('Y'));
+		$from = $from ?: $period['from'];
+		$to   = $to   ?: $period['to'];
+
+		$this->load->model('Presence_deriver_model', 'deriver');
+		$branches = $branch_id !== null
+			? [['id' => (int)$branch_id, 'branch_name' => 'cabang '.$branch_id]]
+			: $this->branch->get_data(['branch_name' => 'ASC'])->result_array();
+
+		$log('Derive '.$from.' s/d '.$to.' — mode '.$mode.'.');
+		foreach($branches as $b){
+			$res = $this->deriver->derive((int)$b['id'], $from, $to, [
+				'force'    => $mode === 'force',
+				'dry_run'  => $mode === 'dry',
+				'actor_id' => isset($this->userdata->id) ? (int)$this->userdata->id : 0,
+			]);
+			$log($b['branch_name'].': '.$res['inserted'].' baru, '.$res['updated'].' diperbarui, '
+				.$res['blocked'].' ditolak trigger, '.$res['skipped_locked'].' terkunci, '
+				.$res['skipped_leave'].' izin/cuti/sakit, '.$res['skipped_empty'].' tanpa jam, '
+				.count($res['conflicts']).' selisih vs presensi manual'
+				.($res['refilled_cleared'] ? ', '.$res['refilled_cleared'].' kolom sengaja-kosong terisi lagi' : '').'.');
+
+			foreach(array_slice($res['conflicts'], 0, 5) as $c){
+				$log('   contoh selisih user '.$c['user_id'].' '.$c['date'].': mesin '.$c['mesin'].' vs presensi '.$c['presensi']);
+			}
+		}
 	}
 
 	public function clear_period(){
@@ -2223,6 +2558,33 @@ class Presence extends CI_Controller{
 		]);
 	}
 
+	/**
+	 * Ingest raw SAJA (tanpa simpan file .dat lagi -- dipakai bareng
+	 * _save_cloud_attlog_files() yang sudah menyimpan filenya). Dipanggil dari
+	 * jalur MANUAL panel admin (sync_cloud/sync_pray_cloud/Wa::_sync_today_attendance)
+	 * supaya tap yang didownload manual JUGA masuk attendance_tap -- sebelumnya
+	 * jalur ini menulis presence LANGSUNG dari mesin tanpa pernah singgah di
+	 * arsip, beda dari sync_api/sync_cron/DatReader yang sudah benar (temuan
+	 * audit 4 Sep 2026: "pastikan semua api dan proses sync lain tidak ada lagi
+	 * yang direct ke mesin absensi").
+	 */
+	private function _ingest_raw_only($machines, $machine_type = 'attendance'){
+		$out = ['new_taps' => 0, 'dup_taps' => 0];
+		if(empty($machines)){ return $out; }
+		foreach($machines as $machine){
+			$sn = attlog_sanitize_machine_sn($machine['sn']);
+			if($sn == ''){ continue; }
+			$res = $this->attendance_ingest->ingest_raw($machine['raw'], $sn, [
+				'machine_type' => $machine_type,
+				'origin'       => 'cloud_manual',
+				'created_by'   => isset($this->userdata->id) ? (int)$this->userdata->id : null,
+			]);
+			$out['new_taps'] += $res['new_taps'];
+			$out['dup_taps'] += $res['dup_taps'];
+		}
+		return $out;
+	}
+
 	private function _save_cloud_attlog_files($machines, $month, $year){
 		$dir = attlog_presence_storage_dir($month, $year);
 		$paths = [];
@@ -2273,6 +2635,11 @@ class Presence extends CI_Controller{
 	 * Sisakan $keep_per_machine file .dat TERBARU per mesin (berdasarkan mtime),
 	 * hapus sisanya dari seluruh pohon uploads/attendance. File terbaru tetap
 	 * dipertahankan sebagai jejak audit + sumber fitur Check Fingers.
+	 *
+	 * GUARD ARSIP: file hanya boleh dihapus kalau isinya sudah tersimpan di
+	 * attendance_tap_file (sha256 cocok, status 'ingested'). Sebelum guard ini
+	 * ada, prune menghancurkan tap historis secara permanen. Sekarang
+	 * penghapusan file di disk cuma pembersihan cache, bukan kehilangan data.
 	 * Return jumlah file terhapus.
 	 */
 	private function _prune_attlog_files($keep_per_machine = 1){
@@ -2293,10 +2660,37 @@ class Presence extends CI_Controller{
 			if(count($list) <= $keep_per_machine){ continue; }
 			usort($list, function($a, $b){ return filemtime($b) - filemtime($a); });
 			foreach(array_slice($list, $keep_per_machine) as $old){
+				if(!$this->_attlog_archived($old)){ continue; }
 				if(@unlink($old)){ $deleted++; }
 			}
 		}
 		return $deleted;
+	}
+
+	/** TRUE kalau cabang ini ikut jalur penurunan presence dari lapis harian. */
+	private function _derive_branch_enabled($branch_id){
+		if(!defined('ATTENDANCE_DERIVE_BRANCHES')){ return true; }
+		$allow = ATTENDANCE_DERIVE_BRANCHES;
+		if($allow === '*' || $allow === true){ return true; }
+		return is_array($allow) && in_array((int)$branch_id, array_map('intval', $allow), true);
+	}
+
+	/** Sama pola _derive_branch_enabled() tapi utk PRAY_DERIVE_BRANCHES (independen dari attendance). */
+	private function _pray_derive_branch_enabled($branch_id){
+		if(!defined('PRAY_DERIVE_BRANCHES')){ return true; }
+		$allow = PRAY_DERIVE_BRANCHES;
+		if($allow === '*' || $allow === true){ return true; }
+		return is_array($allow) && in_array((int)$branch_id, array_map('intval', $allow), true);
+	}
+
+	/** TRUE kalau isi file sudah tersimpan di attendance_tap_file dan sukses di-ingest. */
+	private function _attlog_archived($path){
+		$raw = @file_get_contents($path);
+		if($raw === false){ return false; }
+
+		return $this->db->where('sha256', hash('sha256', $raw))
+						->where('status', 'ingested')
+						->count_all_results('attendance_tap_file') > 0;
 	}
 
 	private function _normalize_sync_from_date($month, $year, $date){
@@ -2468,6 +2862,67 @@ class Presence extends CI_Controller{
 
 	private function _download_cloud_attlog($sn, $password){
 		return $this->cloud_attlog_client->download_single($sn, $password);
+	}
+
+	/**
+	 * Simpan .dat lalu masukkan isinya ke lapis RAW (attendance_tap).
+	 *
+	 * Berbeda dari jalur presence, ini memproses SEMUA mesin yang berhasil
+	 * diunduh — termasuk dump "basi". Dump basi tetap berisi tap historis yang
+	 * sah, dan penulisan tap memakai INSERT IGNORE sehingga mengulang isi lama
+	 * tidak berbiaya. Kesegaran mesin cukup jadi peringatan, bukan alasan buang.
+	 *
+	 * Tidak menyentuh `presence` sama sekali.
+	 * Return ['new_taps', 'dup_taps', 'files', 'unresolved_fingers', 'lines' => [...]].
+	 */
+	private function _ingest_attlog_machines($machines, $month, $year, $machine_type = 'attendance'){
+		$out = ['new_taps' => 0, 'dup_taps' => 0, 'files' => 0, 'unresolved_fingers' => [], 'lines' => []];
+		if(empty($machines)){ return $out; }
+
+		$this->load->model('Sync_model', 'sync_machines');
+		$machine_ids = [];
+		foreach($this->sync_machines->get_active_by_type($machine_type) as $row){
+			$machine_ids[attlog_sanitize_machine_sn($row['machine_sn'])] = (int)$row['id'];
+		}
+
+		$dir = attlog_presence_storage_dir($month, $year);
+		$stamp = date('Ymd_His');
+		$now = date('Y-m-d H:i:s');
+
+		foreach($machines as $machine){
+			$sn = attlog_sanitize_machine_sn($machine['sn']);
+			if($sn == ''){ continue; }
+
+			$path = $dir.DIRECTORY_SEPARATOR.'attlog_'.$sn.'_'.$stamp.'.dat';
+			file_put_contents($path, $machine['raw']);
+			$out['files']++;
+
+			$res = $this->attendance_ingest->ingest_raw($machine['raw'], $sn, [
+				'machine_id'    => isset($machine_ids[$sn]) ? $machine_ids[$sn] : null,
+				'machine_type'  => $machine_type,
+				'origin'        => 'cloud',
+				'stored_path'   => $path,
+				'downloaded_at' => $now,
+				'created_by'    => isset($this->userdata->id) ? (int)$this->userdata->id : null,
+			]);
+
+			$out['new_taps'] += $res['new_taps'];
+			$out['dup_taps'] += $res['dup_taps'];
+			$out['unresolved_fingers'] = array_values(array_unique(
+				array_merge($out['unresolved_fingers'], $res['unresolved_fingers'])));
+			$out['lines'][] = $sn.': '.$res['message'];
+
+			$this->sync_machines->insert_log([
+				'machine_id'   => isset($machine_ids[$sn]) ? $machine_ids[$sn] : 0,
+				'machine_name' => $sn,
+				'status'       => $res['ok'] ? ($res['status'] === 'duplicate' ? 'duplicate' : 'success') : 'failed',
+				'records'      => $res['new_taps'],
+				'message'      => 'INGEST RAW — '.$res['message'],
+				'created_at'   => $now,
+			]);
+		}
+
+		return $out;
 	}
 
 	private function _import_attlog_dat($raw, $branch_id, $month, $year, $preserve_existing = false, $use_schedule = true){
@@ -2774,33 +3229,10 @@ class Presence extends CI_Controller{
 					$p_late = isset($pray_data[$pray.'_time_late']) ? (int)$pray_data[$pray.'_time_late'] : 0;
 
 					if($is_manual){
-						$cur_in  = $existing[$pray.'_time_in'];
-						$cur_out = $existing[$pray.'_time_out'];
-						if(empty($cur_in) && !empty($p_in)){
-							// Pasangan kosong + mesin punya in → isi lengkap (perilaku lama).
+						if(empty($existing[$pray.'_time_in']) && !empty($p_in)){
 							$update[$pray.'_time_in']   = $p_in;
 							$update[$pray.'_time_out']  = !empty($p_out) ? $p_out : null;
 							$update[$pray.'_time_late'] = $p_late;
-						} elseif(!empty($cur_in) && empty($cur_out) && !empty($p_out)
-						         && !in_array($pray.'_time_out', $cleared, true)){
-							// FIX 19 Agu 2026: in sudah terisi (manual/sync lama) tapi out
-							// kosong padahal mesin punya scan keluar → isi out + hitung ulang
-							// late. Nilai in manual TIDAK pernah ditimpa/di-clear.
-							$out_t = date('H:i:s', strtotime($p_out));
-							$in_t  = date('H:i:s', strtotime($cur_in));
-							if($out_t > $in_t){
-								$update[$pray.'_time_out'] = $p_out;
-								$range = isset($branch[$pray.'_pray_time_range']) ? (int)$branch[$pray.'_pray_time_range'] : 0;
-								$limit = date('H:i:s', strtotime($in_t.' +'.$range.' minutes'));
-								$p_out_win = isset($branch[$pray.'_pray_time_out']) ? $branch[$pray.'_pray_time_out'] : '';
-								if($limit <= $p_out_win && $out_t > $limit){
-									$dif_time  = (substr($out_t, 0, 2) * 60) + substr($out_t, 3, 2);
-									$dif_limit = (substr($limit, 0, 2) * 60) + substr($limit, 3, 2);
-									$update[$pray.'_time_late'] = $dif_time - $dif_limit;
-								} else {
-									$update[$pray.'_time_late'] = 0;
-								}
-							}
 						}
 						continue;
 					}

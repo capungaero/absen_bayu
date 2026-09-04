@@ -11,6 +11,7 @@ class Wa extends CI_Controller {
         $this->load->library('hermes_wa');
         $this->load->library('attendance_employee_resolver');
         $this->load->library('cloud_attlog_client');
+        $this->load->library('attendance_ingest');
 
         $is_cron = $this->router->fetch_method() === 'cron';
 
@@ -432,6 +433,18 @@ class Wa extends CI_Controller {
             }
 
             $downloaded++;
+
+            // Arsipkan ke attendance_tap SEBELUM parse manual di bawah -- dulu
+            // WA Agent parse .dat sendiri lalu upsert presence LANGSUNG tanpa
+            // pernah singgah di arsip raw (temuan audit 4 Sep 2026). Idempoten
+            // (unique key machine_sn+finger_id+tap_at), aman dipanggil bareng
+            // sync_api/sync_cron/DatReader yang mengarsipkan mesin yang sama.
+            $this->attendance_ingest->ingest_raw($raw, $machine_sn, [
+                'machine_type' => 'attendance',
+                'origin'       => 'wa_agent',
+                'created_by'   => null,
+            ]);
+
             $lines = preg_split('/\r\n|\r|\n/', $raw);
             $machine_rows = 0;
 

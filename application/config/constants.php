@@ -101,3 +101,29 @@ define('EXCEL_COLUMN', ['-','A','B','C','D','E','F','G','H','I','J','K','L','M',
 	'BA', 'BB', 'BC', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BK', 'BL', 'BM', 'BN', 'BO', 'BP', 'BQ', 'BR', 'BS', 'BT', 'BU', 'BV', 'BW', 'BX', 'BY', 'BZ']);
 
 define('PTKP_STATUS', ['TK/0', 'TK/1', 'TK/2', 'TK/3', 'K/0', 'K/1', 'K/2', 'K/3']);
+
+/*
+| -------------------------------------------------------------------------
+| Penurunan presensi dari lapis absensi mentah
+| -------------------------------------------------------------------------
+| FALSE  = sync memakai jalur import lama (Excel -> presence).
+| TRUE   = sync menurunkan presence dari attendance_day sesudah ingest
+|          + klasifikasi. Rollback cukup mengembalikan ini ke FALSE.
+| ATTENDANCE_DERIVE_BRANCHES: '*' untuk semua cabang, atau array id cabang.
+| Prasyarat dua-penulis sudah gugur: absen_sync.py dipensiunkan 27 Agu 2026.
+*/
+define('ATTENDANCE_DERIVE_ENABLED', TRUE);
+define('ATTENDANCE_DERIVE_BRANCHES', '*');
+
+/*
+| Sama pola ATTENDANCE_DERIVE_ENABLED tapi utk PRESENSI SHOLAT (pray_day ->
+| kolom subuh/dzuhur/ashar/maghrib/isha/friday_time_* di presence).
+|
+| Diaktifkan 4 Sep 2026 setelah dry-run Pray_deriver_model dibandingkan thd
+| 83 hari data existing (jalur lama _import_pray_sheet): cocok semua kecuali
+| 3 baris, dan ketiganya justru bukti proteksi trigger provenance bekerja
+| benar (menolak menimpa kolom yang sudah ditandai manual, bukan merusak).
+| Rollback: kembalikan ke FALSE, jalur lama otomatis dipakai lagi.
+*/
+define('PRAY_DERIVE_ENABLED', TRUE);
+define('PRAY_DERIVE_BRANCHES', '*');
