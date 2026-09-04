@@ -3,8 +3,9 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 /**
  * API JSON admin/sistem eksternal untuk presensi (stateless, API-key bearer).
- * Endpoint: GET api/admin/presence, POST api/admin/presence/update_workhour,
- * POST api/admin/presence/update_shift, POST api/admin/presence/cancel.
+ * Endpoint: GET api/admin/presence, GET api/admin/attendance_recap,
+ * POST api/admin/presence/update_workhour, POST api/admin/presence/update_shift,
+ * POST api/admin/presence/cancel.
  * CSRF dikecualikan di config ('api/(.*)'). Auth: header Authorization: Bearer <ADMIN_API_KEY>.
  */
 class Api_admin extends CI_Controller {
@@ -73,6 +74,33 @@ class Api_admin extends CI_Controller {
 
         $rows = $this->db->get('presence')->result_array();
         $this->_json(['status'=>true, 'count'=>count($rows), 'presence'=>$rows]);
+    }
+
+    // GET api/admin/attendance_recap?date=&from=&to=&user_id=&branch_id=&status=&limit=
+    // Rekap harian absen KERJA sudah final (telat dihitung, ada status
+    // hadir/terlambat/belum_absen) dari attendance_recap -- dibangun tiap 30
+    // menit langsung dari tap+shift, jauh lebih cepat & tidak bergantung
+    // sync presence. Tidak mencakup sholat. Default rentang: hari ini.
+    public function attendance_recap(){
+        if(!$this->_auth()) return;
+        $date = $this->input->get('date');
+        $from = $this->input->get('from') ?: $date ?: date('Y-m-d');
+        $to   = $this->input->get('to')   ?: $date ?: $from;
+        $limit = (int)($this->input->get('limit') ?: 1000);
+
+        $this->db->select('*')
+            ->where('flow_date >=', date('Y-m-d', strtotime($from)))
+            ->where('flow_date <=', date('Y-m-d', strtotime($to)))
+            ->order_by('flow_date', 'DESC')
+            ->order_by('branch_name', 'ASC')
+            ->order_by('employee_name', 'ASC')
+            ->limit($limit);
+        if($this->input->get('user_id')){ $this->db->where('user_id', (int)$this->input->get('user_id')); }
+        if($this->input->get('branch_id')){ $this->db->where('branch_id', (int)$this->input->get('branch_id')); }
+        if($this->input->get('status')){ $this->db->where('status', $this->input->get('status')); }
+
+        $rows = $this->db->get('attendance_recap')->result_array();
+        $this->_json(['status'=>true, 'count'=>count($rows), 'attendance_recap'=>$rows]);
     }
 
     // POST api/admin/presence/update_workhour {user_id,date,entry_time,out_time,rest_time_in?,rest_time_out?,is_early_leave?,overtime?}

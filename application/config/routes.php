@@ -86,6 +86,7 @@ $route['api/submit_bpjs']     = 'Api/submit_bpjs';
 
 // API JSON admin/sistem eksternal (stateless, API-key bearer; CSRF dikecualikan di config via 'api/(.*)')
 $route['api/admin/presence']                 = 'Api_admin/presence_list';
+$route['api/admin/attendance_recap']         = 'Api_admin/attendance_recap';
 $route['api/admin/presence/update_workhour'] = 'Api_admin/update_workhour';
 $route['api/admin/presence/update_shift']    = 'Api_admin/update_shift';
 $route['api/admin/presence/cancel']          = 'Api_admin/cancel';
