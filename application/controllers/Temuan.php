@@ -27,6 +27,12 @@ class Temuan extends CI_Controller {
 
     public function __construct() {
         parent::__construct();
+        // Controller ini stateless (bearer token), tak pernah pakai $this->session.
+        // Lepas lock file session CI (autoload global) di awal supaya request paralel
+        // dari browser yang sama (banyak fetch() sekaligus di frontend) tak saling
+        // antre nunggu lock -- itu penyebab "Maximum execution time 30s" & upload foto
+        // gagal ("Failed to fetch") saat beberapa request numpuk.
+        session_write_close();
         $this->load->library('Api_token', null, 'apitoken');
         $this->load->model('temuan_model', 'temuan');
         $this->output->set_header('Access-Control-Allow-Origin: *');
@@ -82,9 +88,19 @@ class Temuan extends CI_Controller {
         return in_array($this->role, self::ADMIN_ROLES, true);
     }
 
-    /** Admin & inspector (ditunjuk) beroperasi lintas cabang; admin-branch terbatas cabangnya. */
+    /** Admin & inspector (ditunjuk, utama ATAU asisten) beroperasi lintas cabang; admin-branch terbatas cabangnya. */
     private function _is_full_access() {
         return $this->role === 'admin' || $this->temuan->is_inspector((int)$this->user['id']);
+    }
+
+    /**
+     * Wewenang SUPERVISI (ACC, putus pengajuan tolak/perpanjangan, jadi backup
+     * responder lintas area) -- admin & inspector UTAMA saja. Asisten inspector
+     * boleh posting temuan & lintas cabang sama seperti inspector biasa
+     * (_is_full_access), tapi TIDAK punya wewenang ini.
+     */
+    private function _is_supervisor_access() {
+        return $this->role === 'admin' || $this->temuan->is_full_inspector((int)$this->user['id']);
     }
 
     /** Cocokkan keyword lokasi fisik ke id branch; fallback ke branch posisi kalau tak dikenal (mis. Kanvas). */
@@ -187,7 +203,9 @@ class Temuan extends CI_Controller {
             'name'         => trim($u['first_name'] . ' ' . $u['last_name']),
             'role'         => $this->role,
             'is_admin'     => $this->_is_admin(),
-            'is_inspector' => $this->temuan->is_inspector($u['id']),
+            'is_inspector'          => $this->temuan->is_inspector($u['id']),
+            'is_full_inspector'     => $this->temuan->is_full_inspector($u['id']),
+            'is_assistant_inspector'=> $this->temuan->is_assistant_inspector($u['id']),
             'is_spv'       => $this->temuan->has_spv_area($u['id']),
             'is_pj'        => $this->temuan->has_pj_area($u['id']),
             'branch_id'    => (int)$u['branch_id'],
@@ -255,9 +273,10 @@ class Temuan extends CI_Controller {
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $p = $this->_body();
         $user_id = (int)($p['user_id'] ?? 0);
+        $level = in_array($p['level'] ?? '', ['utama', 'asisten'], true) ? $p['level'] : 'utama';
         $u = $this->db->select('users.id')->where('users.id', $user_id)->where('users.active', 1)->get('users')->row_array();
         if (!$u) { $this->_json(['status' => false, 'message' => 'Mitra tidak ditemukan'], 404); return; }
-        if (!$this->temuan->add_to_roster($type, $user_id)) {
+        if (!$this->temuan->add_to_roster($type, $user_id, $level)) {
             $this->_json(['status' => false, 'message' => "Mitra sudah terdaftar sebagai {$label}"], 422); return;
         }
         $this->_json(['status' => true]);
@@ -273,9 +292,26 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true]);
     }
 
-    public function inspectors()       { $this->_roster_list('inspector'); }
-    public function inspector_add()    { $this->_roster_add('inspector', 'inspector'); }
-    public function inspector_delete() { $this->_roster_delete('inspector', 'Inspector'); }
+    // POST temuan/inspector_set_level {id, level} — ubah status Utama/Asisten inspector terdaftar.
+    private function _roster_set_level($type, $label) {
+        if (!$this->_auth()) return;
+        if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
+        $p = $this->_body();
+        $id = (int)($p['id'] ?? 0);
+        $level = $p['level'] ?? '';
+        if (!in_array($level, ['utama', 'asisten'], true)) {
+            $this->_json(['status' => false, 'message' => 'Status tidak valid'], 422); return;
+        }
+        if (!$this->temuan->set_roster_level($type, $id, $level)) {
+            $this->_json(['status' => false, 'message' => "{$label} tidak ditemukan"], 404); return;
+        }
+        $this->_json(['status' => true]);
+    }
+
+    public function inspectors()         { $this->_roster_list('inspector'); }
+    public function inspector_add()      { $this->_roster_add('inspector', 'inspector'); }
+    public function inspector_delete()   { $this->_roster_delete('inspector', 'Inspector'); }
+    public function inspector_set_level(){ $this->_roster_set_level('inspector', 'Inspector'); }
 
     // ====================================================================
     // JENIS (KATEGORI, master)
@@ -730,7 +766,7 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        $can = $this->_is_full_access()
+        $can = $this->_is_supervisor_access()
             || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
         if (!$can) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh memutuskan penolakan'], 403); return;
@@ -778,12 +814,15 @@ class Temuan extends CI_Controller {
         $up = $this->_upload_photo('photo', 'selesai', $require_photo);
         if (isset($up['error'])) { $this->_json(['status' => false, 'message' => $up['error']], 422); return; }
 
+        $note = trim((string)$this->input->post('note'));
+
         $this->temuan->update_temuan($row['id'], [
             'status'          => 'menunggu_acc',
             'done_by'         => (int)$this->user['id'],
             'done_as'         => $this->_actor_label($row),
             'done_at'         => date('Y-m-d H:i:s'),
             'done_photo_path' => $up['path'],
+            'done_note'       => $note !== '' ? $note : null,
         ]);
 
         $fresh = $this->temuan->get_temuan($row['id']);
@@ -797,7 +836,7 @@ class Temuan extends CI_Controller {
         $p = $this->_body();
         $row = $this->temuan->get_temuan((int)($p['id'] ?? 0));
         if (!$row) { $this->_json(['status' => false, 'message' => 'Temuan tidak ditemukan'], 404); return; }
-        $can_acc = $this->_is_full_access()
+        $can_acc = $this->_is_supervisor_access()
             || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
         if (!$can_acc) {
             $this->_json(['status' => false, 'message' => 'Hanya inspector atau admin yang boleh ACC'], 403); return;
@@ -950,7 +989,7 @@ class Temuan extends CI_Controller {
     // GET temuan/report_excel?branch_id=&from=&to=&token= — unduh rekap bulanan .xlsx
     public function report_excel() {
         if (!$this->_auth()) return;
-        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
+        if (!$this->_is_supervisor_access()) {
             $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
         }
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
@@ -1070,10 +1109,10 @@ class Temuan extends CI_Controller {
         $headers = ['No', 'Tanggal', 'Jenis', 'Kode Area / Mitra', 'Cabang', 'Keterangan',
                     'Link Foto Temuan', 'Link Foto Pengerjaan',
                     'Inspector (Pembuat Laporan)', 'Status', 'Terlambat',
-                    'Dikerjakan Oleh', 'Waktu Dikerjakan', 'Lapor Selesai Oleh', 'Waktu Lapor Selesai',
+                    'Dikerjakan Oleh', 'Waktu Dikerjakan', 'Lapor Selesai Oleh', 'Waktu Lapor Selesai', 'Catatan Pengerjaan',
                     'ACC Oleh', 'Waktu ACC', 'Ditolak Oleh', 'Alasan Ditolak', 'Dihapus Admin'];
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:T1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:U1')->getFont()->setBold(true);
         $status_label = ['baru' => 'Baru', 'dikerjakan' => 'Dikerjakan', 'menunggu_acc' => 'Menunggu ACC', 'menunggu_acc_tolak' => 'Menunggu ACC Tolak', 'selesai' => 'Selesai', 'ditolak' => 'Ditolak'];
         $r = 2;
         foreach ($rows as $row) {
@@ -1094,6 +1133,7 @@ class Temuan extends CI_Controller {
                 $row['taken_at'] ?: '-',
                 $row['done_by_name'] ?: '-',
                 $row['done_at'] ?: '-',
+                $row['done_note'] ?: '-',
                 $row['acc_by_name'] ?: '-',
                 $row['acc_at'] ?: '-',
                 $row['reject_by_name'] ?: '-',
@@ -1104,13 +1144,13 @@ class Temuan extends CI_Controller {
             if (!empty($row['done_photo_url'])) { $sheet->getCell('H' . $r)->getHyperlink()->setUrl($row['done_photo_url']); }
             $r++;
         }
-        foreach (range('A', 'T') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+        foreach (range('A', 'U') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
     }
 
     // GET temuan/report_detail_excel?branch_id=&from=&to=&token= — unduh detail temuan .xlsx
     public function report_detail_excel() {
         if (!$this->_auth()) return;
-        if (!$this->_is_admin() && !$this->temuan->is_inspector($this->user['id'])) {
+        if (!$this->_is_supervisor_access()) {
             $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
         }
         $branch_id = $this->_scope_branch($this->input->get('branch_id'));
@@ -1136,11 +1176,15 @@ class Temuan extends CI_Controller {
     private function _aggregate_report($branch_id, $from, $to, $vis_filters = []) {
         $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
         $vis_uid = !empty($vis_filters['visible_to']) ? (int)$vis_filters['visible_to'] : 0;
+        $reporter_uid = !empty($vis_filters['reporter_id']) ? (int)$vis_filters['reporter_id'] : 0;
         $groups = [];
         foreach ($rows as $r) {
             if ($r['type_target_mode'] === 'individu' || empty($r['location_id'])) { continue; } // rekap per area, bukan individu
             // Karyawan biasa/PJ/Pengawas: hanya area yang ditugaskan.
             if ($vis_uid && !$this->_is_location_pj($r, $vis_uid) && !$this->_is_location_spv($r, $vis_uid)) { continue; }
+            // Asisten inspector: rekap per-area ini nyampur laporan orang lain di area yg
+            // sama -- tak relevan buat "cuma lihat punya sendiri", jadi disaring ketat juga.
+            if ($reporter_uid && (int)$r['reporter_id'] !== $reporter_uid) { continue; }
             $key = $r['location_id'];
             if (!isset($groups[$key])) {
                 $groups[$key] = [
@@ -1176,10 +1220,15 @@ class Temuan extends CI_Controller {
     private function _aggregate_chart($branch_id, $from, $to, $vis_filters = []) {
         $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
         $vis_uid = !empty($vis_filters['visible_to']) ? (int)$vis_filters['visible_to'] : 0;
+        $reporter_uid = !empty($vis_filters['reporter_id']) ? (int)$vis_filters['reporter_id'] : 0;
         $by_division = [];
         $by_area = [];
         $by_jenis = [];
         foreach ($rows as $r) {
+            // Asisten inspector: rekap gabungan per-area/divisi ini nyampur laporan orang
+            // lain -- tak relevan buat "cuma lihat punya sendiri", jadi dibuang dulu di sini.
+            if ($reporter_uid && (int)$r['reporter_id'] !== $reporter_uid) { continue; }
+
             $has_location = $r['type_target_mode'] !== 'individu' && !empty($r['location_id']);
             $visible_location = !$vis_uid || ($has_location && ($this->_is_location_pj($r, $vis_uid) || $this->_is_location_spv($r, $vis_uid)));
             if ($has_location && $visible_location) {
@@ -1487,8 +1536,9 @@ class Temuan extends CI_Controller {
 
         // PJ / SPV area lokasi tsb (keduanya melekat per area)
         if ($this->_is_location_pj($row, $uid) || $this->_is_location_spv($row, $uid)) { return true; }
-        // Inspector (ditunjuk): boleh bertindak sebagai PJ/SPV cadangan, lintas cabang
-        if ($this->temuan->is_inspector($uid)) {
+        // Inspector UTAMA (ditunjuk): boleh bertindak sebagai PJ/SPV cadangan, lintas
+        // cabang. Asisten inspector TIDAK -- dia cuma boleh posting & lihat lapornya sendiri.
+        if ($this->temuan->is_full_inspector($uid)) {
             return true;
         }
         // Backup SPV: SPV area lain di cabang yg sama boleh bantu saat SPV asli libur
@@ -1506,20 +1556,22 @@ class Temuan extends CI_Controller {
         if ($this->_is_location_spv($row, $uid) || (int)$row['individu_spv_id'] === $uid) { return 'Pengawas'; }
         if (!$this->_is_admin()) {
             if ($this->temuan->has_spv_area($uid)) { return 'Pengawas'; } // backup pengawas
-            if ($this->temuan->is_inspector($uid)) { return 'Inspector'; }
+            if ($this->temuan->is_full_inspector($uid)) { return 'Inspector'; }
         }
         return 'Admin';
     }
 
     /**
      * Filter visibilitas — return array yang di-merge ke $filters:
-     *   [] = lihat semua di cabangnya (admin, inspector)
+     *   [] = lihat semua di cabangnya (admin, inspector UTAMA)
+     *   ['reporter_id' => uid] = asisten inspector: HANYA temuan yang dia lapor sendiri
      *   ['visible_to' => uid] = PJ/Pengawas/mitra: hanya area yang ditugaskan / yang ditag
      */
     private function _visibility_filters() {
         if ($this->_is_admin()) { return []; }
         $uid = (int)$this->user['id'];
-        if ($this->temuan->is_inspector($uid)) { return []; }
+        if ($this->temuan->is_full_inspector($uid)) { return []; }
+        if ($this->temuan->is_assistant_inspector($uid)) { return ['reporter_id' => $uid]; }
         return ['visible_to' => $uid];
     }
 
@@ -1535,9 +1587,9 @@ class Temuan extends CI_Controller {
         return false;
     }
 
-    /** Putuskan pengajuan tambahan waktu: inspector (lintas cabang) / admin. */
+    /** Putuskan pengajuan tambahan waktu: inspector UTAMA (lintas cabang) / admin. */
     private function _can_decide_extension($row) {
-        return $this->_is_full_access()
+        return $this->_is_supervisor_access()
             || ($this->role === 'admin-branch' && (int)$row['branch_id'] === (int)$this->user['branch_id']);
     }
 
@@ -1800,6 +1852,9 @@ class Temuan extends CI_Controller {
             $msg .= $this->_target_line($row);
             $msg .= "📝 Keterangan: {$row['description']}\n";
             $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
+            if (!empty($row['done_note'])) {
+                $msg .= "💬 Catatan   : {$row['done_note']}\n";
+            }
             $msg .= "⏳ Menunggu ACC inspector: {$row['reporter_name']}\n";
             $msg .= "🕐 {$when}\n";
             $msg .= str_repeat("─", 30);
@@ -1812,6 +1867,9 @@ class Temuan extends CI_Controller {
         $msg .= $this->_target_line($row);
         $msg .= "📝 Keterangan: {$row['description']}\n";
         $msg .= "👷 Dikerjakan: {$row['done_by_name']}{$done_label}\n";
+        if (!empty($row['done_note'])) {
+            $msg .= "💬 Catatan   : {$row['done_note']}\n";
+        }
         $msg .= "🆗 ACC oleh  : {$row['acc_by_name']}\n";
         $msg .= "🕐 {$when}\n";
         $msg .= str_repeat("─", 30);

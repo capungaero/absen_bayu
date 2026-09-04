@@ -6,8 +6,9 @@ export default function Admin({ me, onSessionEnd }) {
     <div>
       <RosterAdmin
         icon="🕵️" title="Inspector" label="inspector"
-        desc="Hanya mitra yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan."
-        listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
+        desc="Hanya mitra yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan. Utama = akses penuh (lintas cabang, ACC, putus pengajuan). Asisten = cuma boleh posting & lihat temuan yang dia lapor sendiri."
+        listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete" setLevelPath="/inspector_set_level"
+        showLevel
         onSessionEnd={onSessionEnd}
       />
       <CategoryAdmin onSessionEnd={onSessionEnd} />
@@ -20,10 +21,11 @@ export default function Admin({ me, onSessionEnd }) {
   );
 }
 
-function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onSessionEnd }) {
+function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, setLevelPath, showLevel, onSessionEnd }) {
   const [rows, setRows] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [pick, setPick] = useState('');
+  const [level, setLevel] = useState('utama');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -48,8 +50,9 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
     setBusy(true);
     setError('');
     try {
-      await apiPost(addPath, { user_id: pick });
+      await apiPost(addPath, showLevel ? { user_id: pick, level } : { user_id: pick });
       setPick('');
+      setLevel('utama');
       load();
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -63,6 +66,17 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
     if (!window.confirm(`Hapus ${row.name} dari daftar ${label}?`)) return;
     try {
       await apiPost(delPath, { id: row.id });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
+    }
+  };
+
+  const toggleLevel = async (row) => {
+    const next = row.level === 'asisten' ? 'utama' : 'asisten';
+    try {
+      await apiPost(setLevelPath, { id: row.id, level: next });
       load();
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -84,12 +98,18 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
             <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>
           ))}
         </select>
+        {showLevel && (
+          <select value={level} onChange={(e) => setLevel(e.target.value)} style={{ minWidth: 150 }}>
+            <option value="utama">Inspector Utama</option>
+            <option value="asisten">Asisten Inspector</option>
+          </select>
+        )}
         <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || !pick}>+ Tambah {title}</button>
       </div>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th><th></th></tr>
+            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th>{showLevel && <th>Status</th>}<th></th></tr>
           </thead>
           <tbody>
             {rows.map((row) => (
@@ -97,11 +117,25 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
                 <td>{row.name}</td>
                 <td>{row.position_name || '-'}</td>
                 <td>{row.branch_name || '-'}</td>
-                <td><button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button></td>
+                {showLevel && (
+                  <td>
+                    <span className={row.level === 'asisten' ? 'badge badge-ditolak' : 'badge badge-selesai'}>
+                      {row.level === 'asisten' ? 'Asisten' : 'Utama'}
+                    </span>
+                  </td>
+                )}
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {showLevel && (
+                    <button className="btn btn-outline btn-sm" onClick={() => toggleLevel(row)}>
+                      Jadikan {row.level === 'asisten' ? 'Utama' : 'Asisten'}
+                    </button>
+                  )}{' '}
+                  <button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
+              <tr><td colSpan={showLevel ? 5 : 4} style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
             )}
           </tbody>
         </table>

@@ -160,6 +160,12 @@ class Temuan_model extends CI_Model {
                 WHERE `due_at` IS NULL");
         }
 
+        // Keterangan bebas dari PJ/Pengawas saat Lapor Selesai (opsional, sejajar done_photo_path).
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'done_note'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->temuan_table}`
+                ADD COLUMN `done_note` TEXT NULL AFTER `done_photo_path`");
+        }
+
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->work_phone_table}` (
                 `user_id` INT NOT NULL,
@@ -173,11 +179,19 @@ class Temuan_model extends CI_Model {
             CREATE TABLE IF NOT EXISTS `{$this->inspector_table}` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 `user_id` INT NOT NULL,
+                `level` ENUM('utama','asisten') NOT NULL DEFAULT 'utama',
                 `created_at` DATETIME NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uniq_user` (`user_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        // Asisten inspector: boleh posting temuan (sama inspector biasa) tapi TIDAK
+        // dapat hak "backup responder"/ACC/putus-pengajuan lintas area, dan visibilitas
+        // list dikunci ke temuan yang dia lapor sendiri saja (reporter_id).
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->inspector_table}` LIKE 'level'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->inspector_table}`
+                ADD COLUMN `level` ENUM('utama','asisten') NOT NULL DEFAULT 'utama' AFTER `user_id`");
+        }
 
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->category_table}` (
@@ -423,7 +437,7 @@ class Temuan_model extends CI_Model {
     public function get_roster($type) {
         $table = $this->_roster_table($type);
         return $this->db
-            ->select("i.id, i.user_id, TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) AS name,
+            ->select("i.id, i.user_id, i.level, TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))) AS name,
                       p.position_name, b.branch_name")
             ->from("{$table} i")
             ->join('users u', 'u.id = i.user_id', 'left')
@@ -438,13 +452,20 @@ class Temuan_model extends CI_Model {
                              ->count_all_results($this->_roster_table($type)) > 0;
     }
 
-    public function add_to_roster($type, $user_id) {
+    public function add_to_roster($type, $user_id, $level = 'utama') {
         if ($this->in_roster($type, $user_id)) { return false; }
         $this->db->insert($this->_roster_table($type), [
             'user_id'    => (int)$user_id,
+            'level'      => in_array($level, ['utama', 'asisten'], true) ? $level : 'utama',
             'created_at' => date('Y-m-d H:i:s'),
         ]);
         return true;
+    }
+
+    public function set_roster_level($type, $id, $level) {
+        if (!in_array($level, ['utama', 'asisten'], true)) { return false; }
+        $this->db->where('id', (int)$id)->update($this->_roster_table($type), ['level' => $level]);
+        return $this->db->affected_rows() > 0;
     }
 
     public function remove_from_roster($type, $id) {
@@ -452,8 +473,24 @@ class Temuan_model extends CI_Model {
         return $this->db->affected_rows() > 0;
     }
 
-    // Kompatibilitas pemanggil lama
+    // Kompatibilitas pemanggil lama -- "inspector" apa saja (utama ATAU asisten).
     public function is_inspector($user_id) { return $this->in_roster('inspector', $user_id); }
+
+    public function get_inspector_level($user_id) {
+        $row = $this->db->select('level')->where('user_id', (int)$user_id)
+            ->get($this->inspector_table)->row_array();
+        return $row ? $row['level'] : null;
+    }
+
+    /** Inspector UTAMA saja -- hak penuh (lintas area/cabang, ACC, putus pengajuan). */
+    public function is_full_inspector($user_id) {
+        return $this->get_inspector_level($user_id) === 'utama';
+    }
+
+    /** Asisten inspector -- cuma boleh posting temuan + lihat punya sendiri. */
+    public function is_assistant_inspector($user_id) {
+        return $this->get_inspector_level($user_id) === 'asisten';
+    }
 
     /** Apakah user jadi SPV di minimal satu area aktif. */
     /** Nomor HP Pengawas Utama area tsb (untuk notif WA); null kalau tak ada/kosong. */
@@ -1006,6 +1043,10 @@ class Temuan_model extends CI_Model {
                 OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
             )", null, false);
         }
+        // Asisten inspector: HANYA temuan yang dia lapor sendiri (bukan area-assignment).
+        if (!empty($filters['reporter_id'])) {
+            $this->db->where('t.reporter_id', (int)$filters['reporter_id']);
+        }
         if (!empty($filters['branch_id'])) {
             $this->db->where('t.branch_id', $filters['branch_id']);
         }
@@ -1047,6 +1088,9 @@ class Temuan_model extends CI_Model {
                 OR EXISTS (SELECT 1 FROM {$this->subject_table} sj WHERE sj.temuan_id = t.id AND sj.user_id = {$uid})
             )", null, false);
         }
+        if (!empty($vis_filters['reporter_id'])) {
+            $this->db->where('t.reporter_id', (int)$vis_filters['reporter_id']);
+        }
         $rows = $this->db->get()->result_array();
         $out = ['baru' => 0, 'dikerjakan' => 0, 'menunggu_acc' => 0, 'menunggu_acc_tolak' => 0, 'selesai' => 0, 'ditolak' => 0];
         foreach ($rows as $r) {
@@ -1058,7 +1102,7 @@ class Temuan_model extends CI_Model {
     /** Baris mentah utk rekap bulanan (exclude soft-delete & ditolak; join info PJ/SPV area). */
     public function get_report_rows($branch_id, $from, $to) {
         $this->db
-            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at,
+            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at, t.reporter_id,
                       ty.name AS type_name, ty.target_mode AS type_target_mode, cat.name AS category_name,
                       l.id AS location_id, l.name AS location_name, b.branch_name, dv.name AS division_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')

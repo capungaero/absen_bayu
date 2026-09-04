@@ -95,7 +95,7 @@ export default function Dashboard({ me, onSessionEnd }) {
       return isRowSubject(row) || Number(row.individu_spv_id) === Number(me.id);
     }
     return me.is_admin
-      || me.is_inspector
+      || me.is_full_inspector
       || me.is_spv
       || isRowPj(row)
       || isRowSpv(row);
@@ -113,10 +113,10 @@ export default function Dashboard({ me, onSessionEnd }) {
     }
   };
 
-  const canAcc = (row) => me.is_admin || me.is_inspector;
+  const canAcc = (row) => me.is_admin || me.is_full_inspector;
   const canRequestExtension = (row) => (me.is_admin || me.is_spv)
     && ['baru', 'dikerjakan'].includes(row.status) && row.extension_status !== 'pending';
-  const canDecideExtension = (row) => (me.is_admin || me.is_inspector) && row.extension_status === 'pending';
+  const canDecideExtension = (row) => (me.is_admin || me.is_full_inspector) && row.extension_status === 'pending';
 
   return (
     <div>
@@ -189,6 +189,7 @@ export default function Dashboard({ me, onSessionEnd }) {
                 )}
                 {row.taken_by_name && <>Dikerjakan oleh <b>{row.taken_by_name}</b>{row.taken_as ? <span className="badge badge-actor"> {row.taken_as}</span> : null} · {fmtTime(row.taken_at)}<br /></>}
                 {row.done_by_name && <>Dilaporkan selesai oleh <b>{row.done_by_name}</b>{row.done_as ? <span className="badge badge-actor"> {row.done_as}</span> : null} · {fmtTime(row.done_at)}<br /></>}
+                {row.done_note && <>Catatan: <i>{row.done_note}</i><br /></>}
                 {row.acc_by_name && <>ACC oleh <b>{row.acc_by_name}</b> · {fmtTime(row.acc_at)}<br /></>}
                 {row.status === 'menunggu_acc_tolak' && (
                   <>Pengajuan tolak oleh <b>{row.reject_by_name}</b>{row.reject_as ? <span className="badge badge-actor"> {row.reject_as}</span> : null} · {fmtTime(row.reject_at)}<br />
@@ -547,6 +548,7 @@ function RejectModal({ row, onClose, onSaved, onSessionEnd }) {
 function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -567,6 +569,7 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
       const fd = new FormData();
       fd.append('id', row.id);
       fd.append('photo', file);
+      fd.append('note', note.trim());
       const data = await apiUpload('/done', fd);
       onSaved(data.row);
     } catch (err) {
@@ -588,6 +591,10 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
           <label>Foto hasil pengerjaan{!photoRequired && ' (opsional)'}</label>
           <input type="file" accept="image/*" capture="environment" onChange={pick} required={photoRequired} />
           {preview && <img className="preview-img" src={preview} alt="Preview" />}
+        </div>
+        <div className="field">
+          <label>Keterangan (opsional)</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Apa yang sudah dikerjakan, catatan tambahan, dsb." />
         </div>
         <div className="modal-actions">
           <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>

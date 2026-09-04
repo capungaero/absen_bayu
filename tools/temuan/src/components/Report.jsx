@@ -152,7 +152,7 @@ export default function Report({ me, onSessionEnd }) {
     return list;
   }, [rows, detailSortKey, detailSortDir, q]);
 
-  const canExportExcel = me.is_admin || me.is_inspector;
+  const canExportExcel = me.is_admin || me.is_full_inspector;
   const qs = `from=${from}&to=${to}${branchId ? `&branch_id=${branchId}` : ''}&token=${encodeURIComponent(getToken())}`;
   const excelUrl = `${API}/report_excel?${qs}`;
   const detailExcelUrl = `${API}/report_detail_excel?${qs}`;
@@ -160,7 +160,7 @@ export default function Report({ me, onSessionEnd }) {
   const handling = (r) => {
     const parts = [];
     if (r.taken_by_name) parts.push(`Dikerjakan: ${r.taken_by_name}${r.taken_as ? ` (${r.taken_as})` : ''} ${fmtTime(r.taken_at)}`);
-    if (r.done_by_name) parts.push(`Lapor selesai: ${r.done_by_name}${r.done_as ? ` (${r.done_as})` : ''} ${fmtTime(r.done_at)}`);
+    if (r.done_by_name) parts.push(`Lapor selesai: ${r.done_by_name}${r.done_as ? ` (${r.done_as})` : ''} ${fmtTime(r.done_at)}${r.done_note ? ` — ${r.done_note}` : ''}`);
     if (r.acc_by_name) parts.push(`ACC: ${r.acc_by_name} ${fmtTime(r.acc_at)}`);
     if (r.status === 'menunggu_acc_tolak') parts.push(`Pengajuan tolak (menunggu ACC): ${r.reject_by_name}${r.reject_as ? ` (${r.reject_as})` : ''} ${fmtTime(r.reject_at)} — ${r.reject_reason}`);
     if (r.status === 'ditolak') parts.push(`Ditolak: ${r.reject_by_name}${r.reject_as ? ` (${r.reject_as})` : ''} ${fmtTime(r.reject_at)} — ${r.reject_reason}${r.reject_decided_by_name ? ` (ACC: ${r.reject_decided_by_name})` : ''}`);

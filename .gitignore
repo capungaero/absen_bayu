@@ -65,8 +65,10 @@ error_log
 
 # Database & Backups
 backups/
+/backup_raw_rebuild/
 *.dump
 *.sql
+*.sql.gz
 # Kecuali DDL skema pipeline (bukan dump data)
 !pipeline/schema/*.sql
 *.db
@@ -140,6 +142,9 @@ test_db3.php
 # Allow kode tool rekap sholat (override *.csv & config.json di atas)
 !tools/sholat_recap/config.json
 !tools/sholat_recap/employees.sample.csv
+
+# Build artifact SPA -- source di tools/*/src/ yang di-track, bukan hasil build
+tools/temuan/dist/
 
 # User Guide
 /user_guide/
