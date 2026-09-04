@@ -119,6 +119,108 @@ class Api_admin_hr extends CI_Controller {
         }
     }
 
+    // POST api/admin/leave/create {user_id, leave_type: izin|sakit|cuti, leave_start, leave_end,
+    //   leave_reason, leave_proof?(base64/file khusus sakit wajib)} -- ATAS NAMA karyawan tertentu.
+    // Validasi & efek SAMA PERSIS dgn M.php::submit_leave (karyawan ajukan sendiri): status
+    // selalu 'pending', tetap perlu di-ACC lewat leave_approve/deny -- endpoint ini TIDAK
+    // auto-approve, cuma mengganti siapa yang mengajukan (mis. via bot AI atas instruksi HR).
+    public function leave_create(){
+        if(!$this->_auth()) return;
+        $p = $this->_body();
+
+        $user_id = (int)($p['user_id'] ?? 0);
+        $emp = $this->db->where('id', $user_id)->where('active', 1)->get('users')->row_array();
+        if(!$emp){ $this->_json(['status'=>false,'message'=>'user_id karyawan tidak valid/tidak aktif'], 422); return; }
+
+        $type = $p['leave_type'] ?? '';
+        if(!in_array($type, ['izin','sakit','cuti'], true)){
+            $this->_json(['status'=>false,'message'=>'leave_type harus izin/sakit/cuti'], 422); return;
+        }
+        $start = !empty($p['leave_start']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $p['leave_start']) ? $p['leave_start'] : null;
+        $end   = !empty($p['leave_end'])   && preg_match('/^\d{4}-\d{2}-\d{2}$/', $p['leave_end'])   ? $p['leave_end']   : null;
+        $reason = trim((string)($p['leave_reason'] ?? ''));
+        if(!$start || !$end || strlen($reason) < 3){
+            $this->_json(['status'=>false,'message'=>'leave_start, leave_end (YYYY-MM-DD) & leave_reason (min 3 karakter) wajib diisi'], 422); return;
+        }
+        if(strtotime($start) > strtotime($end)){
+            $this->_json(['status'=>false,'message'=>'leave_start harus sebelum/sama dengan leave_end'], 422); return;
+        }
+
+        $listDay = get_daterange_list($start, $end);
+        $checkPresence = $this->db->where('flow_date >=', $start)->where('flow_date <=', $end)
+            ->where('user_id', $user_id)->count_all_results('presence');
+        $checkOff = $this->db->where('user_id', $user_id)
+            ->where('additional_date >=', $start)->where('additional_date <=', $end)
+            ->where('additional_type', 'work')->group_by('additional_date')
+            ->get('users_shift_additional')->num_rows();
+        if(!($checkPresence == 0 && $checkOff == count($listDay))){
+            $this->_json(['status'=>false,'message'=>'Rentang tanggal sudah memiliki presensi atau bukan hari jadwal kerja karyawan ini.'], 422); return;
+        }
+
+        $overlap = $this->db->group_start()
+                ->group_start()->where('leave_start >=', $start)->where('leave_start <=', $end)->group_end()
+                ->or_group_start()->where('leave_end >=', $start)->where('leave_end <=', $end)->group_end()
+            ->group_end()
+            ->where('user_id', $user_id)->where('leave_status', 'pending')
+            ->count_all_results('leave');
+        if($overlap > 0){
+            $this->_json(['status'=>false,'message'=>'Rentang tanggal sedang dalam proses pengajuan lain. Pilih tanggal lain.'], 422); return;
+        }
+
+        // Bukti: file upload (multipart, field leave_proof) ATAU base64 (JSON field leave_proof_base64).
+        $proof = '';
+        if(!empty($_FILES['leave_proof']['name'])){
+            $config['upload_path']   = './assets/images/hr/leave/';
+            $config['allowed_types'] = 'png|jpeg|jpg';
+            $config['file_name']     = 'leave_'.$user_id.'_'.generateRandom(5).'_'.time();
+            $config['max_size']      = 10240;
+            $config['max_width']     = 6000;
+            $config['max_height']    = 6000;
+            $this->load->library('upload', $config);
+            if(!$this->upload->do_upload('leave_proof')){
+                $this->_json(['status'=>false,'message'=>strip_tags($this->upload->display_errors())], 422); return;
+            }
+            $upl = $this->upload->data();
+            $cfg = ['image_library'=>'gd2','source_image'=>$upl['full_path'],'quality'=>'80%','maintain_ratio'=>TRUE,'width'=>800];
+            $this->load->library('image_lib', $cfg);
+            $this->image_lib->resize();
+            $proof = $upl['file_name'];
+        }elseif(!empty($p['leave_proof_base64'])){
+            $raw = base64_decode(preg_replace('#^data:image/\w+;base64,#', '', $p['leave_proof_base64']), true);
+            if($raw === false){
+                $this->_json(['status'=>false,'message'=>'leave_proof_base64 tidak valid'], 422); return;
+            }
+            $fname = 'leave_'.$user_id.'_'.generateRandom(5).'_'.time().'.jpg';
+            $fpath = './assets/images/hr/leave/'.$fname;
+            file_put_contents($fpath, $raw);
+            $cfg = ['image_library'=>'gd2','source_image'=>$fpath,'quality'=>'80%','maintain_ratio'=>TRUE,'width'=>800];
+            $this->load->library('image_lib', $cfg);
+            $this->image_lib->resize();
+            $proof = $fname;
+        }elseif($type === 'sakit'){
+            $this->_json(['status'=>false,'message'=>'Surat keterangan sakit (foto) wajib diunggah (leave_proof atau leave_proof_base64).'], 422); return;
+        }
+
+        $totalDay = 0;
+        foreach($listDay as $d){ $totalDay += in_array(get_dayname($d), ['Sabtu','Minggu']) ? 2 : 1; }
+
+        $ok = $this->leave->insert([
+            'user_id'              => $user_id,
+            'leave_start'          => $start,
+            'leave_end'            => $end,
+            'leave_range'          => diffInDays($start, $end) + 1,
+            'leave_proof'          => $proof,
+            'leave_type'           => $type,
+            'leave_reason'         => $reason,
+            'default_potongan'     => GetPotonganIzin($emp['status_work']),
+            'request_potongan'     => null,
+            'jumlah_hari_potongan' => $totalDay,
+            'leave_status'         => 'pending',
+            'created_at'           => date('Y-m-d H:i:s'),
+        ]);
+        $this->_json(['status'=>(bool)$ok, 'message'=>$ok ? 'Pengajuan izin dibuat, menunggu ACC atasan.' : 'Gagal menyimpan pengajuan.']);
+    }
+
     // POST api/admin/leave/deny {leave_id, reject_reason}
     public function leave_deny(){
         if(!$this->_auth()) return;
@@ -165,6 +267,80 @@ class Api_admin_hr extends CI_Controller {
             'reject_reason'   => '',
         ], $p['overtime_id']);
         $this->_json(['status'=>true,'message'=>'Lembur disetujui']);
+    }
+
+    // POST api/admin/overtime/create {user_id, overtime_date, overtime_hour,
+    //   overtime_proof?(base64/file, WAJIB)} -- ATAS NAMA karyawan tertentu.
+    // Sama pola dgn leave_create(): status selalu 'pending', tetap perlu ACC.
+    public function overtime_create(){
+        if(!$this->_auth()) return;
+        $p = $this->_body();
+
+        $user_id = (int)($p['user_id'] ?? 0);
+        $emp = $this->db->where('id', $user_id)->where('active', 1)->get('users')->row_array();
+        if(!$emp){ $this->_json(['status'=>false,'message'=>'user_id karyawan tidak valid/tidak aktif'], 422); return; }
+
+        if(empty($p['overtime_date']) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $p['overtime_date'])){
+            $this->_json(['status'=>false,'message'=>'overtime_date (YYYY-MM-DD) wajib diisi'], 422); return;
+        }
+        $hour = isset($p['overtime_hour']) ? (float)$p['overtime_hour'] : 0;
+        if($hour <= 0){
+            $this->_json(['status'=>false,'message'=>'overtime_hour wajib diisi & lebih dari 0'], 422); return;
+        }
+        $date = date('Y-m-d', strtotime($p['overtime_date']));
+
+        $dup = $this->db->where('user_id', $user_id)->where('overtime_date', $date)
+            ->where_in('overtime_status', ['approve','pending'])
+            ->where('deleted_at IS NULL', null, false)
+            ->count_all_results('overtime');
+        if($dup > 0){
+            $nama = trim($emp['first_name'].' '.($emp['last_name'] ?? ''));
+            $this->_json(['status'=>false,'message'=>"Pengajuan lembur a.n. $nama untuk tanggal $date sudah ada."], 422); return;
+        }
+
+        $proof = null;
+        if(!empty($_FILES['overtime_proof']['name'])){
+            $config['upload_path']   = './assets/images/hr/overtime/';
+            $config['allowed_types'] = 'png|jpeg|jpg';
+            $config['file_name']     = 'overtime_'.$user_id.'_'.generateRandom(5).'_'.time();
+            $config['max_size']      = 10240;
+            $config['max_width']     = 10000;
+            $config['max_height']    = 10000;
+            $this->load->library('upload', $config);
+            if(!$this->upload->do_upload('overtime_proof')){
+                $this->_json(['status'=>false,'message'=>strip_tags($this->upload->display_errors())], 422); return;
+            }
+            $upl = $this->upload->data();
+            $cfg = ['image_library'=>'gd2','source_image'=>$upl['full_path'],'quality'=>'80%','maintain_ratio'=>TRUE,'width'=>800];
+            $this->load->library('image_lib', $cfg);
+            $this->image_lib->resize();
+            $proof = $upl['file_name'];
+        }elseif(!empty($p['overtime_proof_base64'])){
+            $raw = base64_decode(preg_replace('#^data:image/\w+;base64,#', '', $p['overtime_proof_base64']), true);
+            if($raw === false){
+                $this->_json(['status'=>false,'message'=>'overtime_proof_base64 tidak valid'], 422); return;
+            }
+            $fname = 'overtime_'.$user_id.'_'.generateRandom(5).'_'.time().'.jpg';
+            $fpath = './assets/images/hr/overtime/'.$fname;
+            file_put_contents($fpath, $raw);
+            $cfg = ['image_library'=>'gd2','source_image'=>$fpath,'quality'=>'80%','maintain_ratio'=>TRUE,'width'=>800];
+            $this->load->library('image_lib', $cfg);
+            $this->image_lib->resize();
+            $proof = $fname;
+        }
+        if(!$proof){
+            $this->_json(['status'=>false,'message'=>'Foto bukti lembur wajib diunggah (overtime_proof atau overtime_proof_base64).'], 422); return;
+        }
+
+        $ok = $this->overtime->insert([
+            'user_id'         => $user_id,
+            'overtime_hour'   => $hour,
+            'overtime_date'   => $date,
+            'overtime_proof'  => $proof,
+            'overtime_status' => 'pending',
+            'created_at'      => date('Y-m-d H:i:s'),
+        ]);
+        $this->_json(['status'=>(bool)$ok, 'message'=>$ok ? 'Pengajuan lembur dibuat, menunggu ACC atasan.' : 'Gagal menyimpan pengajuan.']);
     }
 
     // POST api/admin/overtime/deny {overtime_id, reject_reason}
