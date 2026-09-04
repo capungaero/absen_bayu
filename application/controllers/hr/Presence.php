@@ -36,7 +36,7 @@ class Presence extends CI_Controller{
 				->order_by('users.id', 'ASC')
 				->get()->row();
 			$this->userdata = (object)['id' => $admin ? (int)$admin->id : 0, 'branch_id' => 0];
-		}elseif(in_array($this->router->fetch_method(), ['sync_api', 'sync_api_status'], true) && $this->_sync_api_authorized()){
+		}elseif(in_array($this->router->fetch_method(), ['sync_api', 'sync_api_status', 'attendance_recap_refresh'], true) && $this->_sync_api_authorized()){
 			// Pemanggil sync_api() lewat HTTP dgn Bearer ADMIN_API_KEY (bukan sesi
 			// browser). Harus dicek di sini -- gate ion_auth di bawah akan redirect
 			// duluan sebelum method sync_api() sendiri sempat jalan.
@@ -2125,6 +2125,99 @@ class Presence extends CI_Controller{
 		$this->_run_sync_core($log);
 		flock($lock, LOCK_UN);
 		fclose($lock);
+	}
+
+	/**
+	 * Rekap harian absen KERJA independen (bukan sholat) -- refresh
+	 * attendance_recap dari tap+shift langsung, terpisah dari sync_api()
+	 * utama supaya tetap segar walau sync utama lag/tidak jalan.
+	 *   POST hr/presence/attendance_recap_refresh  Header: Authorization: Bearer <ADMIN_API_KEY>
+	 * Dipicu cron setiap 30 menit.
+	 */
+	public function attendance_recap_refresh(){
+		$this->output->set_content_type('application/json', 'utf-8');
+
+		if(strtolower($this->input->method()) !== 'post'){
+			$this->output->set_status_header(405);
+			echo json_encode(['status' => false, 'message' => 'POST required']);
+			return;
+		}
+
+		if(!$this->_sync_api_authorized()){
+			$this->output->set_status_header(401);
+			echo json_encode(['status' => false, 'message' => 'API key tidak valid']);
+			return;
+		}
+
+		$lock_path = APPPATH.'logs'.DIRECTORY_SEPARATOR.'attendance_recap_cron.lock';
+		$lock = fopen($lock_path, 'c');
+		if($lock === false || !flock($lock, LOCK_EX | LOCK_NB)){
+			echo json_encode(['status' => false, 'message' => 'Refresh recap lain sedang berjalan, coba lagi nanti.']);
+			return;
+		}
+
+		ignore_user_abort(true);
+		set_time_limit(0);
+		$log_file = APPPATH.'logs'.DIRECTORY_SEPARATOR.'attendance_recap_last.log';
+		echo json_encode([
+			'status' => true,
+			'message' => 'Refresh attendance_recap dimulai di background.',
+		]);
+		if(function_exists('litespeed_finish_request')){
+			litespeed_finish_request();
+		}elseif(function_exists('fastcgi_finish_request')){
+			fastcgi_finish_request();
+		}
+
+		file_put_contents($log_file, '['.date('Y-m-d H:i:s')."] === attendance_recap_refresh mulai ===\n");
+		$log = function($m) use ($log_file){
+			file_put_contents($log_file, '['.date('Y-m-d H:i:s').'] '.$m."\n", FILE_APPEND);
+		};
+		$this->_run_attendance_recap_core($log);
+		flock($lock, LOCK_UN);
+		fclose($lock);
+	}
+
+	/**
+	 * Inti proses attendance_recap_refresh(): download tap mesin ABSEN saja
+	 * (bukan sholat) -> ingest raw -> klasifikasi attendance_day -> susun
+	 * ulang attendance_recap. Tidak menyentuh presence / pray_day sama sekali.
+	 */
+	private function _run_attendance_recap_core($log){
+		if((int)date('d') >= START_PAYROLL_DATE){
+			$month = date('m', strtotime('first day of next month'));
+			$year  = date('Y', strtotime('first day of next month'));
+		}else{
+			$month = date('m');
+			$year  = date('Y');
+		}
+		$period = attlog_presence_period_range($month, $year);
+		$from   = $period['from'];
+		$to     = $period['to'];
+
+		$log("=== recap mulai (periode $from s/d $to) ===");
+
+		$download = $this->_download_cloud_attlogs();
+		if($download === false){
+			$log('Gagal download semua mesin Solution Cloud. Recap dilewati.');
+			$log('=== recap selesai ===');
+			return;
+		}
+
+		$ingest = $this->_ingest_attlog_machines($download['machines'], $month, $year, 'attendance');
+		$log('Ingest raw: '.$ingest['files'].' file, tap baru '.$ingest['new_taps'].', sudah ada '.$ingest['dup_taps'].'.');
+		if(!empty($download['failed'])){ $log('Mesin gagal login: '.implode(', ', $download['failed'])); }
+
+		$classify = $this->attendance_classifier->classify_range([], $from, $to, 'auto', true);
+		$log('Klasifikasi: '.$classify['days'].' hari (window '.$classify['window']
+			.', posisional/tanpa jadwal '.$classify['positional'].', kosong '.$classify['empty']
+			.', koreksi admin dipertahankan '.$classify['skipped_edited'].').');
+
+		$this->load->model('Attendance_recap_model', 'attendance_recap');
+		$res = $this->attendance_recap->refresh($from, $to);
+		$log('Recap disusun ulang: '.$res['days'].' baris user+tanggal.');
+
+		$log('=== recap selesai ===');
 	}
 
 	/**

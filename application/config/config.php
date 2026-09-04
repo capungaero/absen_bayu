@@ -480,6 +480,7 @@ $config['csrf_exclude_uris'] = array(
     'pph21_export/settings_save', // Simpan premi JKK/JKM: SPA same-origin, auth via session ion_auth + role check
     'temuan/(.*)',       // Temuan: stateless, dilindungi token bearer sendiri (Api_token)
     'hr/presence/sync_api', // Pengganti absen_sync.py: stateless, dilindungi ADMIN_API_KEY bearer sendiri
+    'hr/presence/attendance_recap_refresh', // Recap harian absen independen: stateless, dilindungi ADMIN_API_KEY bearer sendiri
 );
 
 /*
