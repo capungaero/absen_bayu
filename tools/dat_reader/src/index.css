@@ -94,6 +94,25 @@ body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: var(-
 .badge-pres { background: var(--green-bg); color: var(--green); }
 .badge-mirror { background: var(--slate-bg); color: var(--muted); }
 
+.badge-warn { background: var(--amber-bg); color: var(--amber); }
+.btn-link { background: none; border: 0; color: var(--primary); cursor: pointer; font-size: 12px; padding: 0; font-family: inherit; }
+.btn-link:hover { text-decoration: underline; }
+
+/* Panel rincian tap mentah */
+.tap-row > td { background: var(--panel-2); padding: 0; }
+.tap-panel { padding: 14px 18px; border-left: 3px solid var(--primary); }
+.tap-title { font-size: 13px; margin-bottom: 10px; }
+.tap-hint { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.tap-empty { color: var(--muted); font-size: 12px; padding: 6px 0; }
+.tap-table { border-collapse: collapse; font-size: 12px; margin-bottom: 12px; }
+.tap-table th, .tap-table td { padding: 5px 14px 5px 0; text-align: left; }
+.tap-table th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.tap-voided td { opacity: .55; text-decoration: line-through; }
+.tap-voided .btn-link { text-decoration: none; }
+.tap-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tap-add input[type="text"] { flex: 1; min-width: 200px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: 12px; }
+.tap-add input[type="time"] { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: 12px; }
+
 .empty-note { text-align: center; color: var(--muted); padding: 50px 20px; font-size: 14px; }
 
 /* Action bar */

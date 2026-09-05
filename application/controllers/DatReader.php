@@ -2,22 +2,26 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 /**
- * DatReader — pembaca file .dat mesin absensi (tool baru).
+ * DatReader — modul absensi berbasis LOG MENTAH.
  *
- * Arsitektur DUA dataset (terpisah dari `presence`):
- *   dat_reader_mirror : hasil sync mesin Solution Cloud MURNI (gabungan mesin),
- *                       per (user, tanggal). Hidden, di-refresh tiap sync.
- *   dat_reader_work   : data kerja editable yang DITAMPILKAN. Baris yang diedit
- *                       admin (beda dari mirror) ditandai is_edited=1.
+ * Arsitektur (sejak rebuild raw-log, Agu 2026):
+ *   attendance_tap       tap mentah dari mesin, immutable, tidak pernah ditimpa
+ *   attendance_tap_void  pembatalan tap (tanpa mengubah baris tap)
+ *   attendance_day       hasil klasifikasi per (user, tanggal); kolom m_* =
+ *                        cerminan mesin, kolom efektif = yang menurunkan presence
  *
- * Klasifikasi tap POSISIONAL (kerja ~10 jam, bukan window shift):
- *   tap pertama=Datang, terakhir=Pulang, tengah=istirahat (out_ist & in_ist).
+ * Alur: ingest (cloud/upload) -> klasifikasi window shift -> admin lihat/koreksi
+ * -> turunkan ke `presence`. Koreksi manusia hidup di lapis mentah (tambah tap)
+ * atau di lapis harian (geser slot), sehingga sync berikutnya tidak menimpanya.
  *
- * Alur: sync (upload/cloud) → isi mirror+work → admin lihat/edit/simpan (work) →
- * "Dorong ke Presensi" menulis work ke `presence` (ADITIF: skip baris yg sudah
- * ada, skip periode terkunci). Selector rentang: periode berjalan / rentang / tanggal.
+ * Sebelumnya modul ini memakai dat_reader_mirror/dat_reader_work dengan
+ * klasifikasi POSISIONAL. Sekarang klasifikasi utama = window shift, sama
+ * dengan jalur import resmi; posisional tinggal jadi fallback berlabel untuk
+ * hari yang jadwalnya belum diupload.
  *
- * Auth: ion_auth session + role (admin/admin-branch/hr). CSRF dikecualikan.
+ * Auth: ion_auth session + role (admin/admin-branch/hr). CSRF dikecualikan
+ * (lihat application/config/config.php), jadi cek role + cabang di controller
+ * ini adalah satu-satunya penjaga — jangan dilewat di endpoint baru.
  */
 class DatReader extends CI_Controller {
 
@@ -26,21 +30,28 @@ class DatReader extends CI_Controller {
 
     public function __construct() {
         parent::__construct();
+
+        // index() adalah halaman HTML biasa; sisanya endpoint JSON untuk SPA.
+        // Jangan balas JSON 401 ke browser yang minta halaman — redirect saja.
+        $is_page = $this->router->fetch_method() === 'index';
+
         if (!$this->ion_auth->logged_in()) {
+            if ($is_page) { redirect(''); return; }
             $this->_die(['error' => 'Unauthorized'], 401);
         }
         $this->role     = $this->ion_auth->get_users_groups()->row()->name;
         $this->userdata = $this->ion_auth->user()->row();
         if (!in_array($this->role, ['admin', 'admin-branch', 'hr'])) {
+            if ($is_page) { redirect('dashboard'); return; }
             $this->_die(['error' => 'Forbidden'], 403);
         }
         $this->load->library('attlog_parser');
-        $this->load->library('attendance_employee_resolver');
+        $this->load->library('attendance_ingest');
+        $this->load->library('attendance_classifier');
         $this->load->library('cloud_attlog_client');
         $this->load->model('payroll_model', 'payroll');
-        $this->load->model('presence_daily_report_model', 'daily_report');
         $this->load->model('Sync_model', 'sync_machines');
-        $this->load->model('Dat_reader_model', 'dat_reader');
+        $this->load->model('Attendance_day_model', 'days');
     }
 
     private function _die($data, $code) {
@@ -69,6 +80,12 @@ class DatReader extends CI_Controller {
         ])->num_rows() > 0;
     }
 
+    // ───────────────────────── GET absensi_mentah (halaman) ────────────────────
+    /** Halaman di dalam aplikasi utama; SPA-nya dimuat oleh view. */
+    public function index() {
+        $this->template->load('layout/admin', 'hr/attendance_raw', []);
+    }
+
     // ───────────────────────── GET dat_reader/branches ─────────────────────────
     public function branches() {
         if ($this->role === 'admin') {
@@ -93,14 +110,12 @@ class DatReader extends CI_Controller {
     }
 
     // ───────────────────── GET dat_reader/attendance_machines ───────────────────
-    // Dropdown sumber upload -- HANYA mesin type=attendance yang boleh dipilih,
-    // supaya admin tidak bisa keliru upload dump mesin sholat (lihat investigasi
-    // kecampur sholat/jam-kerja, 17 Agu 2026: sync_upload dulu terima file .dat
-    // apa saja tanpa validasi mesin sama sekali).
+    // Dropdown sumber upload — HANYA mesin type=attendance yang boleh dipilih,
+    // supaya admin tidak bisa keliru mengunggah dump mesin sholat (lihat
+    // investigasi tap sholat kecampur jam kerja, 17 Agu 2026).
     public function attendance_machines() {
-        $rows = $this->sync_machines->get_active_by_type('attendance');
         $out = [];
-        foreach ($rows as $row) {
+        foreach ($this->sync_machines->get_active_by_type('attendance') as $row) {
             $sn = attlog_sanitize_machine_sn($row['machine_sn']);
             if ($sn === '') continue;
             $out[] = ['sn' => $sn, 'name' => $row['name']];
@@ -109,6 +124,7 @@ class DatReader extends CI_Controller {
     }
 
     // ─────────────── POST dat_reader/sync_upload (multipart: file) ──────────────
+    // Ingest satu file .dat yang diupload admin, lalu klasifikasi rentangnya.
     public function sync_upload() {
         if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
         $branch_id = $this->_allowed_branch($this->input->post('branch_id'));
@@ -118,13 +134,12 @@ class DatReader extends CI_Controller {
             $this->input->post('mode'), $this->input->post('from'), $this->input->post('to'));
         if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
 
-        // Wajib pilih SN mesin ABSENSI aktif dari dropdown -- cegah upload dump
-        // mesin sholat tanpa sadar (lihat komentar attendance_machines() di atas).
-        $machine_sn = attlog_sanitize_machine_sn($this->input->post('machine_sn'));
-        if ($machine_sn === '') return $this->_json(['error' => 'Pilih mesin absensi sumber file dulu.'], 422);
+        // Wajib pilih SN mesin ABSENSI aktif dari dropdown — cegah dump mesin
+        // sholat masuk sebagai jam kerja tanpa disadari.
+        $sn = attlog_sanitize_machine_sn($this->input->post('machine_sn'));
         $known = array_column($this->_active_attendance_machines(), 'sn');
-        if (!in_array($machine_sn, $known, true)) {
-            return $this->_json(['error' => 'Mesin yang dipilih bukan mesin absensi aktif. Pilih ulang dari daftar.'], 422);
+        if ($sn === '' || !in_array($sn, $known, true)) {
+            return $this->_json(['error' => 'Pilih mesin absensi sumber file dulu (harus mesin absensi aktif).'], 422);
         }
 
         if (empty($_FILES['file']['name']))  return $this->_json(['error' => 'File .dat belum dipilih'], 422);
@@ -132,12 +147,18 @@ class DatReader extends CI_Controller {
         $raw = file_get_contents($_FILES['file']['tmp_name']);
         if ($raw === false || trim($raw) === '') return $this->_json(['error' => 'File .dat kosong / tidak terbaca'], 422);
 
-        $res = $this->_sync_core($raw, $branch_id, $from, $to, [$machine_sn.':'.basename($_FILES['file']['name'])]);
-        if (!$res['ok']) return $this->_json(['error' => $res['msg']], 422);
-        $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'sync' => $res, 'source' => 'upload']));
+        $res = $this->attendance_ingest->ingest_raw($raw, $sn, [
+            'origin' => 'upload', 'created_by' => (int)$this->userdata->id,
+        ]);
+        if (!$res['ok']) return $this->_json(['error' => $res['message']], 422);
+
+        $classify = $this->_classify_branch($branch_id, $from, $to);
+        $this->_json($this->_rows_response($branch_id, $from, $to,
+            ['mode' => $mode, 'ingest' => [$sn => $res['message']], 'classify' => $classify, 'source' => 'upload']));
     }
 
     // ─────────────── POST dat_reader/sync_cloud (json) ──────────────────────────
+    // Unduh semua mesin attendance aktif, ingest, lalu klasifikasi.
     public function sync_cloud() {
         if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
         $b = $this->_body();
@@ -148,19 +169,33 @@ class DatReader extends CI_Controller {
         if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
 
         $machines = $this->_active_attendance_machines();
+        $machine_ids = [];
+        foreach ($this->sync_machines->get_active_by_type('attendance') as $row) {
+            $machine_ids[attlog_sanitize_machine_sn($row['machine_sn'])] = (int)$row['id'];
+        }
         if (empty($machines)) return $this->_json(['error' => 'Tidak ada mesin Solution Cloud aktif (tipe attendance).'], 422);
+
         $download = $this->cloud_attlog_client->download_batch($machines);
         if ($download === false) return $this->_json(['error' => 'Gagal download dari semua mesin. Cek koneksi/kredensial cloud.'], 502);
 
-        $raw = '';
-        $sources = [];
-        foreach ($download['machines'] as $m) { $raw .= "\n".$m['raw']; $sources[] = $m['sn']; }
-        if (trim($raw) === '') return $this->_json(['error' => 'Mesin terhubung tapi tidak ada data .dat valid.', 'failed' => $download['failed']], 422);
+        // Ingest SEMUA mesin yang berhasil diunduh, termasuk dump basi: tap lama
+        // tetap sah dan penulisan idempoten, jadi tidak ada alasan membuangnya.
+        $ingest = [];
+        $new_taps = 0;
+        foreach ($download['machines'] as $m) {
+            $res = $this->attendance_ingest->ingest_raw($m['raw'], $m['sn'], [
+                'machine_id' => isset($machine_ids[$m['sn']]) ? $machine_ids[$m['sn']] : null,
+                'origin' => 'cloud', 'created_by' => (int)$this->userdata->id,
+            ]);
+            $ingest[$m['sn']] = $res['message'];
+            $new_taps += $res['new_taps'];
+        }
 
-        $res = $this->_sync_core($raw, $branch_id, $from, $to, $sources);
-        if (!$res['ok']) return $this->_json(['error' => $res['msg'], 'failed' => $download['failed']], 422);
-        $this->_json($this->_rows_response($branch_id, $from, $to,
-            ['mode' => $mode, 'sync' => $res, 'source' => 'cloud', 'failed' => $download['failed']]));
+        $classify = $this->_classify_branch($branch_id, $from, $to);
+        $this->_json($this->_rows_response($branch_id, $from, $to, [
+            'mode' => $mode, 'ingest' => $ingest, 'new_taps' => $new_taps,
+            'classify' => $classify, 'source' => 'cloud', 'failed' => $download['failed'],
+        ]));
     }
 
     // ─────────────── GET dat_reader/data?branch_id=&mode=&from=&to= ─────────────
@@ -171,6 +206,111 @@ class DatReader extends CI_Controller {
             $this->input->get('mode'), $this->input->get('from'), $this->input->get('to'));
         if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
         $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode]));
+    }
+
+    // ─────────────── POST dat_reader/reclassify (json) ──────────────────────────
+    // Hitung ulang slot dari tap. Dipakai setelah jadwal shift telat diupload,
+    // atau setelah tap ditambah/dibatalkan.
+    public function reclassify() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $branch_id = $this->_allowed_branch(isset($b['branch_id']) ? $b['branch_id'] : 0);
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+        list($from, $to, $mode) = $this->_resolve_range($b['mode'] ?? null, $b['from'] ?? null, $b['to'] ?? null);
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid'], 422);
+
+        $only_dirty = !empty($b['only_dirty']);
+        $classify = $this->_classify_branch($branch_id, $from, $to, $only_dirty);
+        $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'classify' => $classify]));
+    }
+
+    // ─────────────── GET dat_reader/taps?user_id=&date= ─────────────────────────
+    // Rincian tap satu karyawan-tanggal, termasuk yang sudah dibatalkan.
+    public function taps() {
+        $user_id = (int)$this->input->get('user_id');
+        $date    = (string)$this->input->get('date');
+        if (!$user_id || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return $this->_json(['error' => 'user_id / date tidak valid'], 422);
+        }
+        if (!$this->_user_allowed($user_id)) {
+            return $this->_json(['error' => 'Mitra kerja di luar cabang Anda'], 403);
+        }
+
+        // NULL = semua tipe mesin: rincian UI perlu menampilkan tap sholat juga,
+        // supaya jelas tap mana yang tidak dipakai menghitung jam kerja.
+        $grouped = $this->attendance_ingest->taps_for_range([$user_id], $date, $date, true, null);
+        $rows = isset($grouped[$user_id.'|'.$date]) ? $grouped[$user_id.'|'.$date] : [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'id'        => (int)$r['id'],
+                'time'      => substr($r['tap_at'], 11, 8),
+                'source'    => $r['source'],
+                'machine'   => $r['machine_sn'],
+                'machine_type' => $r['machine_type'],
+                'note'      => $r['note'],
+                'voided'    => !empty($r['voided']),
+                'void_reason' => $r['void_reason'],
+            ];
+        }
+        $this->_json(['status' => true, 'user_id' => $user_id, 'date' => $date, 'taps' => $out]);
+    }
+
+    // ─────────────── POST dat_reader/tap_add (json) ─────────────────────────────
+    // Tambah tap atas nama manusia (mis. lupa finger scan).
+    public function tap_add() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $user_id = (int)($b['user_id'] ?? 0);
+        $date    = (string)($b['date'] ?? '');
+        $time    = (string)($b['time'] ?? '');
+        if (!$user_id || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $time)) {
+            return $this->_json(['error' => 'Mitra kerja / tanggal / jam tidak valid'], 422);
+        }
+        if (!$this->_user_allowed($user_id)) {
+            return $this->_json(['error' => 'Mitra kerja di luar cabang Anda'], 403);
+        }
+        if ($this->_locked_for_user_date($user_id, $date)) {
+            return $this->_json(['error' => 'Periode penggajian tanggal '.$date.' sudah dikunci.'], 422);
+        }
+
+        $res = $this->attendance_ingest->add_manual_tap(
+            $user_id, $date.' '.$time, (int)$this->userdata->id, (string)($b['note'] ?? ''));
+        if (!$res['ok']) return $this->_json(['error' => $res['message']], 422);
+
+        $this->attendance_classifier->classify_range([$user_id], $date, $date, 'auto');
+        $this->_json(['status' => true, 'message' => $res['message'], 'tap_id' => $res['tap_id']]);
+    }
+
+    // ─────────────── POST dat_reader/tap_void | tap_unvoid (json) ───────────────
+    public function tap_void()   { $this->_tap_void_toggle(true); }
+    public function tap_unvoid() { $this->_tap_void_toggle(false); }
+
+    private function _tap_void_toggle($void) {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $tap_id = (int)($b['tap_id'] ?? 0);
+        if (!$tap_id) return $this->_json(['error' => 'tap_id tidak valid'], 422);
+
+        $tap = $this->db->select('user_id, tap_date')->where('id', $tap_id)
+            ->get('attendance_tap')->row_array();
+        if (empty($tap) || empty($tap['user_id'])) return $this->_json(['error' => 'Tap tidak ditemukan'], 404);
+        if (!$this->_user_allowed((int)$tap['user_id'])) {
+            return $this->_json(['error' => 'Mitra kerja di luar cabang Anda'], 403);
+        }
+        if ($this->_locked_for_user_date((int)$tap['user_id'], $tap['tap_date'])) {
+            return $this->_json(['error' => 'Periode penggajian tanggal '.$tap['tap_date'].' sudah dikunci.'], 422);
+        }
+
+        $res = $void
+            ? $this->attendance_ingest->void_tap($tap_id, (int)$this->userdata->id, (string)($b['reason'] ?? ''))
+            : $this->attendance_ingest->unvoid_tap($tap_id);
+        if (!$res['ok']) return $this->_json(['error' => $res['message']], 422);
+
+        $this->attendance_classifier->classify_range(
+            [(int)$tap['user_id']], $tap['tap_date'], $tap['tap_date'], 'auto');
+        $this->_json(['status' => true, 'message' => $res['message']]);
     }
 
     // ─────────────── POST dat_reader/save (json: branch_id, from, to, edits[]) ──
@@ -185,19 +325,37 @@ class DatReader extends CI_Controller {
         $edits = isset($b['edits']) && is_array($b['edits']) ? $b['edits'] : [];
         if (empty($edits)) return $this->_json(['error' => 'Tidak ada perubahan untuk disimpan'], 422);
 
-        // Validasi: hanya boleh edit karyawan di cabang terpilih.
+        // Hanya karyawan cabang terpilih, dan hanya tanggal yang belum terkunci.
         $uids = array_values(array_unique(array_map(function($e){ return (int)$e['user_id']; }, $edits)));
         $allowed = $this->_branch_user_ids($branch_id, $uids);
-        $edits = array_values(array_filter($edits, function($e) use ($allowed){ return isset($allowed[(int)$e['user_id']]); }));
-        if (empty($edits)) return $this->_json(['error' => 'Mitra Kerja yang diedit tidak ada di cabang ini'], 422);
+        $locked = 0;
+        $edits = array_values(array_filter($edits, function($e) use ($allowed, &$locked){
+            if (!isset($allowed[(int)$e['user_id']])) return false;
+            if ($this->_locked_for_user_date((int)$e['user_id'], $e['flow_date'])) { $locked++; return false; }
+            return true;
+        }));
+        if (empty($edits)) {
+            return $this->_json(['error' => $locked > 0
+                ? 'Semua baris yang diedit ada di periode penggajian yang sudah dikunci.'
+                : 'Mitra Kerja yang diedit tidak ada di cabang ini'], 422);
+        }
 
-        $saved = $this->dat_reader->save_work_edits($edits, (int)$this->userdata->id, date('Y-m-d H:i:s'));
-        $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'saved' => $saved]));
+        $saved = $this->days->save_edits($edits, (int)$this->userdata->id, date('Y-m-d H:i:s'));
+        $this->_json($this->_rows_response($branch_id, $from, $to,
+            ['mode' => $mode, 'saved' => $saved, 'skipped_locked' => $locked]));
     }
 
-    // ─────────────── POST dat_reader/push (json: branch_id, from, to) ───────────
-    // Dorong data kerja → presence. ADITIF: skip baris yg sudah ada, skip terkunci.
-    public function push() {
+    // ─────────────── POST dat_reader/derive (json) ──────────────────────────────
+    /**
+     * Turunkan lapis harian ke `presence` (insert + update).
+     *
+     * force=true ("Regenerate periode") menulis atas nama operator sehingga
+     * baris presence lama yang ter-stempel manual ikut diperbarui — satu-satunya
+     * cara menembus proteksi trigger, dan sengaja dibuat sebagai tindakan
+     * eksplisit. Lock penggajian tetap tidak bisa ditembus.
+     * dry_run=true hanya menghitung, tidak menulis apa pun.
+     */
+    public function derive() {
         if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
         $b = $this->_body();
         $branch_id = $this->_allowed_branch(isset($b['branch_id']) ? $b['branch_id'] : 0);
@@ -205,54 +363,17 @@ class DatReader extends CI_Controller {
         list($from, $to, $mode) = $this->_resolve_range($b['mode'] ?? null, $b['from'] ?? null, $b['to'] ?? null);
         if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid'], 422);
 
-        $rows = $this->dat_reader->get_work_range($branch_id, $from, $to);
-        if (empty($rows)) return $this->_json(['error' => 'Tidak ada data kerja pada rentang ini. Sync dulu.'], 422);
+        $this->load->model('Presence_deriver_model', 'deriver');
+        $res = $this->deriver->derive($branch_id, $from, $to, [
+            'force'    => !empty($b['force']),
+            'dry_run'  => !empty($b['dry_run']),
+            'actor_id' => (int)$this->userdata->id,
+        ]);
 
-        $uids = array_values(array_unique(array_map(function($r){ return (int)$r['user_id']; }, $rows)));
-        $existing  = $this->dat_reader->presence_existing_pairs($uids, $from, $to);
-        $ubranch   = $this->_user_branch_map($uids);
-        $shift_map = $this->_shift_map($uids, $from, $to);
-        $created_at = date('Y-m-d H:i:s');
-
-        $lock_cache = []; $insert = []; $pushed = [];
-        $skipped_existing = 0; $skipped_locked = 0; $skipped_empty = 0;
-        foreach ($rows as $r) {
-            $uid = (int)$r['user_id']; $date = $r['flow_date'];
-            if (isset($existing[$uid.'|'.$date])) { $skipped_existing++; continue; }
-            if (empty($r['datang']) && empty($r['pulang']) && empty($r['out_ist']) && empty($r['in_ist'])) { $skipped_empty++; continue; }
-
-            $pp = $this->_period_of_date($date);
-            $bid = isset($ubranch[$uid]) ? $ubranch[$uid] : $branch_id;
-            $lk = $bid.'|'.$pp['month'].'|'.$pp['year'];
-            if (!isset($lock_cache[$lk])) $lock_cache[$lk] = $this->_locked($bid, $pp['month'], $pp['year']);
-            if ($lock_cache[$lk]) { $skipped_locked++; continue; }
-
-            $shift = isset($shift_map[$uid.'|'.$date]) ? $shift_map[$uid.'|'.$date] : null;
-            $insert[] = $this->_presence_payload($uid, $date, $r, $shift, $created_at);
-            $pushed[] = ['user_id' => $uid, 'flow_date' => $date];
+        if (!empty($b['dry_run'])) {
+            return $this->_json(['status' => true, 'from' => $from, 'to' => $to, 'derive' => $res]);
         }
-
-        if (empty($insert)) {
-            return $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'push' => [
-                'inserted' => 0, 'skipped_existing' => $skipped_existing,
-                'skipped_locked' => $skipped_locked, 'skipped_empty' => $skipped_empty,
-            ]]));
-        }
-
-        $this->db->trans_begin();
-        $this->db->insert_batch('presence', $insert);
-        if (!$this->db->trans_status()) {
-            $this->db->trans_rollback();
-            return $this->_json(['error' => 'Gagal menyimpan ke presence (transaksi dibatalkan).'], 500);
-        }
-        $this->db->trans_commit();
-        $this->daily_report->sync_by_rows($insert);
-        $this->dat_reader->mark_pushed($pushed, $created_at);
-
-        $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'push' => [
-            'inserted' => count($insert), 'skipped_existing' => $skipped_existing,
-            'skipped_locked' => $skipped_locked, 'skipped_empty' => $skipped_empty,
-        ]]));
+        $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'derive' => $res]));
     }
 
     // ════════════════════════ INTERNAL ════════════════════════
@@ -272,10 +393,10 @@ class DatReader extends CI_Controller {
         return [$f, $t, $mode];
     }
 
+    /** Mesin absensi aktif yang kredensialnya lengkap. */
     private function _active_attendance_machines() {
-        $rows = $this->sync_machines->get_active_by_type('attendance');
         $machines = [];
-        foreach ($rows as $row) {
+        foreach ($this->sync_machines->get_active_by_type('attendance') as $row) {
             $sn = attlog_sanitize_machine_sn($row['machine_sn']);
             if ($sn === '' || $row['password'] === '') continue;
             $machines[] = ['sn' => $sn, 'pass' => $row['password']];
@@ -283,90 +404,43 @@ class DatReader extends CI_Controller {
         return $machines;
     }
 
-    /** Parse raw .dat → klasifikasi posisional → upsert mirror + refresh work. */
-    private function _sync_core($raw, $branch_id, $from, $to, $source) {
-        $parsed = $this->attlog_parser->parse_taps($raw, $from, $to);
-        $row_data = $parsed['rows'];
-        if (empty($row_data)) {
-            return ['ok' => false, 'msg' => 'Tidak ada tap pada '.$from.' s/d '.$to.
-                '. Total baris: '.$parsed['stats']['total_lines'].', invalid: '.$parsed['stats']['invalid_count'].'.'];
-        }
-
-        $matcher = $this->attendance_employee_resolver->build_by_finger_date($row_data, $from, $to);
-        $employee_map = $matcher['map'];
-        $user_ids = $this->attendance_employee_resolver->employee_ids_from_map($employee_map);
-
-        $mirror_rows = [];
-        $missing = 0; $missing_fingers = [];
-        $src = is_array($source) ? implode('+', $source) : (string)$source;
-        foreach ($row_data as $finger_id => $dates) {
-            foreach ($dates as $row) {
-                $date = $row['date']; $times = $row['time']; sort($times);
-                $emp = isset($employee_map[$finger_id][$date]) ? $employee_map[$finger_id][$date] : null;
-                if (!$emp) {
-                    $missing++;
-                    if (count($missing_fingers) < 50 && !in_array($finger_id, $missing_fingers)) $missing_fingers[] = $finger_id;
-                    continue;
-                }
-                $slot = $this->_classify_positional($times);
-                $mirror_rows[] = [
-                    'user_id' => $emp['id'], 'flow_date' => $date,
-                    'datang' => $slot['datang'], 'out_ist' => $slot['out_ist'],
-                    'in_ist' => $slot['in_ist'], 'pulang' => $slot['pulang'],
-                    'tap_count' => count($times), 'all_taps' => implode(',', array_map(function($t){ return substr($t,0,5); }, $times)),
-                    'source' => substr($src, 0, 120),
-                ];
-            }
-        }
-        if (empty($mirror_rows)) {
-            return ['ok' => false, 'msg' => 'Tap ditemukan tapi tidak ada yang cocok mitra kerja. Tidak dikenal: '.implode(', ', $missing_fingers)];
-        }
-
-        $now = date('Y-m-d H:i:s');
-        $this->db->trans_begin();
-        $this->dat_reader->upsert_mirror($mirror_rows, $now);
-        $this->dat_reader->sync_work_from_mirror($user_ids, $from, $to, $now);
-        if (!$this->db->trans_status()) { $this->db->trans_rollback(); return ['ok' => false, 'msg' => 'Gagal simpan mirror/work.']; }
-        $this->db->trans_commit();
-
-        return ['ok' => true, 'synced' => count($mirror_rows), 'missing' => $missing, 'missing_fingers' => $missing_fingers];
-    }
-
-    /** pertama=datang, terakhir=pulang, tengah-pertama=out_ist, tengah-terakhir=in_ist. */
-    private function _classify_positional($times) {
-        $slot = ['datang' => null, 'out_ist' => null, 'in_ist' => null, 'pulang' => null];
-        $n = count($times);
-        if ($n === 0) return $slot;
-        $slot['datang'] = $times[0];
-        if ($n >= 2) $slot['pulang'] = $times[$n - 1];
-        $middle = array_slice($times, 1, max(0, $n - 2));
-        if (count($middle) >= 1) $slot['out_ist'] = $middle[0];
-        if (count($middle) >= 2) $slot['in_ist']  = $middle[count($middle) - 1];
-        return $slot;
+    /** Klasifikasi ulang semua karyawan cabang pada rentang. */
+    private function _classify_branch($branch_id, $from, $to, $only_dirty = false) {
+        $uids = $this->days->user_ids_in_range($branch_id, $from, $to);
+        if (empty($uids)) return ['days' => 0, 'window' => 0, 'positional' => 0, 'empty' => 0, 'skipped_edited' => 0];
+        return $this->attendance_classifier->classify_range($uids, $from, $to, 'auto', $only_dirty);
     }
 
     private function _rows_response($branch_id, $from, $to, $extra = []) {
-        $rows = $this->dat_reader->get_work_range($branch_id, $from, $to);
+        $rows = $this->days->get_range($branch_id, $from, $to);
         $uids = array_values(array_unique(array_map(function($r){ return (int)$r['user_id']; }, $rows)));
-        $existing = $this->dat_reader->presence_existing_pairs($uids, $from, $to);
+        $existing = $this->days->presence_existing_pairs($uids, $from, $to);
 
         $out = [];
         foreach ($rows as $r) {
-            $in_presence = isset($existing[$r['user_id'].'|'.$r['flow_date']]);
+            $key = $r['user_id'].'|'.$r['flow_date'];
+            $pres = isset($existing[$key]) ? $existing[$key] : null;
             $out[] = [
-                'key' => $r['user_id'].'|'.$r['flow_date'],
+                'key' => $key,
                 'user_id' => (int)$r['user_id'],
                 'employee_code' => $r['employee_code'],
                 'employee_name' => trim($r['first_name'].' '.$r['last_name']),
                 'date' => $r['flow_date'], 'weekday' => get_dayname($r['flow_date']),
-                'datang' => $r['datang'] ?: '', 'out_ist' => $r['out_ist'] ?: '',
-                'in_ist' => $r['in_ist'] ?: '', 'pulang' => $r['pulang'] ?: '',
-                'mirror' => [
-                    'datang' => $r['m_datang'] ?: '', 'out_ist' => $r['m_out_ist'] ?: '',
-                    'in_ist' => $r['m_in_ist'] ?: '', 'pulang' => $r['m_pulang'] ?: '',
+                'entry_time' => $r['entry_time'] ?: '', 'rest_in' => $r['rest_in'] ?: '',
+                'rest_out' => $r['rest_out'] ?: '', 'out_time' => $r['out_time'] ?: '',
+                'machine' => [
+                    'entry_time' => $r['m_entry_time'] ?: '', 'rest_in' => $r['m_rest_in'] ?: '',
+                    'rest_out' => $r['m_rest_out'] ?: '', 'out_time' => $r['m_out_time'] ?: '',
                 ],
-                'tap_count' => (int)$r['tap_count'], 'all_taps' => $r['all_taps'], 'source' => $r['source'],
-                'is_edited' => (int)$r['is_edited'], 'pushed_at' => $r['pushed_at'], 'in_presence' => $in_presence,
+                'entry_late' => (int)$r['entry_late'], 'rest_late' => (int)$r['rest_late'],
+                'tap_count' => (int)$r['tap_count'], 'all_taps' => $r['all_taps'],
+                'classify_method' => $r['classify_method'], 'shift_code' => $r['shift_code'],
+                'needs_reclass' => (int)$r['needs_reclass'],
+                'is_edited' => (int)$r['is_edited'], 'edit_note' => $r['edit_note'],
+                'derived_at' => $r['derived_at'], 'derive_status' => $r['derive_status'],
+                'in_presence' => $pres !== null,
+                'presence_input_by' => $pres ? $pres['input_by'] : null,
+                'presence_type' => $pres ? $pres['presence_type'] : null,
             ];
         }
         return array_merge([
@@ -376,19 +450,22 @@ class DatReader extends CI_Controller {
     }
 
     private function _recap($rows) {
-        $emp = []; $tap = 0; $lengkap = 0; $tidak = 0; $edited = 0; $inpres = 0; $pushed = 0;
+        $emp = []; $tap = 0; $lengkap = 0; $tidak = 0; $edited = 0; $inpres = 0;
+        $positional = 0; $dirty = 0;
         foreach ($rows as $r) {
             $emp[$r['user_id']] = true;
             $tap += $r['tap_count'];
-            if ($r['datang'] !== '' && $r['pulang'] !== '') $lengkap++; else $tidak++;
+            if ($r['entry_time'] !== '' && $r['out_time'] !== '') $lengkap++; else $tidak++;
             if ($r['is_edited']) $edited++;
             if ($r['in_presence']) $inpres++;
-            if (!empty($r['pushed_at'])) $pushed++;
+            if ($r['classify_method'] === 'positional') $positional++;
+            if ($r['needs_reclass']) $dirty++;
         }
         return [
             'karyawan' => count($emp), 'hari_absen' => count($rows), 'total_tap' => $tap,
             'hadir_lengkap' => $lengkap, 'tidak_lengkap' => $tidak,
-            'diedit' => $edited, 'sudah_di_presence' => $inpres, 'sudah_didorong' => $pushed,
+            'diedit' => $edited, 'sudah_di_presence' => $inpres,
+            'tanpa_jadwal' => $positional, 'perlu_klasifikasi_ulang' => $dirty,
         ];
     }
 
@@ -401,27 +478,24 @@ class DatReader extends CI_Controller {
         return $out;
     }
 
-    private function _user_branch_map($uids) {
-        $out = [];
-        if (empty($uids)) return $out;
-        $rows = $this->db->select('u.id, p.branch_id')->from('users u')->join('position p', 'p.id = u.position_id', 'left')
-            ->where_in('u.id', $uids)->get()->result_array();
-        foreach ($rows as $r) { $out[(int)$r['id']] = (int)$r['branch_id']; }
-        return $out;
+    /** TRUE kalau user ada di cabang yang boleh diakses role ini. */
+    private function _user_allowed($user_id) {
+        if ($this->role === 'admin') return true;
+        $row = $this->db->select('p.branch_id')->from('users u')
+            ->join('position p', 'p.id = u.position_id', 'left')
+            ->where('u.id', (int)$user_id)->get()->row_array();
+        return $row && (int)$row['branch_id'] === (int)$this->userdata->branch_id;
     }
 
-    private function _shift_map($uids, $from, $to) {
-        $map = [];
-        if (empty($uids)) return $map;
-        $rows = $this->db->select('users_shift_additional.user_id, users_shift_additional.additional_date, shift.start_time_late, shift.rest_time_range')
-            ->join('shift', 'shift.id = users_shift_additional.shift_id')
-            ->where_in('users_shift_additional.user_id', $uids)
-            ->where('additional_date >=', $from)->where('additional_date <=', $to)
-            ->where('additional_type', 'work')
-            ->where('users_shift_additional.deleted_at IS NULL', null, false)
-            ->get('users_shift_additional')->result_array();
-        foreach ($rows as $s) { $map[$s['user_id'].'|'.$s['additional_date']] = $s; }
-        return $map;
+    /** Lock penggajian memakai cabang MILIK user, bukan cabang yang diminta. */
+    private function _locked_for_user_date($user_id, $date) {
+        $row = $this->db->select('p.branch_id')->from('users u')
+            ->join('position p', 'p.id = u.position_id', 'left')
+            ->where('u.id', (int)$user_id)->get()->row_array();
+        if (empty($row['branch_id'])) return false;
+
+        $pp = $this->_period_of_date($date);
+        return $this->_locked((int)$row['branch_id'], $pp['month'], $pp['year']);
     }
 
     /** Periode payroll yang memuat $date (identitas = bulan akhir periode). */
@@ -429,28 +503,5 @@ class DatReader extends CI_Controller {
         $d = (int)substr($date, 8, 2); $m = (int)substr($date, 5, 2); $y = (int)substr($date, 0, 4);
         if ($d >= START_PAYROLL_DATE) { $m++; if ($m > 12) { $m = 1; $y++; } }
         return ['month' => $m, 'year' => $y];
-    }
-
-    private function _hms($v) { return preg_match('/^\d{1,2}:\d{2}$/', (string)$v) ? $v.':00' : (string)$v; }
-
-    private function _presence_payload($uid, $date, $r, $shift, $created_at) {
-        $p = attlog_payload();
-        $p['user_id'] = $uid; $p['flow_date'] = $date; $p['created_at'] = $created_at;
-        // Data hasil kurasi admin di DAT Reader = edit manusia — tandai manual
-        // supaya sync provenance-aware tidak menimpanya.
-        $p['input_by'] = 'manual';
-        if (isset($this->userdata->id)) { $p['input_by_user_id'] = $this->userdata->id; }
-        if (!empty($r['datang']))  $p['entry_time']    = $date.' '.$this->_hms($r['datang']);
-        if (!empty($r['pulang']))  $p['out_time']      = $date.' '.$this->_hms($r['pulang']);
-        if (!empty($r['out_ist'])) $p['rest_time_in']  = $date.' '.$this->_hms($r['out_ist']);
-        if (!empty($r['in_ist']))  $p['rest_time_out'] = $date.' '.$this->_hms($r['in_ist']);
-        if ($shift && !empty($r['datang']) && !empty($shift['start_time_late'])) {
-            $p['entry_time_late'] = late_minutes($shift['start_time_late'], $this->_hms($r['datang']));
-        }
-        if ($shift && !empty($r['out_ist']) && !empty($r['in_ist']) && !empty($shift['rest_time_range'])) {
-            $limit = date('H:i:s', strtotime($this->_hms($r['out_ist']).' +'.$shift['rest_time_range'].' minutes'));
-            $p['rest_time_late'] = late_minutes($limit, $this->_hms($r['in_ist']));
-        }
-        return $p;
     }
 }

@@ -1,15 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const API = import.meta.env.VITE_API_BASE ?? '/absen/dat_reader';
-const FIELDS = ['datang', 'out_ist', 'in_ist', 'pulang'];
+
+// Kolom jam efektif. Nilai mesin ada di r.machine[<field>] untuk pembanding.
+const FIELDS = [
+  ['entry_time', 'Datang'],
+  ['rest_in',    'Out Ist.'],
+  ['rest_out',   'In Ist.'],
+  ['out_time',   'Pulang'],
+];
 
 export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('dr-theme') || 'light');
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState(null);
-  const [period, setPeriod] = useState(null);
   const [machines, setMachines] = useState([]);
-  const [machineSn, setMachineSn] = useState('');
+  const [uploadSn, setUploadSn] = useState('');
+  const [period, setPeriod] = useState(null);
 
   const [mode, setMode] = useState('period');     // period | range | date
   const [from, setFrom] = useState('');
@@ -20,7 +27,13 @@ export default function App() {
   const [dirty, setDirty] = useState(() => new Set());
   const [loaded, setLoaded] = useState(false);
 
-  const [busy, setBusy] = useState('');           // '', upload, cloud, load, save, push
+  const [openKey, setOpenKey] = useState(null);   // baris yang rincian tap-nya dibuka
+  const [taps, setTaps] = useState([]);
+  const [tapBusy, setTapBusy] = useState(false);
+  const [addTime, setAddTime] = useState('');
+  const [addNote, setAddNote] = useState('');
+
+  const [busy, setBusy] = useState('');           // '', upload, cloud, load, save, push, reclass
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const fileRef = useRef(null);
@@ -31,13 +44,6 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    fetch(`${API}/attendance_machines`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(rows => { if (Array.isArray(rows)) setMachines(rows); })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     fetch(`${API}/branches`, { credentials: 'include' })
       .then(r => r.json())
       .then(rows => {
@@ -45,6 +51,15 @@ export default function App() {
         setBranches(rows); if (rows[0]) setBranchId(Number(rows[0].id));
       })
       .catch(() => setError('Gagal memuat cabang. Pastikan sudah login di aplikasi absensi.'));
+  }, []);
+
+  // Sumber upload wajib dipilih eksplisit: dump mesin sholat yang keliru
+  // diunggah sebagai jam kerja pernah mencemari jam masuk.
+  useEffect(() => {
+    fetch(`${API}/attendance_machines`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(rows => { if (Array.isArray(rows)) { setMachines(rows); if (rows[0]) setUploadSn(rows[0].sn); } })
+      .catch(() => {});
   }, []);
 
   const loadPeriod = useCallback(() => {
@@ -62,7 +77,6 @@ export default function App() {
   }, [branchId]); // eslint-disable-line
   useEffect(() => { loadPeriod(); }, [loadPeriod]);
 
-  // Parameter rentang efektif yang dikirim ke server
   const rangeParams = () => {
     if (mode === 'period') return { mode: 'period' };
     if (mode === 'date')   return { mode: 'date', from, to: from };
@@ -79,7 +93,17 @@ export default function App() {
     setRecap(d.recap || null);
     setDirty(new Set());
     setLoaded(true);
-    if (msg) { setNotice(msg); setTimeout(() => setNotice(''), 6000); }
+    setOpenKey(null);
+    if (msg) { setNotice(msg); setTimeout(() => setNotice(''), 9000); }
+  };
+
+  const post = async (path, body) => {
+    const r = await fetch(`${API}/${path}`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return r.json();
   };
 
   const doLoad = async () => {
@@ -97,13 +121,11 @@ export default function App() {
 
   const doUpload = async (file) => {
     if (!file || !branchId) return;
-    if (!machineSn) { setError('Pilih mesin absensi sumber file dulu.'); if (fileRef.current) fileRef.current.value = ''; return; }
     setError(''); setBusy('upload');
     try {
       const fd = new FormData();
-      fd.append('file', file); fd.append('branch_id', branchId); fd.append('machine_sn', machineSn);
-      const rp = rangeParams();
-      Object.entries(rp).forEach(([k, v]) => fd.append(k, v));
+      fd.append('file', file); fd.append('branch_id', branchId); fd.append('machine_sn', uploadSn);
+      Object.entries(rangeParams()).forEach(([k, v]) => fd.append(k, v));
       const r = await fetch(`${API}/sync_upload`, { method: 'POST', body: fd, credentials: 'include' });
       const d = await r.json();
       if (d.error) { setError(d.error); return; }
@@ -116,24 +138,41 @@ export default function App() {
     if (!branchId) return;
     setError(''); setBusy('cloud');
     try {
-      const r = await fetch(`${API}/sync_cloud`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: branchId, ...rangeParams() }),
-      });
-      const d = await r.json();
+      const d = await post('sync_cloud', { branch_id: branchId, ...rangeParams() });
       if (d.error) { setError(d.error + (d.failed?.length ? ` (mesin gagal: ${d.failed.join(', ')})` : '')); return; }
       applyResp(d, syncMsg(d));
     } catch (e) { setError('Gagal menarik data dari cloud.'); }
     finally { setBusy(''); }
   };
 
-  const syncMsg = (d) => {
-    const s = d.sync || {};
-    let m = `Sync ${d.source}: ${s.synced || 0} baris mesin diproses`;
-    if (s.missing) m += `, ${s.missing} tap tak dikenal`;
-    if (d.failed?.length) m += `, mesin gagal: ${d.failed.join(', ')}`;
+  const doReclass = async () => {
+    if (!branchId) return;
+    setError(''); setBusy('reclass');
+    try {
+      const d = await post('reclassify', { branch_id: branchId, ...rangeParams() });
+      if (d.error) { setError(d.error); return; }
+      applyResp(d, classifyMsg(d.classify));
+    } catch (e) { setError('Gagal mengklasifikasi ulang.'); }
+    finally { setBusy(''); }
+  };
+
+  const classifyMsg = (c) => {
+    if (!c) return 'Selesai.';
+    let m = `Klasifikasi ulang: ${c.days} hari (window ${c.window}`;
+    if (c.positional) m += `, tanpa jadwal ${c.positional}`;
+    if (c.empty) m += `, tanpa tap ${c.empty}`;
+    m += ')';
+    if (c.skipped_edited) m += `, ${c.skipped_edited} koreksi admin dipertahankan`;
     return m + '.';
+  };
+
+  const syncMsg = (d) => {
+    const parts = [];
+    if (d.new_taps !== undefined) parts.push(`${d.new_taps} tap baru masuk arsip`);
+    if (d.ingest) Object.entries(d.ingest).forEach(([sn, msg]) => parts.push(`${sn} → ${msg}`));
+    if (d.classify) parts.push(classifyMsg(d.classify));
+    if (d.failed?.length) parts.push(`mesin gagal: ${d.failed.join(', ')}`);
+    return parts.join(' · ');
   };
 
   const onCell = (key, field, value) => {
@@ -144,37 +183,103 @@ export default function App() {
   const doSave = async () => {
     const edits = rows.filter(r => dirty.has(r.key)).map(r => ({
       user_id: r.user_id, flow_date: r.date,
-      datang: r.datang, out_ist: r.out_ist, in_ist: r.in_ist, pulang: r.pulang,
+      entry_time: r.entry_time, rest_in: r.rest_in, rest_out: r.rest_out, out_time: r.out_time,
     }));
     if (!edits.length) return;
     setError(''); setBusy('save');
     try {
-      const r = await fetch(`${API}/save`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: branchId, ...rangeParams(), edits }),
-      });
-      const d = await r.json();
+      const d = await post('save', { branch_id: branchId, ...rangeParams(), edits });
       if (d.error) { setError(d.error); return; }
-      applyResp(d, `${d.saved} baris perubahan disimpan ke data kerja.`);
+      let m = `${d.saved} baris perubahan disimpan.`;
+      if (d.skipped_locked) m += ` ${d.skipped_locked} baris dilewati karena periode terkunci.`;
+      applyResp(d, m);
     } catch (e) { setError('Gagal menyimpan perubahan.'); }
     finally { setBusy(''); }
   };
 
-  const doPush = async () => {
-    setError(''); setBusy('push');
+  // Menurunkan presence. Selalu tampilkan pratinjau dry-run dulu — force
+  // menembus proteksi trigger dan bisa menimpa baris presensi yang ditandai
+  // manual, jadi operator harus melihat angkanya sebelum memutuskan.
+  const doDerive = async (force) => {
+    setError(''); setBusy('derive');
     try {
-      const r = await fetch(`${API}/push`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: branchId, ...rangeParams() }),
-      });
+      const pre = await post('derive', { branch_id: branchId, ...rangeParams(), force, dry_run: true });
+      if (pre.error) { setError(pre.error); return; }
+      const d0 = pre.derive || {};
+      const lines = [
+        force ? 'REGENERATE PERIODE (menimpa baris presensi bertanda manual)' : 'Buat/Perbarui Presensi',
+        `${d0.inserted || 0} baris baru, ${d0.updated || 0} diperbarui`,
+        `${d0.skipped_locked || 0} dilewati karena periode gaji terkunci`,
+        `${d0.skipped_leave || 0} dilewati karena izin/cuti/sakit`,
+      ];
+      if (force && d0.refilled_cleared) {
+        lines.push(`${d0.refilled_cleared} baris yang jamnya sengaja dikosongkan akan terisi lagi`);
+      }
+      lines.push('', 'Lanjutkan?');
+      if (!window.confirm(lines.join(String.fromCharCode(10)))) return;
+
+      const d = await post('derive', { branch_id: branchId, ...rangeParams(), force });
+      if (d.error) { setError(d.error); return; }
+      const r = d.derive || {};
+      let m = `Presensi: ${r.inserted} baru, ${r.updated} diperbarui`;
+      if (r.blocked) m += `, ${r.blocked} ditolak karena baris presensi bertanda manual`;
+      m += `, ${r.skipped_locked} terkunci, ${r.skipped_leave} izin/cuti/sakit, ${r.skipped_empty} tanpa jam.`;
+      if (r.conflicts?.length) {
+        m += ` ${r.conflicts.length} hari berbeda antara mesin dan presensi manual — pakai Regenerate kalau versi mesin yang benar.`;
+      }
+      applyResp(d, m);
+    } catch (e) { setError('Gagal menurunkan ke presensi.'); }
+    finally { setBusy(''); }
+  };
+
+  // ── rincian tap ────────────────────────────────────────────────────────────
+  const openTaps = async (row) => {
+    if (openKey === row.key) { setOpenKey(null); return; }
+    setOpenKey(row.key); setTaps([]); setTapBusy(true);
+    setAddTime(''); setAddNote('');
+    try {
+      const r = await fetch(`${API}/taps?user_id=${row.user_id}&date=${row.date}`, { credentials: 'include' });
       const d = await r.json();
       if (d.error) { setError(d.error); return; }
-      const p = d.push || {};
-      applyResp(d, `Dorong ke presensi: ${p.inserted} ditambahkan, ${p.skipped_existing} sudah ada, ${p.skipped_locked} terkunci dilewati.`);
-    } catch (e) { setError('Gagal mendorong ke presence.'); }
-    finally { setBusy(''); }
+      setTaps(d.taps || []);
+    } catch (e) { setError('Gagal memuat rincian tap.'); }
+    finally { setTapBusy(false); }
+  };
+
+  const refreshAfterTap = async (row, msg) => {
+    setNotice(msg); setTimeout(() => setNotice(''), 9000);
+    const r = await fetch(`${API}/taps?user_id=${row.user_id}&date=${row.date}`, { credentials: 'include' });
+    const d = await r.json();
+    setTaps(d.taps || []);
+    // Muat ulang baris supaya jam hasil klasifikasi ulang ikut segar.
+    const p = new URLSearchParams({ branch_id: branchId, ...rangeParams() });
+    const rr = await fetch(`${API}/data?${p.toString()}`, { credentials: 'include' });
+    const dd = await rr.json();
+    if (!dd.error) { setRows(dd.rows || []); setRecap(dd.recap || null); setDirty(new Set()); }
+  };
+
+  const doAddTap = async (row) => {
+    if (!addTime) return;
+    setError(''); setTapBusy(true);
+    try {
+      const d = await post('tap_add', { user_id: row.user_id, date: row.date, time: addTime, note: addNote });
+      if (d.error) { setError(d.error); return; }
+      setAddTime(''); setAddNote('');
+      await refreshAfterTap(row, d.message);
+    } catch (e) { setError('Gagal menambah tap.'); }
+    finally { setTapBusy(false); }
+  };
+
+  const doVoid = async (row, tap, unvoid) => {
+    const reason = unvoid ? '' : (window.prompt('Alasan membatalkan tap ini?') ?? null);
+    if (!unvoid && reason === null) return;
+    setError(''); setTapBusy(true);
+    try {
+      const d = await post(unvoid ? 'tap_unvoid' : 'tap_void', { tap_id: tap.id, reason });
+      if (d.error) { setError(d.error); return; }
+      await refreshAfterTap(row, d.message);
+    } catch (e) { setError('Gagal mengubah status tap.'); }
+    finally { setTapBusy(false); }
   };
 
   const dirtyCount = dirty.size;
@@ -187,8 +292,8 @@ export default function App() {
         <div className="brand">
           <span className="logo">🕔</span>
           <div>
-            <div className="title">DAT Reader</div>
-            <div className="subtitle">Baca .dat Mesin → Absen Harian (mirror + kerja)</div>
+            <div className="title">Absensi Mentah</div>
+            <div className="subtitle">Tap mesin → klasifikasi shift → presensi</div>
           </div>
         </div>
         <button className="btn-theme" onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
@@ -196,7 +301,6 @@ export default function App() {
         </button>
       </header>
 
-      {/* Filter + aksi sync */}
       <div className="toolbar">
         <div className="tb-group">
           <span className="tb-label">Cabang</span>
@@ -214,9 +318,7 @@ export default function App() {
               <button key={v} className={`seg-btn ${mode === v ? 'active' : ''}`} onClick={() => setMode(v)}>{l}</button>
             ))}
           </div>
-          {mode === 'period' && (
-            <span className="range-info">{period ? `${period.from} → ${period.to}` : '…'}</span>
-          )}
+          {mode === 'period' && <span className="range-info">{period ? `${period.from} → ${period.to}` : '…'}</span>}
           {mode === 'range' && (
             <span className="range-inputs">
               <input type="date" value={from} onChange={e => setFrom(e.target.value)} />
@@ -224,30 +326,26 @@ export default function App() {
               <input type="date" value={to} onChange={e => setTo(e.target.value)} />
             </span>
           )}
-          {mode === 'date' && (
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)} />
-          )}
+          {mode === 'date' && <input type="date" value={from} onChange={e => setFrom(e.target.value)} />}
         </div>
 
         <div className="toolbar-actions">
           <button className="btn-ghost" disabled={!canAct} onClick={doLoad}>
             {busy === 'load' ? 'Memuat…' : '↻ Muat Data'}
           </button>
-          <select
-            className="tb-select"
-            value={machineSn}
-            onChange={e => setMachineSn(e.target.value)}
-            disabled={!canAct}
-            title="Wajib pilih mesin absensi sumber file sebelum upload -- cegah salah upload dump mesin sholat"
-          >
-            <option value="">Pilih mesin absensi…</option>
-            {machines.map(m => <option key={m.sn} value={m.sn}>{m.name} ({m.sn})</option>)}
+          <select className="tb-select" value={uploadSn} onChange={e => setUploadSn(e.target.value)}
+                  title="Mesin absensi sumber file .dat yang akan diunggah">
+            {machines.length === 0 && <option value="">(tidak ada mesin absensi aktif)</option>}
+            {machines.map(m => <option key={m.sn} value={m.sn}>{m.name || m.sn}</option>)}
           </select>
-          <button className="btn-ghost" disabled={!canAct || !machineSn} onClick={() => fileRef.current?.click()}>
-            {busy === 'upload' ? 'Membaca…' : '📄 Sync Upload .dat'}
+          <button className="btn-ghost" disabled={!canAct || !uploadSn} onClick={() => fileRef.current?.click()}>
+            {busy === 'upload' ? 'Membaca…' : '📄 Upload .dat'}
           </button>
           <button className="btn-ghost" disabled={!canAct} onClick={doCloud}>
-            {busy === 'cloud' ? 'Menarik…' : '☁️ Sync Cloud'}
+            {busy === 'cloud' ? 'Menarik…' : '☁️ Tarik dari Cloud'}
+          </button>
+          <button className="btn-ghost" disabled={!canAct} onClick={doReclass}>
+            {busy === 'reclass' ? 'Menghitung…' : '🔄 Klasifikasi Ulang'}
           </button>
           <input ref={fileRef} type="file" accept=".dat,.txt" hidden onChange={e => doUpload(e.target.files[0])} />
         </div>
@@ -258,11 +356,10 @@ export default function App() {
       {locked && (
         <div className="banner banner-warn">
           🔒 Periode <b>{String(period.month).padStart(2, '0')}/{period.year}</b> sudah dikunci.
-          Baris di periode terkunci akan dilewati saat "Dorong ke Presensi".
+          Tap dan koreksi pada periode ini ditolak, dan baris terkunci dilewati saat didorong ke presensi.
         </div>
       )}
 
-      {/* Rekap */}
       {recap && (
         <div className="recap">
           <Stat label="Mitra Kerja" value={recap.karyawan} />
@@ -270,58 +367,43 @@ export default function App() {
           <Stat label="Total Tap" value={recap.total_tap} />
           <Stat label="Hadir Lengkap" value={recap.hadir_lengkap} cls="ok" />
           <Stat label="Tidak Lengkap" value={recap.tidak_lengkap} cls={recap.tidak_lengkap ? 'warn' : ''} />
-          <Stat label="Diedit" value={recap.diedit} cls={recap.diedit ? 'edit' : ''} />
-          <Stat label="Sudah di Presence" value={recap.sudah_di_presence} />
-          <Stat label="Sudah Didorong" value={recap.sudah_didorong} />
+          <Stat label="Dikoreksi" value={recap.diedit} cls={recap.diedit ? 'edit' : ''} />
+          <Stat label="Tanpa Jadwal" value={recap.tanpa_jadwal} cls={recap.tanpa_jadwal ? 'warn' : ''} />
+          <Stat label="Sudah di Presensi" value={recap.sudah_di_presence} />
         </div>
       )}
 
-      {/* Tabel data kerja */}
       {loaded && (
         rows.length ? (
           <div className="table-wrap">
             <table className="grid">
               <thead>
                 <tr>
-                  <th>Tanggal</th><th>Hari</th><th>ID</th><th>Nama</th>
-                  <th>Datang</th><th>Out Ist.</th><th>In Ist.</th><th>Pulang</th>
-                  <th className="c-tap">Tap</th><th>Status</th>
+                  <th>Tanggal</th><th>Hari</th><th>ID</th><th>Nama</th><th>Shift</th>
+                  {FIELDS.map(([f, l]) => <th key={f}>{l}</th>)}
+                  <th className="c-tap">Tap</th><th>Telat</th><th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => (
-                  <tr key={r.key} className={r.is_edited ? 'row-edit' : ''}>
-                    <td>{r.date}</td>
-                    <td>{r.weekday}</td>
-                    <td className="mono">{r.employee_code}</td>
-                    <td className="nm" title={r.source ? `sumber: ${r.source}` : ''}>{r.employee_name}</td>
-                    {FIELDS.map(f => (
-                      <td key={f} className={r[f] !== r.mirror[f] ? 'cell-diff' : ''}>
-                        <input type="time" className="t-in" value={r[f] || ''}
-                          title={r.mirror[f] ? `mesin: ${r.mirror[f]}` : 'tidak ada di mesin'}
-                          onChange={e => onCell(r.key, f, e.target.value)} />
-                      </td>
-                    ))}
-                    <td className="c-tap" title={r.all_taps}>{r.tap_count}</td>
-                    <td className="st">
-                      {r.is_edited ? <span className="badge badge-edit">diedit</span> : null}
-                      {r.in_presence ? <span className="badge badge-pres">di presence</span> : null}
-                      {!r.is_edited && !r.in_presence ? <span className="badge badge-mirror">mirror</span> : null}
-                    </td>
-                  </tr>
+                  <FragmentRow
+                    key={r.key} row={r} open={openKey === r.key} taps={taps} tapBusy={tapBusy}
+                    addTime={addTime} setAddTime={setAddTime} addNote={addNote} setAddNote={setAddNote}
+                    onToggle={() => openTaps(r)} onCell={onCell}
+                    onAddTap={() => doAddTap(r)} onVoid={(tap, un) => doVoid(r, tap, un)}
+                  />
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className="empty-note">Tidak ada data kerja pada rentang ini. Klik <b>Sync Upload</b> / <b>Sync Cloud</b> untuk mengisi dari mesin, atau ganti rentang.</div>
+          <div className="empty-note">Tidak ada data pada rentang ini. Klik <b>Upload .dat</b> / <b>Tarik dari Cloud</b> untuk mengisi dari mesin, atau ganti rentang.</div>
         )
       )}
       {!loaded && !error && (
-        <div className="empty-note">Pilih rentang lalu klik <b>Muat Data</b> (lihat data tersimpan) atau <b>Sync</b> (baca dari mesin).</div>
+        <div className="empty-note">Pilih rentang lalu klik <b>Muat Data</b> (lihat yang tersimpan) atau <b>Tarik dari Cloud</b> (ambil dari mesin).</div>
       )}
 
-      {/* Action bar */}
       {loaded && rows.length > 0 && (
         <footer className="actionbar">
           <div className="status">
@@ -329,15 +411,105 @@ export default function App() {
           </div>
           <div className="action-buttons">
             <button className="btn-secondary" disabled={!dirtyCount || busy === 'save'} onClick={doSave}>
-              {busy === 'save' ? 'Menyimpan…' : `💾 Simpan Perubahan (${dirtyCount})`}
+              {busy === 'save' ? 'Menyimpan…' : `💾 Simpan Koreksi (${dirtyCount})`}
             </button>
-            <button className="btn-primary" disabled={busy === 'push'} onClick={doPush}>
-              {busy === 'push' ? 'Mendorong…' : '➡️ Dorong ke Presensi'}
+            <button className="btn-secondary" disabled={busy === 'derive'} onClick={() => doDerive(true)}
+                    title="Menimpa juga baris presensi yang ditandai manual">
+              ♻️ Regenerate Periode
+            </button>
+            <button className="btn-primary" disabled={busy === 'derive'} onClick={() => doDerive(false)}>
+              {busy === 'derive' ? 'Memproses…' : '➡️ Buat/Perbarui Presensi'}
             </button>
           </div>
         </footer>
       )}
     </div>
+  );
+}
+
+function FragmentRow({ row: r, open, taps, tapBusy, addTime, setAddTime, addNote, setAddNote, onToggle, onCell, onAddTap, onVoid }) {
+  return (
+    <>
+      <tr className={r.is_edited ? 'row-edit' : ''}>
+        <td>{r.date}</td>
+        <td>{r.weekday}</td>
+        <td className="mono">{r.employee_code}</td>
+        <td className="nm">{r.employee_name}</td>
+        <td className="mono">{r.shift_code || '—'}</td>
+        {FIELDS.map(([f]) => (
+          <td key={f} className={r[f] !== r.machine[f] ? 'cell-diff' : ''}>
+            <input type="time" className="t-in" value={r[f] || ''}
+              title={r.machine[f] ? `mesin: ${r.machine[f]}` : 'tidak ada tap mesin di slot ini'}
+              onChange={e => onCell(r.key, f, e.target.value)} />
+          </td>
+        ))}
+        <td className="c-tap">
+          <button className="btn-link" title={r.all_taps || 'tidak ada tap'} onClick={onToggle}>
+            {open ? '▾' : '▸'} {r.tap_count}
+          </button>
+        </td>
+        <td className="mono">{r.entry_late ? `${r.entry_late}m` : '—'}</td>
+        <td className="st">
+          {r.is_edited && <span className="badge badge-edit">dikoreksi</span>}
+          {r.classify_method === 'positional' && <span className="badge badge-warn" title="Jadwal shift belum ada; jam ditebak dari urutan tap">tanpa jadwal</span>}
+          {r.needs_reclass ? <span className="badge badge-mirror">perlu hitung ulang</span> : null}
+          {r.in_presence && <span className="badge badge-pres">di presensi</span>}
+        </td>
+      </tr>
+
+      {open && (
+        <tr className="tap-row">
+          <td colSpan={12}>
+            <div className="tap-panel">
+              <div className="tap-title">
+                Tap mentah — <b>{r.employee_name}</b>, {r.date}
+                <span className="tap-hint">Tap mesin tidak pernah diubah. Kesalahan dibatalkan (dicoret), kekurangan ditambah sebagai tap manual.</span>
+              </div>
+
+              {tapBusy && <div className="tap-empty">Memuat…</div>}
+              {!tapBusy && !taps.length && <div className="tap-empty">Tidak ada tap pada tanggal ini.</div>}
+
+              {!tapBusy && taps.length > 0 && (
+                <table className="tap-table">
+                  <thead>
+                    <tr><th>Jam</th><th>Sumber</th><th>Mesin</th><th>Catatan</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {taps.map(t => (
+                      <tr key={t.id} className={t.voided ? 'tap-voided' : ''}>
+                        <td className="mono">{t.time}</td>
+                        <td>
+                          {t.source === 'manual'
+                            ? <span className="badge badge-edit">manual</span>
+                            : <span className={`badge ${t.machine_type === 'pray' ? 'badge-warn' : 'badge-mirror'}`}>
+                                {t.machine_type === 'pray' ? 'sholat' : 'mesin'}
+                              </span>}
+                        </td>
+                        <td className="mono">{t.machine}</td>
+                        <td>{t.voided ? <i>dibatalkan: {t.void_reason || '—'}</i> : (t.note || '')}</td>
+                        <td>
+                          <button className="btn-link" onClick={() => onVoid(t, !!t.voided)}>
+                            {t.voided ? 'batalkan pembatalan' : 'batalkan tap'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              <div className="tap-add">
+                <span className="tb-label">Tambah tap</span>
+                <input type="time" step="1" value={addTime} onChange={e => setAddTime(e.target.value)} />
+                <input type="text" placeholder="alasan (mis. lupa finger scan)" value={addNote}
+                  onChange={e => setAddNote(e.target.value)} />
+                <button className="btn-secondary" disabled={!addTime || tapBusy} onClick={onAddTap}>+ Tambah</button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
