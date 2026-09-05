@@ -195,6 +195,12 @@ Class Wa_model extends CI_Model {
         return $this->db->get()->result_array();
     }
 
+    /**
+     * Jam datang/pulang/telat diambil dari attendance_recap (rekap independen,
+     * dihitung dari tap+shift langsung, di-refresh tiap 30 menit -- lihat
+     * Attendance_recap_model). Status izin/cuti/sakit tetap dicek ke presence
+     * karena attendance_recap sengaja tidak menangani itu (murni kerja).
+     */
     public function get_today_shift_report($branch_id = null) {
         $today = date('Y-m-d');
         $params = [$today, $today];
@@ -218,11 +224,11 @@ Class Wa_model extends CI_Model {
                 users.employee_code,
                 TRIM(CONCAT(COALESCE(users.first_name, ''), ' ', COALESCE(users.last_name, ''))) AS employee_name,
                 COALESCE(position.position_name, '-') AS position_name,
-                presence.id AS presence_id,
-                presence.entry_time,
-                presence.out_time,
                 presence.presence_type,
-                COALESCE(presence.entry_time_late, 0) AS late_minutes
+                ar.entry_time,
+                ar.out_time,
+                ar.status AS recap_status,
+                COALESCE(ar.late_minutes, 0) AS late_minutes
             FROM users_shift_additional
             JOIN (
                 SELECT user_id, additional_date, MAX(id) AS id
@@ -234,6 +240,8 @@ Class Wa_model extends CI_Model {
             LEFT JOIN position ON position.id = users.position_id
             LEFT JOIN branch ON branch.id = position.branch_id
             JOIN shift ON shift.id = users_shift_additional.shift_id
+            LEFT JOIN attendance_recap ar ON ar.user_id = users.id
+                AND ar.flow_date = users_shift_additional.additional_date
             LEFT JOIN presence ON presence.user_id = users.id
                 AND presence.flow_date = users_shift_additional.additional_date
                 AND presence.presence_status = 'approved'
@@ -274,15 +282,6 @@ Class Wa_model extends CI_Model {
 
             $report[$key]['total_employee']++;
             $presence_type = $row['presence_type'];
-            $has_presence = !empty($row['presence_id']);
-            $has_attendance = !empty($row['entry_time']) || !empty($row['out_time']);
-            $late_minutes = (int)$row['late_minutes'];
-
-            if (!$has_presence) {
-                $report[$key]['tidak_hadir']++;
-                $report[$key]['absent_employees'][] = $this->_format_employee_report_row($row);
-                continue;
-            }
 
             if ($presence_type === 'sakit') {
                 $report[$key]['sakit']++;
@@ -294,16 +293,17 @@ Class Wa_model extends CI_Model {
                 continue;
             }
 
-            if ($presence_type === 'normal' && $has_attendance) {
-                if ($late_minutes > 0) {
-                    $report[$key]['terlambat']++;
-                    $late_row = $this->_format_employee_report_row($row);
-                    $late_row['entry_time'] = $row['entry_time'];
-                    $late_row['late_minutes'] = $late_minutes;
-                    $report[$key]['late_employees'][] = $late_row;
-                } else {
-                    $report[$key]['hadir']++;
-                }
+            if ($row['recap_status'] === 'terlambat') {
+                $report[$key]['terlambat']++;
+                $late_row = $this->_format_employee_report_row($row);
+                $late_row['entry_time'] = $row['entry_time'];
+                $late_row['late_minutes'] = (int)$row['late_minutes'];
+                $report[$key]['late_employees'][] = $late_row;
+                continue;
+            }
+
+            if ($row['recap_status'] === 'hadir') {
+                $report[$key]['hadir']++;
                 continue;
             }
 

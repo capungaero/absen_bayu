@@ -9,7 +9,6 @@ class Wa extends CI_Controller {
         $this->load->model('branch_model', 'branch');
         $this->load->model('sync_model', 'sync');
         $this->load->library('hermes_wa');
-        $this->load->library('attendance_employee_resolver');
         $this->load->library('cloud_attlog_client');
         $this->load->library('attendance_ingest');
 
@@ -387,10 +386,16 @@ class Wa extends CI_Controller {
         return array_filter(array_map('trim', $phones));
     }
 
+    /**
+     * Refresh attendance_recap utk hari ini: download tap mesin absen ->
+     * arsipkan raw -> klasifikasi attendance_day -> susun ulang
+     * attendance_recap. Tidak lagi parse manual & tulis presence sendiri
+     * (jalur lama, digantikan proses independen attendance_recap -- lihat
+     * hr/Presence::_run_attendance_recap_core() utk versi periode penuh yg
+     * dipanggil cron 30 menit; di sini cukup hari ini saja utk tombol "Cek
+     * Absen"/rekap pagi).
+     */
     private function _sync_today_attendance() {
-        // Kartu identitas sync: tanpa ini, trigger presence_provenance_* di DB
-        // menandai semua tulisan sebagai edit manual (default-deny overwrite).
-        $this->db->query("SET @absen_sync_ctx = 1");
         $today = date('Y-m-d');
         $machines = $this->sync->get_active_by_type('attendance');
 
@@ -401,10 +406,8 @@ class Wa extends CI_Controller {
             ];
         }
 
-        $logs_by_employee = [];
         $downloaded = 0;
         $failed = [];
-        $raw_rows = 0;
 
         foreach ($machines as $machine) {
             $machine_sn = attlog_sanitize_machine_sn($machine['machine_sn']);
@@ -433,39 +436,11 @@ class Wa extends CI_Controller {
             }
 
             $downloaded++;
-
-            // Arsipkan ke attendance_tap SEBELUM parse manual di bawah -- dulu
-            // WA Agent parse .dat sendiri lalu upsert presence LANGSUNG tanpa
-            // pernah singgah di arsip raw (temuan audit 4 Sep 2026). Idempoten
-            // (unique key machine_sn+finger_id+tap_at), aman dipanggil bareng
-            // sync_api/sync_cron/DatReader yang mengarsipkan mesin yang sama.
-            $this->attendance_ingest->ingest_raw($raw, $machine_sn, [
+            $ingest = $this->attendance_ingest->ingest_raw($raw, $machine_sn, [
                 'machine_type' => 'attendance',
                 'origin'       => 'wa_agent',
                 'created_by'   => null,
             ]);
-
-            $lines = preg_split('/\r\n|\r|\n/', $raw);
-            $machine_rows = 0;
-
-            foreach ($lines as $line) {
-                $line = trim($line);
-                if ($line === '') { continue; }
-
-                $cols = preg_split('/\s+/', $line);
-                if (count($cols) < 3) { continue; }
-
-                $finger_id = trim($cols[0]);
-                $timestamp = strtotime($cols[1].' '.$cols[2]);
-                if ($finger_id === '' || !$timestamp || date('Y-m-d', $timestamp) !== $today) {
-                    continue;
-                }
-
-                $time = date('H:i:s', $timestamp);
-                $logs_by_employee[$finger_id][$time] = $time;
-                $machine_rows++;
-                $raw_rows++;
-            }
 
             $this->sync->update($machine['id'], [
                 'last_sync_at' => date('Y-m-d H:i:s'),
@@ -475,195 +450,28 @@ class Wa extends CI_Controller {
                 'machine_id' => $machine['id'],
                 'machine_name' => $machine['name'],
                 'status' => 'success',
-                'records' => $machine_rows,
+                'records' => isset($ingest['new_taps']) ? $ingest['new_taps'] : 0,
                 'message' => 'Cek absen WA berhasil download data hari ini.',
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
         }
 
-        if (empty($logs_by_employee)) {
-            $message = 'Tidak ada log fingerprint hari ini yang berhasil dibaca.';
-            if (!empty($failed)) {
-                $message .= ' Mesin gagal: '.implode(', ', $failed).'.';
-            }
+        if ($downloaded === 0) {
+            $message = 'Semua mesin absensi gagal diakses.';
+            if (!empty($failed)) { $message .= ' ('.implode(', ', $failed).')'; }
             return ['success' => false, 'message' => $message];
         }
 
-        $employee_match = $this->_get_employee_map_by_finger(array_keys($logs_by_employee), $today);
-        $employees = $employee_match['map'];
-        $duplicate_stats = $employee_match['stats'];
-        $saved = 0;
-        $updated = 0;
-        $skipped = 0;
-        $missing = 0;
-        $no_schedule = 0;
-        $no_window = 0;
+        $this->load->library('attendance_classifier');
+        $classify = $this->attendance_classifier->classify_range([], $today, $today, 'auto', true);
 
-        foreach ($logs_by_employee as $finger_id => $times) {
-            if (!isset($employees[$finger_id])) {
-                $missing++;
-                continue;
-            }
+        $this->load->model('Attendance_recap_model', 'attendance_recap');
+        $res = $this->attendance_recap->refresh($today, $today);
 
-            $employee = $employees[$finger_id];
-            $shift = $this->_get_today_shift($employee['id'], $today);
-            if (empty($shift)) {
-                $no_schedule++;
-                continue;
-            }
-
-            sort($times);
-            $payload = $this->_presence_payload($employee['id'], $today);
-            foreach ($times as $time) {
-                $datetime = $today.' '.$time;
-
-                if (attlog_time_between($time, $shift['start_time_in'], $shift['start_time_out']) && empty($payload['entry_time'])) {
-                    $payload['entry_time'] = $datetime;
-                    $payload['entry_time_late'] = $this->_minutes_between($shift['start_time_late'], $time);
-                    continue;
-                }
-
-                if (attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && empty($payload['out_time'])) {
-                    $payload['out_time'] = $datetime;
-                    continue;
-                }
-
-                if (attlog_time_between($time, $shift['start_time_rest'], $shift['end_time_rest'])) {
-                    if (empty($payload['rest_time_in'])) {
-                        $payload['rest_time_in'] = $datetime;
-                    } elseif (empty($payload['rest_time_out'])) {
-                        $payload['rest_time_out'] = $datetime;
-                        $limit = date('H:i:s', strtotime($payload['rest_time_in'].' +'.(int)$shift['rest_time_range'].' minutes'));
-                        $payload['rest_time_late'] = $this->_minutes_between($limit, $time);
-                    }
-                }
-            }
-
-            if (empty($payload['entry_time']) && empty($payload['out_time']) && empty($payload['rest_time_in']) && empty($payload['rest_time_out'])) {
-                $no_window++;
-                continue;
-            }
-
-            $status = $this->_upsert_today_presence($payload);
-            if ($status === 'inserted') {
-                $saved++;
-            } elseif ($status === 'updated') {
-                $updated++;
-            } else {
-                $skipped++;
-            }
-        }
-
-        $message = 'Cek absen selesai. Mesin sukses: '.$downloaded.', log hari ini: '.$raw_rows.', presensi baru: '.$saved.', diperbarui: '.$updated.', dilewati: '.$skipped.'.';
-        if ($missing > 0) { $message .= ' Finger tidak cocok: '.$missing.'.'; }
-        if ($no_schedule > 0) { $message .= ' Tanpa jadwal: '.$no_schedule.'.'; }
-        if ($no_window > 0) { $message .= ' Di luar jam shift: '.$no_window.'.'; }
-        $message .= $this->attendance_employee_resolver->message($duplicate_stats);
+        $message = 'Cek absen selesai. Mesin sukses: '.$downloaded.', hari diklasifikasi: '.$classify['days'].', baris recap: '.$res['days'].'.';
         if (!empty($failed)) { $message .= ' Mesin gagal: '.implode(', ', $failed).'.'; }
 
-        return [
-            'success' => ($saved + $updated + $skipped) > 0,
-            'message' => $message,
-        ];
-    }
-
-    private function _get_employee_map_by_finger($finger_ids, $date) {
-        return $this->attendance_employee_resolver->map_for_date($finger_ids, $date);
-    }
-
-    private function _get_today_shift($user_id, $date) {
-        return $this->db->select('users_shift_additional.*, shift.*')
-                        ->join('shift', 'shift.id = users_shift_additional.shift_id')
-                        ->where([
-                            'users_shift_additional.user_id' => $user_id,
-                            'users_shift_additional.additional_date' => $date,
-                            'users_shift_additional.additional_type' => 'work',
-                        ])
-                        ->where(latest_schedule_subquery(), null, false)
-                        ->get('users_shift_additional')
-                        ->row_array();
-    }
-
-    private function _presence_payload($user_id, $date) {
-        return [
-            'user_id' => $user_id,
-            'entry_time' => null,
-            'entry_time_late' => 0,
-            'out_time' => null,
-            'rest_time_in' => null,
-            'rest_time_out' => null,
-            'rest_time_late' => 0,
-            'flow_date' => $date,
-            'created_at' => date('Y-m-d H:i:s'),
-            'input_by' => 'system',
-            'presence_status' => 'approved',
-            'presence_type' => 'normal',
-            'is_overtime' => '0',
-        ];
-    }
-
-    private function _upsert_today_presence($row) {
-        // Lock penggajian: jangan tulis presensi bila periode tanggal ini sudah di-payroll.
-        if (payroll_locked_for_user_date($row['user_id'], $row['flow_date'])) {
-            return 'skipped';
-        }
-
-        $existing = $this->db->where([
-            'user_id' => $row['user_id'],
-            'flow_date' => $row['flow_date'],
-        ])->get('presence')->row_array();
-
-        if (empty($existing)) {
-            $this->db->insert('presence', $row);
-            return $this->db->affected_rows() > 0 ? 'inserted' : 'skipped';
-        }
-
-        // Kolom yang sengaja dikosongkan manual tidak boleh diisi ulang
-        // (presence.cleared_fields, dirawat trigger presence_provenance_bu).
-        $cleared = array_filter(array_map('trim', explode(',', (string)($existing['cleared_fields'] ?? ''))));
-
-        $update = ['updated_at' => date('Y-m-d H:i:s')];
-        foreach (['entry_time', 'out_time', 'rest_time_in', 'rest_time_out'] as $field) {
-            if (in_array($field, $cleared, true)) { continue; }
-            if (empty($existing[$field]) && !empty($row[$field])) {
-                $update[$field] = $row[$field];
-            }
-        }
-
-        // Late hanya diisi bila kolom jam sumbernya juga baru terisi oleh upsert
-        // ini (paritas presence_merge_preserve_existing; late=0 = nilai sah,
-        // bukan "belum dihitung").
-        if (empty($existing['entry_time']) && !in_array('entry_time', $cleared, true)
-            && !empty($row['entry_time_late'])) {
-            $update['entry_time_late'] = $row['entry_time_late'];
-        }
-        if (empty($existing['rest_time_out']) && !in_array('rest_time_out', $cleared, true)
-            && !empty($row['rest_time_late'])) {
-            $update['rest_time_late'] = $row['rest_time_late'];
-        }
-
-        if (count($update) === 1) {
-            return 'skipped';
-        }
-
-        log_late_flip('Wa::_upsert_today_presence', $existing['id'],
-            $existing['entry_time_late'], isset($update['entry_time_late']) ? $update['entry_time_late'] : $existing['entry_time_late'],
-            $existing['rest_time_late'], isset($update['rest_time_late']) ? $update['rest_time_late'] : $existing['rest_time_late']);
-        $this->db->where('id', $existing['id'])->update('presence', $update);
-        return 'updated';
-    }
-
-    private function _minutes_between($from, $to) {
-        if ($from === null || $from === '' || $to === null || $to === '') {
-            return 0;
-        }
-
-        $from = date('H:i', strtotime($from));
-        $to = date('H:i', strtotime($to));
-        $from_minutes = ((int) substr($from, 0, 2) * 60) + (int) substr($from, 3, 2);
-        $to_minutes = ((int) substr($to, 0, 2) * 60) + (int) substr($to, 3, 2);
-
-        return max(0, $to_minutes - $from_minutes);
+        return ['success' => true, 'message' => $message];
     }
 
     private function _download_cloud_attlog($sn, $password) {
