@@ -325,6 +325,13 @@ $route['dat_reader/taps']        = 'DatReader/taps';
 $route['dat_reader/tap_add']     = 'DatReader/tap_add';
 $route['dat_reader/tap_void']    = 'DatReader/tap_void';
 $route['dat_reader/tap_unvoid']  = 'DatReader/tap_unvoid';
+$route['dat_reader/sholat_machines']  = 'DatReader/sholat_machines';
+$route['dat_reader/sync_upload_pray'] = 'DatReader/sync_upload_pray';
+$route['dat_reader/sync_cloud_pray']  = 'DatReader/sync_cloud_pray';
+$route['dat_reader/data_pray']        = 'DatReader/data_pray';
+$route['dat_reader/save_pray']        = 'DatReader/save_pray';
+$route['dat_reader/derive_pray']      = 'DatReader/derive_pray';
+$route['dat_reader/reclassify_pray']  = 'DatReader/reclassify_pray';
 
 // Temuan (laporan masalah toko, auth via token bearer Api_token — sama seperti PWA)
 $route['temuan/me']              = 'Temuan/me';

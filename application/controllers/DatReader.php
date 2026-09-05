@@ -19,6 +19,14 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  * dengan jalur import resmi; posisional tinggal jadi fallback berlabel untuk
  * hari yang jadwalnya belum diupload.
  *
+ * Jenis Mesin Sholat (endpoint *_pray): jalur BACKEND terpisah total dari jalur
+ * kerja di atas -- sumbernya pray_day (bukan attendance_day), klasifikasi lewat
+ * Pray_classifier (window per-slot dari branch, bukan shift individu), turun ke
+ * presence lewat Pray_deriver_model (tidak pernah insert baris presence baru).
+ * Sengaja dipisah: tap sholat & kerja tidak boleh diklasifikasi dgn logika yang
+ * sama (lihat investigasi kecampur 17 Agu 2026). Front-end SPA menyatukan
+ * keduanya lewat toggle "Jenis Mesin" supaya admin punya satu halaman saja.
+ *
  * Auth: ion_auth session + role (admin/admin-branch/hr). CSRF dikecualikan
  * (lihat application/config/config.php), jadi cek role + cabang di controller
  * ini adalah satu-satunya penjaga — jangan dilewat di endpoint baru.
@@ -48,10 +56,12 @@ class DatReader extends CI_Controller {
         $this->load->library('attlog_parser');
         $this->load->library('attendance_ingest');
         $this->load->library('attendance_classifier');
+        $this->load->library('pray_classifier');
         $this->load->library('cloud_attlog_client');
         $this->load->model('payroll_model', 'payroll');
         $this->load->model('Sync_model', 'sync_machines');
         $this->load->model('Attendance_day_model', 'days');
+        $this->load->model('Pray_day_model', 'pray_days');
     }
 
     private function _die($data, $code) {
@@ -116,6 +126,19 @@ class DatReader extends CI_Controller {
     public function attendance_machines() {
         $out = [];
         foreach ($this->sync_machines->get_active_by_type('attendance') as $row) {
+            $sn = attlog_sanitize_machine_sn($row['machine_sn']);
+            if ($sn === '') continue;
+            $out[] = ['sn' => $sn, 'name' => $row['name']];
+        }
+        $this->_json($out);
+    }
+
+    // ───────────────────── GET dat_reader/sholat_machines ───────────────────────
+    // Dropdown sumber upload untuk Jenis Mesin = Sholat -- HANYA mesin
+    // type=pray, cermin attendance_machines() di atas.
+    public function sholat_machines() {
+        $out = [];
+        foreach ($this->sync_machines->get_active_by_type('pray') as $row) {
             $sn = attlog_sanitize_machine_sn($row['machine_sn']);
             if ($sn === '') continue;
             $out[] = ['sn' => $sn, 'name' => $row['name']];
@@ -196,6 +219,104 @@ class DatReader extends CI_Controller {
             'mode' => $mode, 'ingest' => $ingest, 'new_taps' => $new_taps,
             'classify' => $classify, 'source' => 'cloud', 'failed' => $download['failed'],
         ]));
+    }
+
+    // ─────────────── POST dat_reader/sync_upload_pray (multipart: file) ─────────
+    // Sama pola sync_upload() tapi utk mesin sholat -- ingest attendance_tap
+    // machine_type=pray lalu klasifikasi pray_day (BUKAN attendance_day).
+    public function sync_upload_pray() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $branch_id = $this->_allowed_branch($this->input->post('branch_id'));
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+
+        list($from, $to, $mode) = $this->_resolve_range(
+            $this->input->post('mode'), $this->input->post('from'), $this->input->post('to'));
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
+
+        // Wajib pilih SN mesin SHOLAT aktif -- cegah dump mesin absen masuk
+        // sebagai jam sholat tanpa disadari (kebalikan proteksi sync_upload()).
+        $sn = attlog_sanitize_machine_sn($this->input->post('machine_sn'));
+        $known = array_column($this->_active_pray_machines(), 'sn');
+        if ($sn === '' || !in_array($sn, $known, true)) {
+            return $this->_json(['error' => 'Pilih mesin sholat sumber file dulu (harus mesin sholat aktif).'], 422);
+        }
+
+        if (empty($_FILES['file']['name']))  return $this->_json(['error' => 'File .dat belum dipilih'], 422);
+        if (!empty($_FILES['file']['error'])) return $this->_json(['error' => 'Upload gagal (kode '.$_FILES['file']['error'].')'], 422);
+        $raw = file_get_contents($_FILES['file']['tmp_name']);
+        if ($raw === false || trim($raw) === '') return $this->_json(['error' => 'File .dat kosong / tidak terbaca'], 422);
+
+        $res = $this->attendance_ingest->ingest_raw($raw, $sn, [
+            'origin' => 'upload', 'created_by' => (int)$this->userdata->id,
+        ]);
+        if (!$res['ok']) return $this->_json(['error' => $res['message']], 422);
+
+        $classify = $this->_classify_branch_pray($branch_id, $from, $to);
+        $this->_json($this->_rows_response_pray($branch_id, $from, $to,
+            ['mode' => $mode, 'ingest' => [$sn => $res['message']], 'classify' => $classify, 'source' => 'upload']));
+    }
+
+    // ─────────────── POST dat_reader/sync_cloud_pray (json) ─────────────────────
+    // Sama pola sync_cloud() tapi utk semua mesin sholat aktif.
+    public function sync_cloud_pray() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $branch_id = $this->_allowed_branch(isset($b['branch_id']) ? $b['branch_id'] : 0);
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+
+        list($from, $to, $mode) = $this->_resolve_range($b['mode'] ?? null, $b['from'] ?? null, $b['to'] ?? null);
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
+
+        $machines = $this->_active_pray_machines();
+        $machine_ids = [];
+        foreach ($this->sync_machines->get_active_by_type('pray') as $row) {
+            $machine_ids[attlog_sanitize_machine_sn($row['machine_sn'])] = (int)$row['id'];
+        }
+        if (empty($machines)) return $this->_json(['error' => 'Tidak ada mesin sholat Solution Cloud aktif.'], 422);
+
+        $download = $this->cloud_attlog_client->download_batch($machines);
+        if ($download === false) return $this->_json(['error' => 'Gagal download dari semua mesin. Cek koneksi/kredensial cloud.'], 502);
+
+        $ingest = [];
+        $new_taps = 0;
+        foreach ($download['machines'] as $m) {
+            $res = $this->attendance_ingest->ingest_raw($m['raw'], $m['sn'], [
+                'machine_id' => isset($machine_ids[$m['sn']]) ? $machine_ids[$m['sn']] : null,
+                'origin' => 'cloud', 'created_by' => (int)$this->userdata->id,
+            ]);
+            $ingest[$m['sn']] = $res['message'];
+            $new_taps += $res['new_taps'];
+        }
+
+        $classify = $this->_classify_branch_pray($branch_id, $from, $to);
+        $this->_json($this->_rows_response_pray($branch_id, $from, $to, [
+            'mode' => $mode, 'ingest' => $ingest, 'new_taps' => $new_taps,
+            'classify' => $classify, 'source' => 'cloud', 'failed' => $download['failed'],
+        ]));
+    }
+
+    // ─────────────── GET dat_reader/data_pray?branch_id=&mode=&from=&to= ────────
+    public function data_pray() {
+        $branch_id = $this->_allowed_branch($this->input->get('branch_id'));
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+        list($from, $to, $mode) = $this->_resolve_range(
+            $this->input->get('mode'), $this->input->get('from'), $this->input->get('to'));
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid (maks 92 hari)'], 422);
+        $this->_json($this->_rows_response_pray($branch_id, $from, $to, ['mode' => $mode]));
+    }
+
+    // ─────────────── POST dat_reader/reclassify_pray (json) ─────────────────────
+    public function reclassify_pray() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $branch_id = $this->_allowed_branch(isset($b['branch_id']) ? $b['branch_id'] : 0);
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+        list($from, $to, $mode) = $this->_resolve_range($b['mode'] ?? null, $b['from'] ?? null, $b['to'] ?? null);
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid'], 422);
+
+        $only_dirty = !empty($b['only_dirty']);
+        $classify = $this->_classify_branch_pray($branch_id, $from, $to, $only_dirty);
+        $this->_json($this->_rows_response_pray($branch_id, $from, $to, ['mode' => $mode, 'classify' => $classify]));
     }
 
     // ─────────────── GET dat_reader/data?branch_id=&mode=&from=&to= ─────────────
@@ -345,6 +466,39 @@ class DatReader extends CI_Controller {
             ['mode' => $mode, 'saved' => $saved, 'skipped_locked' => $locked]));
     }
 
+    // ─────────────── POST dat_reader/save_pray (json: branch_id, from, to, edits[]) ─
+    // Koreksi per-hari per-slot sholat (subuh/dzuhur/ashar/maghrib/isha/friday
+    // in+out). Sama pola save() tapi lewat Pray_day_model.
+    public function save_pray() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $branch_id = $this->_allowed_branch(isset($b['branch_id']) ? $b['branch_id'] : 0);
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+        list($from, $to, $mode) = $this->_resolve_range($b['mode'] ?? null, $b['from'] ?? null, $b['to'] ?? null);
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid'], 422);
+
+        $edits = isset($b['edits']) && is_array($b['edits']) ? $b['edits'] : [];
+        if (empty($edits)) return $this->_json(['error' => 'Tidak ada perubahan untuk disimpan'], 422);
+
+        $uids = array_values(array_unique(array_map(function($e){ return (int)$e['user_id']; }, $edits)));
+        $allowed = $this->_branch_user_ids($branch_id, $uids);
+        $locked = 0;
+        $edits = array_values(array_filter($edits, function($e) use ($allowed, &$locked){
+            if (!isset($allowed[(int)$e['user_id']])) return false;
+            if ($this->_locked_for_user_date((int)$e['user_id'], $e['flow_date'])) { $locked++; return false; }
+            return true;
+        }));
+        if (empty($edits)) {
+            return $this->_json(['error' => $locked > 0
+                ? 'Semua baris yang diedit ada di periode penggajian yang sudah dikunci.'
+                : 'Mitra Kerja yang diedit tidak ada di cabang ini'], 422);
+        }
+
+        $saved = $this->pray_days->save_edits($edits, (int)$this->userdata->id, date('Y-m-d H:i:s'));
+        $this->_json($this->_rows_response_pray($branch_id, $from, $to,
+            ['mode' => $mode, 'saved' => $saved, 'skipped_locked' => $locked]));
+    }
+
     // ─────────────── POST dat_reader/derive (json) ──────────────────────────────
     /**
      * Turunkan lapis harian ke `presence` (insert + update).
@@ -374,6 +528,31 @@ class DatReader extends CI_Controller {
             return $this->_json(['status' => true, 'from' => $from, 'to' => $to, 'derive' => $res]);
         }
         $this->_json($this->_rows_response($branch_id, $from, $to, ['mode' => $mode, 'derive' => $res]));
+    }
+
+    // ─────────────── POST dat_reader/derive_pray (json) ──────────────────────────
+    // Sama pola derive() tapi turunkan pray_day -> presence (kolom sholat) lewat
+    // Pray_deriver_model. Pray_deriver_model TIDAK pernah insert baris presence
+    // baru (skipped_no_presence), jadi hanya melengkapi baris yang sudah ada.
+    public function derive_pray() {
+        if ($this->input->method() !== 'post') return $this->_json(['error' => 'POST required'], 405);
+        $b = $this->_body();
+        $branch_id = $this->_allowed_branch(isset($b['branch_id']) ? $b['branch_id'] : 0);
+        if ($branch_id === false || $branch_id === null) return $this->_json(['error' => 'Cabang tidak valid'], 422);
+        list($from, $to, $mode) = $this->_resolve_range($b['mode'] ?? null, $b['from'] ?? null, $b['to'] ?? null);
+        if (!$from) return $this->_json(['error' => 'Rentang tanggal tidak valid'], 422);
+
+        $this->load->model('Pray_deriver_model', 'pray_deriver');
+        $res = $this->pray_deriver->derive($branch_id, $from, $to, [
+            'force'    => !empty($b['force']),
+            'dry_run'  => !empty($b['dry_run']),
+            'actor_id' => (int)$this->userdata->id,
+        ]);
+
+        if (!empty($b['dry_run'])) {
+            return $this->_json(['status' => true, 'from' => $from, 'to' => $to, 'derive' => $res]);
+        }
+        $this->_json($this->_rows_response_pray($branch_id, $from, $to, ['mode' => $mode, 'derive' => $res]));
     }
 
     // ════════════════════════ INTERNAL ════════════════════════
@@ -409,6 +588,24 @@ class DatReader extends CI_Controller {
         $uids = $this->days->user_ids_in_range($branch_id, $from, $to);
         if (empty($uids)) return ['days' => 0, 'window' => 0, 'positional' => 0, 'empty' => 0, 'skipped_edited' => 0];
         return $this->attendance_classifier->classify_range($uids, $from, $to, 'auto', $only_dirty);
+    }
+
+    /** Mesin sholat aktif yang kredensialnya lengkap. */
+    private function _active_pray_machines() {
+        $machines = [];
+        foreach ($this->sync_machines->get_active_by_type('pray') as $row) {
+            $sn = attlog_sanitize_machine_sn($row['machine_sn']);
+            if ($sn === '' || $row['password'] === '') continue;
+            $machines[] = ['sn' => $sn, 'pass' => $row['password']];
+        }
+        return $machines;
+    }
+
+    /** Klasifikasi ulang sholat semua karyawan aktif cabang pada rentang. */
+    private function _classify_branch_pray($branch_id, $from, $to, $only_dirty = false) {
+        $uids = $this->pray_days->user_ids_in_range($branch_id, $from, $to);
+        if (empty($uids)) return ['days' => 0, 'window' => 0, 'empty' => 0, 'skipped_edited' => 0];
+        return $this->pray_classifier->classify_range($uids, $from, $to, $only_dirty);
     }
 
     private function _rows_response($branch_id, $from, $to, $extra = []) {
@@ -466,6 +663,57 @@ class DatReader extends CI_Controller {
             'hadir_lengkap' => $lengkap, 'tidak_lengkap' => $tidak,
             'diedit' => $edited, 'sudah_di_presence' => $inpres,
             'tanpa_jadwal' => $positional, 'perlu_klasifikasi_ulang' => $dirty,
+        ];
+    }
+
+    /** Sama pola _rows_response() tapi utk 6 slot sholat (subuh..friday). */
+    private function _rows_response_pray($branch_id, $from, $to, $extra = []) {
+        $rows = $this->pray_days->get_range($branch_id, $from, $to);
+
+        $out = [];
+        foreach ($rows as $r) {
+            $row = [
+                'key' => $r['user_id'].'|'.$r['flow_date'],
+                'user_id' => (int)$r['user_id'],
+                'employee_code' => $r['employee_code'],
+                'employee_name' => trim($r['first_name'].' '.$r['last_name']),
+                'date' => $r['flow_date'], 'weekday' => get_dayname($r['flow_date']),
+                'tap_count' => (int)$r['tap_count'], 'all_taps' => $r['all_taps'],
+                'classify_method' => $r['classify_method'], 'needs_reclass' => (int)$r['needs_reclass'],
+                'is_edited' => (int)$r['is_edited'], 'edit_note' => $r['edit_note'],
+            ];
+            $machine = [];
+            foreach (Pray_day_model::PRAYERS as $p) {
+                $row[$p.'_in']   = $r[$p.'_in']  ?: '';
+                $row[$p.'_out']  = $r[$p.'_out'] ?: '';
+                $row[$p.'_late'] = (int)$r[$p.'_late'];
+                $machine[$p.'_in']  = $r['m_'.$p.'_in']  ?: '';
+                $machine[$p.'_out'] = $r['m_'.$p.'_out'] ?: '';
+            }
+            $row['machine'] = $machine;
+            $out[] = $row;
+        }
+        return array_merge([
+            'status' => true, 'from' => $from, 'to' => $to,
+            'rows' => $out, 'recap' => $this->_recap_pray($out),
+        ], $extra);
+    }
+
+    private function _recap_pray($rows) {
+        $emp = []; $tap = 0; $ada = 0; $tidak = 0; $edited = 0; $dirty = 0;
+        foreach ($rows as $r) {
+            $emp[$r['user_id']] = true;
+            $tap += $r['tap_count'];
+            $any = false;
+            foreach (Pray_day_model::PRAYERS as $p) { if ($r[$p.'_in'] !== '') { $any = true; break; } }
+            if ($any) $ada++; else $tidak++;
+            if ($r['is_edited']) $edited++;
+            if ($r['needs_reclass']) $dirty++;
+        }
+        return [
+            'karyawan' => count($emp), 'hari_absen' => count($rows), 'total_tap' => $tap,
+            'ada_sholat' => $ada, 'tanpa_sholat' => $tidak,
+            'diedit' => $edited, 'perlu_klasifikasi_ulang' => $dirty,
         ];
     }
 
