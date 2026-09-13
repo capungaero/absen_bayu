@@ -24,11 +24,9 @@
                         <span class="badge bg-secondary"><?= $header['slot_no'] == 1 ? 'Pagi' : 'Sore' ?></span>
                     <?php endif; ?>
                 </h6>
-                <?php if ($header['status'] === 'read'): ?>
-                    <span class="badge bg-success">Sudah Dibaca</span>
-                <?php else: ?>
-                    <button class="btn btn-sm btn-primary" id="btnMarkRead" data-id="<?= $header['id'] ?>"><i class="fa fa-check"></i> Tandai Dibaca</button>
-                <?php endif; ?>
+                <span class="badge <?= $header['status'] === 'read' ? 'bg-success' : 'bg-warning text-dark' ?>">
+                    <?= $header['status'] === 'read' ? 'Sudah Dibaca' : 'Baru' ?>
+                </span>
             </div>
             <div class="card-body">
 
@@ -50,7 +48,13 @@
                     <?php if (empty($header['photo_path'])): ?>
                         <p class="text-muted">Belum ada foto.</p>
                     <?php else: ?>
-                        <a href="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" target="_blank">
+                        <a
+                            href="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>"
+                            target="_blank"
+                            class="js-mark-read-photo"
+                            data-id="<?= $header['id'] ?>"
+                            data-status="<?= htmlspecialchars($header['status']) ?>"
+                        >
                             <img src="<?= base_url('assets/images/kertas_kerja/'.$header['photo_path']) ?>" class="img-fluid rounded mb-3" style="max-height:500px" alt="foto kertas kerja">
                         </a>
                     <?php endif; ?>
@@ -67,10 +71,14 @@
 <script type="text/javascript">
 (function(){
     var TOKEN = "<?= $this->security->get_csrf_hash() ?>";
-    $(document).on('click', '#btnMarkRead', function(){
-        var $btn = $(this);
+    $(document).on('click', '.js-mark-read-photo', function(){
+        var $link = $(this);
+        if ($link.data('status') !== 'new') {
+            return;
+        }
+
         $.post("<?= site_url('hr/kertas_kerja/mark_read') ?>", {
-            myToken: TOKEN, id: $btn.data('id')
+            myToken: TOKEN, id: $link.data('id')
         }, null, 'json').done(function(res){
             if(res.status){ location.reload(); } else { show_modal('info', res.message); }
         });
