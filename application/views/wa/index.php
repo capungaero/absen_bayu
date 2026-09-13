@@ -139,7 +139,7 @@
                     <form method="post" action="<?= site_url('wa/send_rekap_pagi') ?>" onsubmit="return confirm('Kirim rekap pagi sekarang?')">
                         <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" value="<?= $this->security->get_csrf_hash() ?>">
                         <button type="submit" class="btn btn-success <?= !$cfg_active ? 'disabled' : '' ?>">
-                            <i class="mdi mdi-weather-sunny me-1"></i>Kirim Rekap Pagi
+                            <i class="mdi mdi-file-pdf-box me-1"></i>Kirim PDF + WA Pagi
                         </button>
                     </form>
 
@@ -147,7 +147,7 @@
                     <form method="post" action="<?= site_url('wa/send_rekap_siang') ?>" onsubmit="return confirm('Kirim rekap siang sekarang?')">
                         <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" value="<?= $this->security->get_csrf_hash() ?>">
                         <button type="submit" class="btn btn-warning <?= !$cfg_active ? 'disabled' : '' ?>">
-                            <i class="mdi mdi-weather-partly-cloudy me-1"></i>Kirim Rekap Siang
+                            <i class="mdi mdi-file-pdf-box me-1"></i>Kirim PDF + WA Siang
                         </button>
                     </form>
 
@@ -214,7 +214,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title"><i class="mdi mdi-clock-outline me-1"></i>URL Cron Job (Jadwal Otomatis)</h5>
-                <p class="text-muted small">Daftarkan URL ini di cron job server Anda (setiap menit / setiap jam):</p>
+                <p class="text-muted small">Cron server menjalankan URL ini setiap menit. Laporan hanya diproses pada rentang jadwal yang dipilih.</p>
                 <?php $cron_token = $config['cron_token'] ?? ''; ?>
                 <div class="input-group">
                     <input type="text" id="cron_url" class="form-control font-monospace"
@@ -263,6 +263,14 @@
                                     $type_labels = [
                                         'rekap_pagi'  => '<span class="badge bg-success">Rekap Pagi</span>',
                                         'rekap_siang' => '<span class="badge bg-warning text-dark">Rekap Siang</span>',
+                                        'rekap_pagi_pdf' => '<span class="badge bg-success">PDF Pagi</span>',
+                                        'rekap_pagi_text' => '<span class="badge bg-success">WA Pagi</span>',
+                                        'rekap_siang_pdf' => '<span class="badge bg-warning text-dark">PDF Siang</span>',
+                                        'rekap_siang_text' => '<span class="badge bg-warning text-dark">WA Siang</span>',
+                                        'rekap_pagi_shift_warning' => '<span class="badge bg-danger">Warning Shift</span>',
+                                        'rekap_siang_shift_warning' => '<span class="badge bg-danger">Warning Shift</span>',
+                                        'rekap_pagi_sync_warning' => '<span class="badge bg-danger">Warning Sync</span>',
+                                        'rekap_siang_sync_warning' => '<span class="badge bg-danger">Warning Sync</span>',
                                         'notif_absen' => '<span class="badge bg-danger">Notif Absen</span>',
                                         'manual'      => '<span class="badge bg-info">Manual</span>',
                                     ];

@@ -1,0 +1,7 @@
+<?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+// Salin menjadi lacak.local.php di server. File rahasia harus hanya dapat
+// dibaca root dan grup proses web.
+$config['lacak_attendance']['username'] = trim((string)file_get_contents('/etc/absen-lacak-user'));
+$config['lacak_attendance']['password'] = trim((string)file_get_contents('/etc/absen-lacak-password'));

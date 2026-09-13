@@ -51,6 +51,10 @@ Class Wa_model extends CI_Model {
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        $type_column = $this->db->query("SHOW COLUMNS FROM `wa_log` LIKE 'type'")->row_array();
+        if (!empty($type_column['Type']) && stripos($type_column['Type'], 'enum(') === 0) {
+            $this->db->query("ALTER TABLE `wa_log` MODIFY COLUMN `type` VARCHAR(50) NOT NULL");
+        }
         // Insert empty config; real Hermes API key must be filled from the WA config page.
         $count = $this->db->query("SELECT COUNT(*) AS cnt FROM wa_config")->row_array();
         if ((int)$count['cnt'] === 0) {
@@ -343,12 +347,15 @@ Class Wa_model extends CI_Model {
         return $this->db->count_all($this->log_table);
     }
 
-    public function was_sent_today($type) {
+    public function was_sent_today($type, $phone = null) {
         $today = date('Y-m-d');
-        $count = $this->db->where('type', $type)
-                          ->where("DATE(created_at) = '$today'")
-                          ->where('status', 'success')
-                          ->count_all_results($this->log_table);
+        $this->db->where('type', $type)
+                 ->where("DATE(created_at) = ".$this->db->escape($today), null, false)
+                 ->where('status', 'success');
+        if ($phone !== null) {
+            $this->db->where('phone', $phone);
+        }
+        $count = $this->db->count_all_results($this->log_table);
         return $count > 0;
     }
 }

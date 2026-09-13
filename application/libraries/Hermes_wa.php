@@ -105,6 +105,58 @@ class Hermes_wa {
         ];
     }
 
+    /** Kirim dokumen yang berada pada filesystem VPS yang sama dengan gateway. */
+    public function send_document($phone, $file_path, $caption = '', $file_name = null) {
+        if (empty($this->api_key)) {
+            return ['success' => false, 'http_code' => 0, 'response' => 'API key Hermes belum dikonfigurasi.'];
+        }
+
+        $real_path = realpath($file_path);
+        if ($real_path === false || !is_file($real_path) || strtolower(pathinfo($real_path, PATHINFO_EXTENSION)) !== 'pdf') {
+            return ['success' => false, 'http_code' => 0, 'response' => 'Dokumen PDF tidak ditemukan.'];
+        }
+
+        $phone = $this->normalize_phone($phone);
+        $media_endpoint = preg_replace('~/send/?$~', '/send-media', $this->endpoint);
+        $payload = json_encode([
+            'chatId' => $phone.'@c.us',
+            'filePath' => $real_path,
+            'mediaType' => 'document',
+            'caption' => $caption,
+            'fileName' => $file_name ?: basename($real_path),
+        ]);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $media_endpoint,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_TIMEOUT => 90,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'X-API-Key: '.$this->api_key,
+            ],
+        ]);
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+
+        if ($curl_error) {
+            return ['success' => false, 'http_code' => $http_code, 'response' => 'cURL error: '.$curl_error];
+        }
+        return [
+            'success' => $http_code >= 200 && $http_code < 300,
+            'http_code' => $http_code,
+            'response' => $response,
+        ];
+    }
+
     /**
      * Kirim pesan ke banyak nomor
      *

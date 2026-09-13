@@ -27,6 +27,7 @@ ftp.txt
 application/config/email.local.php
 application/config/database.local.php
 application/config/sync_gate.local.php
+application/config/lacak.local.php
 /resume.md
 /code_review.md
 /ascii_diagram.md

@@ -86,7 +86,7 @@
                     <hr>
                     <h6 class="mb-3"><i class="mdi mdi-clock-outline me-1"></i>Jadwal Pengiriman Otomatis</h6>
 
-                    <!-- Rekap Pagi -->
+                    <!-- Rekap PDF dan pesan WA pagi -->
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <div class="form-check form-switch mb-2">
