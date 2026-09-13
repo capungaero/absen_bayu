@@ -6,9 +6,8 @@ export default function Admin({ me, onSessionEnd }) {
     <div>
       <RosterAdmin
         icon="🕵️" title="Inspector" label="inspector"
-        desc="Hanya mitra yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan. Utama = akses penuh (lintas cabang, ACC, putus pengajuan). Asisten = cuma boleh posting & lihat temuan yang dia lapor sendiri."
-        listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete" setLevelPath="/inspector_set_level"
-        showLevel
+        desc="Hanya mitra yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan."
+        listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
         onSessionEnd={onSessionEnd}
       />
       <CategoryAdmin onSessionEnd={onSessionEnd} />
@@ -21,11 +20,10 @@ export default function Admin({ me, onSessionEnd }) {
   );
 }
 
-function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, setLevelPath, showLevel, onSessionEnd }) {
+function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onSessionEnd }) {
   const [rows, setRows] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [pick, setPick] = useState('');
-  const [level, setLevel] = useState('utama');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -50,9 +48,8 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, set
     setBusy(true);
     setError('');
     try {
-      await apiPost(addPath, showLevel ? { user_id: pick, level } : { user_id: pick });
+      await apiPost(addPath, { user_id: pick });
       setPick('');
-      setLevel('utama');
       load();
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -66,17 +63,6 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, set
     if (!window.confirm(`Hapus ${row.name} dari daftar ${label}?`)) return;
     try {
       await apiPost(delPath, { id: row.id });
-      load();
-    } catch (err) {
-      if (err.auth) return onSessionEnd();
-      alert(err.message);
-    }
-  };
-
-  const toggleLevel = async (row) => {
-    const next = row.level === 'asisten' ? 'utama' : 'asisten';
-    try {
-      await apiPost(setLevelPath, { id: row.id, level: next });
       load();
     } catch (err) {
       if (err.auth) return onSessionEnd();
@@ -98,18 +84,12 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, set
             <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>
           ))}
         </select>
-        {showLevel && (
-          <select value={level} onChange={(e) => setLevel(e.target.value)} style={{ minWidth: 150 }}>
-            <option value="utama">Inspector Utama</option>
-            <option value="asisten">Asisten Inspector</option>
-          </select>
-        )}
         <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || !pick}>+ Tambah {title}</button>
       </div>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th>{showLevel && <th>Status</th>}<th></th></tr>
+            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((row) => (
@@ -117,25 +97,11 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, set
                 <td>{row.name}</td>
                 <td>{row.position_name || '-'}</td>
                 <td>{row.branch_name || '-'}</td>
-                {showLevel && (
-                  <td>
-                    <span className={row.level === 'asisten' ? 'badge badge-ditolak' : 'badge badge-selesai'}>
-                      {row.level === 'asisten' ? 'Asisten' : 'Utama'}
-                    </span>
-                  </td>
-                )}
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  {showLevel && (
-                    <button className="btn btn-outline btn-sm" onClick={() => toggleLevel(row)}>
-                      Jadikan {row.level === 'asisten' ? 'Utama' : 'Asisten'}
-                    </button>
-                  )}{' '}
-                  <button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button>
-                </td>
+                <td><button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button></td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={showLevel ? 5 : 4} style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
+              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
             )}
           </tbody>
         </table>
@@ -511,21 +477,13 @@ function DivisionAdmin({ onSessionEnd }) {
 
 function WaContactAdmin({ onSessionEnd }) {
   const [contacts, setContacts] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [divisions, setDivisions] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [c, e, d] = await Promise.all([
-        apiGet('/wa_contacts', { all: 1 }),
-        apiGet('/employees'),
-        apiGet('/divisions'),
-      ]);
-      setContacts(c.rows);
-      setEmployees(e.rows);
-      setDivisions(d.rows);
+      const d = await apiGet('/wa_contacts', { all: 1 });
+      setContacts(d.rows);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
@@ -553,8 +511,6 @@ function WaContactAdmin({ onSessionEnd }) {
         name: editing.name.trim(),
         phone: editing.phone.trim(),
         is_active: editing.is_active ? 1 : 0,
-        employee_ids: editing.employee_ids || [],
-        division_ids: editing.division_ids || [],
       });
       setEditing(null);
       load();
@@ -564,61 +520,35 @@ function WaContactAdmin({ onSessionEnd }) {
     }
   };
 
-  const toggleEditingEmployee = (uid) => {
-    setEditing((f) => {
-      const cur = f.employee_ids || [];
-      const has = cur.includes(uid);
-      return { ...f, employee_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
-    });
-  };
-  const toggleEditingDivision = (did) => {
-    setEditing((f) => {
-      const cur = f.division_ids || [];
-      const has = cur.includes(did);
-      return { ...f, division_ids: has ? cur.filter((x) => x !== did) : [...cur, did] };
-    });
-  };
-
   return (
     <div className="admin-section">
       <h3>📱 Kontak Notifikasi WA</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Nomor HP + nama yang bisa dipilih sebagai penerima notif WA untuk Kode Area tertentu
-        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah). Untuk HP KANTOR yang dipakai
-        bareng: tandai karyawan dan/atau divisi (posisi) di bawah — mereka otomatis dapat
-        notif ke nomor ini tanpa perlu diisi manual no kerja per orang lagi.
+        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah).
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ name: '', phone: '', is_active: 1, employee_ids: [], division_ids: [] })}>
+        onClick={() => setEditing({ name: '', phone: '', is_active: 1 })}>
         + Tambah Kontak
       </button>
       <div className="table-wrap">
         <table className="loc-table">
-          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Karyawan/Divisi Terasosiasi</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {contacts.map((c) => (
               <tr key={c.id} className={Number(c.is_active) ? '' : 'inactive'}>
                 <td>{c.name}</td>
                 <td>{c.phone}</td>
-                <td className="wrap" style={{ fontSize: 12.5 }}>
-                  {c.employee_names && <div>👤 {c.employee_names}</div>}
-                  {c.division_names && <div style={{ color: 'var(--muted)' }}>🏷 Divisi: {c.division_names}</div>}
-                  {!c.employee_names && !c.division_names && <span style={{ color: 'var(--muted)' }}>—</span>}
-                </td>
                 <td>{Number(c.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => setEditing({
-                    ...c,
-                    employee_ids: c.employee_ids ? c.employee_ids.split(',').map(Number) : [],
-                    division_ids: c.division_ids ? c.division_ids.split(',').map(Number) : [],
-                  })}>Edit</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(c)}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(c)}>Hapus</button>
                 </td>
               </tr>
             ))}
             {contacts.length === 0 && (
-              <tr><td colSpan="5" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
+              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
             )}
           </tbody>
         </table>
@@ -640,41 +570,6 @@ function WaContactAdmin({ onSessionEnd }) {
               <input type="checkbox" checked={!!Number(editing.is_active)} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked ? 1 : 0 })} />
               Aktif
             </label>
-
-            <div className="field">
-              <label>Karyawan yang pakai nomor ini (bisa lebih dari satu)</label>
-              <div className="pj-checklist">
-                {employees.map((u) => (
-                  <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
-                    <input
-                      type="checkbox"
-                      checked={(editing.employee_ids || []).includes(Number(u.id))}
-                      onChange={() => toggleEditingEmployee(Number(u.id))}
-                    />
-                    {u.name}{u.position_name ? ` (${u.position_name})` : ''}
-                  </label>
-                ))}
-                {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Tidak ada karyawan.</div>}
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Divisi (semua karyawan posisi ini otomatis ikut, bisa lebih dari satu)</label>
-              <div className="pj-checklist">
-                {divisions.map((d) => (
-                  <label key={d.id} className="check-row" style={{ marginBottom: 4 }}>
-                    <input
-                      type="checkbox"
-                      checked={(editing.division_ids || []).includes(Number(d.id))}
-                      onChange={() => toggleEditingDivision(Number(d.id))}
-                    />
-                    {d.name}
-                  </label>
-                ))}
-                {divisions.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Belum ada divisi -- kelola di bagian Divisi.</div>}
-              </div>
-            </div>
-
             <div className="modal-actions">
               <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Batal</button>
               <button className="btn btn-primary btn-sm" onClick={save}>Simpan</button>
@@ -807,43 +702,18 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Notif WA pakai NO KERJA (bukan no pribadi di master karyawan -- karyawan
-  // dilarang bawa HP). Saat menugaskan orang yang belum punya no kerja
-  // tersimpan, minta input dulu; batal input = batal centang.
-  const phoneHint = (u) => {
-    const manual = (form.work_phones || {})[Number(u.id)] || u.work_phone;
-    if (manual) return `📱 ${manual}`;
-    if (Number(u.has_notify_coverage)) return '📱 HP kantor (Kontak WA)';
-    return 'belum ada no kerja';
-  };
-
-  const askWorkPhone = (uid) => {
-    const emp = employees.find((u) => Number(u.id) === uid);
-    // Tercakup HP kantor (Kelola -> Kontak WA, langsung atau lewat divisi/posisi)
-    // -- no kerja pribadi tak perlu diminta lagi.
-    if (emp?.work_phone || Number(emp?.has_notify_coverage) || (form.work_phones || {})[uid]) return true;
-    const no = window.prompt(
-      `No. WA KERJA untuk ${emp?.name || 'karyawan ini'} (bukan no pribadi):`, '');
-    const phone = (no || '').trim();
-    if (!phone) return false;
-    setForm((f) => ({ ...f, work_phones: { ...(f.work_phones || {}), [uid]: phone } }));
-    return true;
-  };
-
   const togglePj = (uid) => {
-    const has = (form.pj_user_ids || []).includes(uid);
-    if (!has && !askWorkPhone(uid)) return;
     setForm((f) => {
       const cur = f.pj_user_ids || [];
+      const has = cur.includes(uid);
       return { ...f, pj_user_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
     });
   };
 
   const toggleSpv = (uid) => {
-    const has = (form.spv_user_ids || []).includes(uid);
-    if (!has && !askWorkPhone(uid)) return;
     setForm((f) => {
       const cur = f.spv_user_ids || [];
+      const has = cur.includes(uid);
       const next = has ? cur.filter((x) => x !== uid) : [...cur, uid];
       let primary = f.primary_spv_id;
       if (has && primary === uid) primary = next[0] ?? null; // Utama dihapus -> pindah ke sisa pertama
@@ -875,7 +745,6 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         contact_ids: form.contact_ids || [],
         division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
-        work_phones: form.work_phones || {},
       });
       onSaved();
     } catch (err) {
@@ -911,9 +780,6 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
                   onChange={() => togglePj(Number(u.id))}
                 />
                 {u.name}{u.position_name ? ` (${u.position_name})` : ''}
-                <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
-                  {phoneHint(u)}
-                </span>
               </label>
             ))}
             {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
@@ -933,9 +799,6 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
                   onChange={() => toggleSpv(Number(u.id))}
                 />
                 {u.name}{u.position_name ? ` (${u.position_name})` : ''}
-                <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
-                  {phoneHint(u)}
-                </span>
               </label>
             ))}
             {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}

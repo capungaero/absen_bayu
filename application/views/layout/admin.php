@@ -418,6 +418,9 @@
                                             <a href="<?= base_url('tools/temuan/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-flag-variant"></i> Temuan</a>
                                             <a href="<?= base_url('kasir/') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-cash-register"></i> Temuan Kasir</a>
                                             <a href="<?= base_url('checklist/') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-format-list-checks"></i> Checklist Tugas</a>
+                                            <?php if (in_array($role, ['admin', 'hr'])) { ?>
+                                            <a href="<?= site_url('hr/jeda-istirahat') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-food-fork-drink"></i> Jeda Istirahat</a>
+                                            <?php } ?>
                                             <?php if (in_array($role, ['admin', 'admin-branch'])) { ?>
                                             <a href="https://absen.4dm1n.my.id/kertaskerja/" target="_blank" class="dropdown-item"><i class="mdi mdi-checkbox-marked-outline"></i> Kertas Kerja</a>
                                             <?php } ?>

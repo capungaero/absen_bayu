@@ -82,6 +82,77 @@ class Attlog_parser
     }
 
     /**
+     * Parse raw text .dat menjadi daftar tap DATAR, tanpa filter periode.
+     *
+     * Dipakai lapis raw (attendance_tap): arsip menyimpan semua tap apa adanya,
+     * pemotongan periode itu urusan tampilan. Over-ingest tidak mahal karena
+     * penulisan memakai INSERT IGNORE pada UNIQUE (machine_sn, finger_id, tap_at).
+     *
+     * Berbeda dari parse_taps() yang mengelompokkan per finger/tanggal dan
+     * membuang tap di luar periode. parse_taps() JANGAN diubah -- masih dipakai
+     * hr/Presence::_import_attlog_dat dan scripts/smoke_attlog_parse.php.
+     *
+     * Return:
+     *   [
+     *     'taps' => [
+     *       ['finger_id' => string, 'tap_at' => 'Y-m-d H:i:s', 'tap_date' => 'Y-m-d',
+     *        'raw_status' => string|null, 'raw_verify' => string|null],
+     *       ...
+     *     ],
+     *     'stats' => ['total_lines', 'raw_count', 'invalid_count',
+     *                 'unique_finger_ids', 'first_tap_at', 'last_tap_at'],
+     *   ]
+     */
+    public function parse_tap_list($raw)
+    {
+        $lines = preg_split('/\r\n|\r|\n/', trim((string) $raw));
+        $taps = [];
+        $fingers = [];
+        $stats = [
+            'total_lines'   => 0,
+            'raw_count'     => 0,
+            'invalid_count' => 0,
+        ];
+        $first = null;
+        $last = null;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') { continue; }
+            $stats['total_lines']++;
+
+            $cols = preg_split('/\s+/', $line);
+            if (count($cols) < 3) { $stats['invalid_count']++; continue; }
+
+            $finger_id = trim($cols[0]);
+            $timestamp = strtotime($cols[1].' '.$cols[2]);
+            if ($finger_id === '' || !$timestamp) {
+                $stats['invalid_count']++;
+                continue;
+            }
+
+            $tap_at = date('Y-m-d H:i:s', $timestamp);
+            $taps[] = [
+                'finger_id'  => $finger_id,
+                'tap_at'     => $tap_at,
+                'tap_date'   => date('Y-m-d', $timestamp),
+                'raw_status' => isset($cols[3]) ? substr(trim($cols[3]), 0, 8) : null,
+                'raw_verify' => isset($cols[4]) ? substr(trim($cols[4]), 0, 8) : null,
+            ];
+            $fingers[$finger_id] = true;
+            $stats['raw_count']++;
+            if ($first === null || $tap_at < $first) { $first = $tap_at; }
+            if ($last === null || $tap_at > $last) { $last = $tap_at; }
+        }
+
+        $stats['unique_finger_ids'] = count($fingers);
+        $stats['first_tap_at'] = $first;
+        $stats['last_tap_at'] = $last;
+
+        return ['taps' => $taps, 'stats' => $stats];
+    }
+
+    /**
      * Klasifikasi tap menjadi entry/out/rest berdasarkan window shift.
      *
      * Input:
@@ -166,7 +237,17 @@ class Attlog_parser
                         continue;
                     }
 
-                    if (attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out']) && $payload['out_time'] == '') {
+                    // Jam pulang = tap TERAKHIR di window pulang.
+                    //
+                    // Aturan lama memakai tap PERTAMA, sehingga karyawan yang
+                    // sempat tap di lokasi lain sebelum benar-benar pulang
+                    // kehilangan jam kerja (mis. tap 19:45 di Gambir lalu 20:08
+                    // di Sudirman -> tercatat pulang 19:45).
+                    //
+                    // CATATAN: sync Python di VPS masih memakai tap pertama.
+                    // Selama keduanya berjalan berdampingan, jam pulang akan
+                    // berbeda; perbedaan hilang setelah VPS ikut memakai jalur ini.
+                    if (attlog_time_between($time, $shift['end_time_in'], $shift['end_time_out'])) {
                         $payload['out_time'] = $d_day;
                         continue;
                     }

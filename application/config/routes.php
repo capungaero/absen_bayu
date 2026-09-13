@@ -233,6 +233,10 @@ $route['export_absen_report/(:num)/(:num)/(:num)'] = 'hr/Presence/export_absen_r
 $route['export_work_schedule/(:num)/(:num)/(:num)'] = 'hr/Presence/export_work_schedule/$1/$2/$3';
 $route['resetSchedule/(:num)/(:num)'] = 'hr/Presence/reset/$1/$2';
 
+$route['hr/jeda-istirahat']      = 'hr/JedaIstirahat/index';
+$route['hr/jeda-istirahat/data'] = 'hr/JedaIstirahat/data';
+$route['hr/jeda-istirahat/export'] = 'hr/JedaIstirahat/export';
+
 $route['hr/payroll'] = 'hr/Payroll';
 $route['hr/payroll/(:num)/(:num)'] = 'hr/Payroll/detail/$1/$2';
 $route['hr/payroll/(:num)/(:num)/print'] = 'hr/Payroll/print/$1/$2';

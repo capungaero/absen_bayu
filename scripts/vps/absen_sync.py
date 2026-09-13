@@ -34,17 +34,13 @@ SSH_CONFIG = {
     'ssh_passphrase': '',
 }
 
-# Database -- LOCAL VPS mysql (sejak 18 Agu 2026 VPS jadi produksi, sync tidak
-# lagi lewat SSH tunnel ke tiffany.my.id; SSH_CONFIG di atas disimpan buat rollback).
+# Database (localhost via SSH tunnel)
 DB_CONFIG = {
     'host': '127.0.0.1',
     'port': 3306,
-    'user': 'absen_copy',
-    # Password TIDAK di-commit (sempat bocor ke git 22 Agu 2026 -> sudah
-    # dirotasi 23 Agu). Nilai asli hanya di kopi server VPS
-    # (/home/santai/.hermes/scripts/absen_sync.py) & /root/.absen_copy_pass.
-    'password': os.environ.get('ABSEN_DB_PASS', 'GANTI-DI-SERVER'),
-    'database': 'absen_copy',
+    'user': 'tifx3722_absen',
+    'password': 'N7mQ4vZ9rT2pL8sW6xY3',
+    'database': 'tifx3722_newtiffa_timesheet',
     'charset': 'utf8mb4',
 }
 
@@ -454,7 +450,7 @@ def get_employee_map(conn, finger_ids, date, tunnel_port=None, db_config=None):
 
     query = """
         SELECT u.id as user_id, u.employee_code, u.first_name, u.last_name,
-               u.jenis_kelamin, po.branch_id
+               po.branch_id
         FROM users u
         JOIN position po ON po.id = u.position_id
         WHERE u.active = 1
@@ -505,11 +501,6 @@ END_PAYROLL_DATE = 25
 
 # Prayer break rule: max 15 minutes
 PRAYER_MAX_MINUTES = 15
-# Batas wajar tap KELUAR susulan di luar window klasifikasi (menit sejak tap
-# MASUK). Cuma menentukan apakah tap dicatat sbg keluar -- keterlambatan
-# tetap dihitung normal dari PRAYER_MAX_MINUTES/FRIDAY_MAX_MINUTES di bawah,
-# jadi kalau kelamaan tetap kelihatan telat, bukan disembunyikan.
-PRAYER_CLOSE_MAX_MINUTES = 180
 
 # Friday prayer rules (khusus laki-laki)
 # Window: -15 menit s/d +60 menit dari waktu dzuhur
@@ -547,46 +538,6 @@ ALADHAN_TO_PRAYER = {
 
 # Cache for prayer times (avoid repeated API calls)
 _prayer_times_cache = {}
-
-# Window sholat per-cabang dari tabel branch (sinkron dgn PHP _import_pray_sheet,
-# 20 Agu 2026). Kalau terisi, classify_prayer_scan pakai ini; Aladhan API jadi
-# fallback saja. Menghilangkan inkonsistensi klasifikasi PHP vs Python (dulu
-# tap sama bisa beda kolom tergantung jalur sync mana yang jalan terakhir).
-_branch_windows = None
-
-def load_branch_prayer_windows(conn):
-    """Muat window sholat cabang aktif pertama. Return dict atau None."""
-    global _branch_windows
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM branch WHERE is_active=1 ORDER BY id LIMIT 1")
-            b = cur.fetchone()
-        if not b:
-            _branch_windows = None
-            return None
-        def t(v):
-            if v is None:
-                return None
-            s = str(v)
-            if len(s.split(':')) == 2:
-                s += ':00'
-            return s
-        wins = {}
-        for name in ('subuh', 'dzuhur', 'ashar', 'maghrib', 'isha', 'friday'):
-            start = t(b.get(name + '_pray_time_in'))
-            end = t(b.get(name + '_pray_time_out'))
-            rng = b.get(name + '_pray_time_range')
-            if start and end:
-                wins[name] = {'start': start, 'end': end,
-                              'range': int(rng) if rng else None}
-        _branch_windows = wins or None
-        if _branch_windows:
-            print(f"  \U0001F54C Window sholat dari config cabang id {b.get('id')} ({len(wins)} window)")
-        return _branch_windows
-    except Exception as e:
-        print(f"  \u26A0\uFE0F Gagal muat window cabang, fallback Aladhan: {e}")
-        _branch_windows = None
-        return None
 
 
 def fetch_prayer_times(date_str=None):
@@ -689,25 +640,9 @@ def classify_prayer_scan(time_str, date_str):
         return datetime.strptime(val, "%H:%M:%S").time()
     
     t = parse_t(time_str)
+    windows = fetch_prayer_times(date_str)
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     is_friday = dt.weekday() == 4
-
-    # Window cabang (kalau dimuat) menang atas Aladhan -- urutan cek sama
-    # dgn PHP: friday duluan di hari Jumat, sisanya urut waktu.
-    if _branch_windows:
-        if is_friday and 'friday' in _branch_windows:
-            w = _branch_windows['friday']
-            if w['start'] <= time_str <= w['end']:
-                return 'jumat'
-        for name in ('subuh', 'dzuhur', 'ashar', 'maghrib', 'isha'):
-            if is_friday and name == 'dzuhur':
-                continue
-            w = _branch_windows.get(name)
-            if w and w['start'] <= time_str <= w['end']:
-                return name
-        return None
-
-    windows = fetch_prayer_times(date_str)
     
     # On Friday: check jumat window FIRST (narrower, male-specific)
     if is_friday:
@@ -1012,9 +947,6 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
     period_from, period_to = get_payroll_period(today)
     cutoff = min(today, period_to)
 
-    # Window sholat per-cabang (paritas PHP) -- dimuat sekali per run.
-    load_branch_prayer_windows(conn)
-
     # Group logs by (finger_id, date) within the period
     logs_by_key = {}
     for finger_id, timestamp, date_str, time_str in logs:
@@ -1044,53 +976,27 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
         jenis_kelamin = employee_map[finger_id].get('jenis_kelamin')
         day_entries.sort(key=lambda x: x[0])
 
-        # Collect first/second scan per prayer for this day.
-        # FIX 2026-08-19: window klasifikasi (classify_prayer_scan) cuma
-        # dipakai buat nentuin tap MASUK. Tap KELUAR yang lewat window tipis
-        # dulu DIBUANG TOTAL (masuk stats no_match) padahal mestinya tetap
-        # dicatat + dihitung telat -- itu justru fungsi kolom *_time_late.
-        # Sekarang: kalau tap gak cocok window manapun TAPI ada sholat yang
-        # barusan dibuka (in ada, out belum) dalam batas wajar
-        # (PRAYER_CLOSE_MAX_MINUTES), tap ini dicatat sebagai keluarnya.
+        # Collect first/second scan per prayer for this day
         day_prayers = {}  # {col_prefix: {'in': ts, 'out': ts|None, 'max_min': int}}
-        open_col = None
-        open_in_ts = None
         for timestamp, ds, time_str in day_entries:
             prayer = classify_prayer_scan(time_str, date_str)
-
-            if prayer:
-                if prayer == 'jumat':
-                    col = 'friday' if jenis_kelamin != 'P' else 'dzuhur'
-                    max_min = FRIDAY_MAX_MINUTES if col == 'friday' else PRAYER_MAX_MINUTES
-                else:
-                    col = prayer
-                    max_min = PRAYER_MAX_MINUTES
-                # Range per-cabang menang atas konstanta (paritas PHP).
-                if _branch_windows and _branch_windows.get(col, {}).get('range'):
-                    max_min = _branch_windows[col]['range']
-
-                if col not in day_prayers:
-                    day_prayers[col] = {'in': None, 'out': None, 'max_min': max_min}
-                if day_prayers[col]['in'] is None:
-                    day_prayers[col]['in'] = time_str
-                    open_col = col
-                    open_in_ts = time_str
-                elif day_prayers[col]['out'] is None:
-                    day_prayers[col]['out'] = time_str
-                    if open_col == col:
-                        open_col = None
+            if not prayer:
+                stats['no_match'] += 1
                 continue
 
-            if (open_col is not None and day_prayers[open_col]['out'] is None):
-                in_dt = datetime.strptime(f"{date_str} {open_in_ts}", '%Y-%m-%d %H:%M:%S')
-                cur_dt = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
-                elapsed_min = (cur_dt - in_dt).total_seconds() / 60
-                if 0 <= elapsed_min <= PRAYER_CLOSE_MAX_MINUTES:
-                    day_prayers[open_col]['out'] = time_str
-                    open_col = None
-                    continue
+            if prayer == 'jumat':
+                max_min = FRIDAY_MAX_MINUTES if jenis_kelamin != 'P' else PRAYER_MAX_MINUTES
+                col = 'friday' if jenis_kelamin != 'P' else 'dzuhur'
+            else:
+                max_min = PRAYER_MAX_MINUTES
+                col = prayer
 
-            stats['no_match'] += 1
+            if col not in day_prayers:
+                day_prayers[col] = {'in': None, 'out': None, 'max_min': max_min}
+            if day_prayers[col]['in'] is None:
+                day_prayers[col]['in'] = time_str
+            elif day_prayers[col]['out'] is None:
+                day_prayers[col]['out'] = time_str
 
         for col, scans in day_prayers.items():
             if not scans['in']:
@@ -1109,7 +1015,6 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
                 'in': f"{date_str} {scans['in']}",
                 'out': f"{date_str} {scans['out']}" if scans['out'] else None,
                 'late': late,
-                'max_min': scans['max_min'],
             }
 
     # Second pass: upsert prayer data — PROVENANCE-AWARE (2026-07-08):
@@ -1137,8 +1042,8 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
         field_late = f"{col}_time_late"
 
         with conn.cursor() as cur:
-            cur.execute(f"SELECT id, input_by, cleared_fields, {field_in} as cur_in, {field_out} as cur_out "
-                        "FROM presence WHERE user_id = %s AND flow_date = %s",
+            cur.execute(f"SELECT id, input_by, cleared_fields, {field_in} FROM presence "
+                        "WHERE user_id = %s AND flow_date = %s",
                         (user_id, date_str))
             existing = cur.fetchone()
 
@@ -1148,48 +1053,23 @@ def sync_pray_machine(machine, sync_date=None, tunnel_port=None):
 
         # Sholat yang SENGAJA dikosongkan manual (cleared_fields, dirawat trigger
         # presence_provenance_bu) tidak boleh diisi ulang sync -- sama dgn PHP
-        # _import_pray_sheet. Dicek PER FIELD (in/out terpisah) -- sebelumnya
-        # satu field terisi manual mengunci seluruh baris walau field lain masih
-        # kosong (lihat investigasi 18 Agu 2026: 13 baris dzuhur kehilangan
-        # time_out selamanya krn field in-nya kepasang duluan).
+        # _import_pray_sheet.
         cleared = {f.strip() for f in str(existing.get('cleared_fields') or '').split(',') if f.strip()}
-        is_manual = str(existing.get('input_by') or '') not in ('system', 'machine', '')
-        lock_in = (field_in in cleared) or (is_manual and existing.get('cur_in'))
-        lock_out = (field_out in cleared) or (is_manual and existing.get('cur_out'))
-
-        if lock_in and lock_out:
+        if field_in in cleared:
             skipped_manual += 1
             continue
 
-        set_parts = []
-        params = []
-        if not lock_in:
-            set_parts.append(f"{field_in} = %s")
-            params.append(data['in'])
-        if not lock_out:
-            set_parts.append(f"{field_out} = %s")
-            params.append(data['out'])
-
-        final_in = data['in'] if not lock_in else existing.get('cur_in')
-        final_out = data['out'] if not lock_out else existing.get('cur_out')
-        late = 0
-        if final_in and final_out:
-            try:
-                in_dt = final_in if isinstance(final_in, datetime) else datetime.strptime(str(final_in), '%Y-%m-%d %H:%M:%S')
-                out_dt = final_out if isinstance(final_out, datetime) else datetime.strptime(str(final_out), '%Y-%m-%d %H:%M:%S')
-                dur = (out_dt - in_dt).total_seconds() / 60
-                if dur > data['max_min']:
-                    late = int(dur - data['max_min'])
-            except Exception:
-                pass
-        set_parts.append(f"{field_late} = %s")
-        params.append(late)
-        set_parts.append("updated_at = %s")
-        params.append(datetime.now())
-        params.append(existing['id'])
+        is_manual = str(existing.get('input_by') or '') not in ('system', 'machine', '')
+        if is_manual and existing.get(field_in):
+            skipped_manual += 1
+            continue
 
         with conn.cursor() as cur:
-            cur.execute(f"UPDATE presence SET {', '.join(set_parts)} WHERE id = %s", params)
+            cur.execute(
+                f"UPDATE presence SET {field_in} = %s, {field_out} = %s, "
+                f"{field_late} = %s, updated_at = %s WHERE id = %s",
+                (data['in'], data['out'], data['late'], datetime.now(), existing['id'])
+            )
         conn.commit()
         updated_prayers += 1
         stats['processed'] += 1
@@ -1488,18 +1368,28 @@ def main():
             print(f"📅 Target date: {sync_date}")
         print("=" * 60)
         
-        # Connect to DB -- local VPS mysql (no SSH tunnel, lihat catatan DB_CONFIG)
-        print("\n🔗 Connecting to local database...")
-
-        tunnel = None
-        tunnel_port = DB_CONFIG['port']
-
+        # Connect to DB via SSH tunnel
+        print("\n🔗 Connecting to database via SSH tunnel...")
+        
+        tunnel = SSHTunnel(
+            ssh_host=SSH_CONFIG['ssh_host'],
+            ssh_port=SSH_CONFIG['ssh_port'],
+            ssh_user=SSH_CONFIG['ssh_user'],
+            ssh_key=SSH_CONFIG['ssh_key'],
+            ssh_passphrase=SSH_CONFIG['ssh_passphrase'],
+            remote_host='127.0.0.1',
+            remote_port=DB_CONFIG['port'],
+        )
+        tunnel_port = tunnel.start()
+        print(f"  🔗 SSH tunnel established on port {tunnel_port}")
+        
         conn = get_db_connection(tunnel_port)
         if not conn:
             print("❌ Cannot connect to database. Exiting.")
+            tunnel.stop()
             release_lock()
             sys.exit(1)
-
+        
         print("✅ Database connected")
 
         # Ambil daftar mesin LANGSUNG dari DB tiap run (bukan hardcode) -- lihat
@@ -1555,8 +1445,7 @@ def main():
             conn.close()
         except:
             pass
-        if tunnel:
-            tunnel.stop()
+        tunnel.stop()
         print("\n✅ Sync selesai!")
         release_lock()
         
