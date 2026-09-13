@@ -59,6 +59,10 @@
                                         'rekap_siang_shift_warning' => '<span class="badge bg-danger">Warning Shift</span>',
                                         'rekap_pagi_sync_warning' => '<span class="badge bg-danger">Warning Sync</span>',
                                         'rekap_siang_sync_warning' => '<span class="badge bg-danger">Warning Sync</span>',
+                                        'rekap_pagi_fingerprint_warning' => '<span class="badge bg-danger">Warning Fingerprint</span>',
+                                        'rekap_siang_fingerprint_warning' => '<span class="badge bg-danger">Warning Fingerprint</span>',
+                                        'rekap_pagi_lacak_warning' => '<span class="badge bg-danger">Warning Lacak</span>',
+                                        'rekap_siang_lacak_warning' => '<span class="badge bg-danger">Warning Lacak</span>',
                                         'notif_absen' => '<span class="badge bg-danger">Notif Absen</span>',
                                         'manual'      => '<span class="badge bg-info">Manual</span>',
                                     ];

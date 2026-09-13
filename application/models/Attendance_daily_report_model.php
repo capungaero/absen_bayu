@@ -84,6 +84,7 @@ class Attendance_daily_report_model extends CI_Model {
                 COALESCE(branch.branch_name, 'Tanpa Cabang') AS branch_name,
                 usa.id AS schedule_id, usa.additional_type,
                 shift.id AS shift_id, shift.shift_code, shift.shift_name,
+                shift.is_active AS shift_active, shift.deleted_at AS shift_deleted_at,
                 presence.presence_type, ar.entry_time, ar.status AS recap_status,
                 COALESCE(ar.late_minutes, 0) AS late_minutes
             FROM users
@@ -120,6 +121,8 @@ class Attendance_daily_report_model extends CI_Model {
         $name = strtoupper(trim((string)$row['shift_name']));
         return $row['additional_type'] === 'work'
             && !empty($row['shift_id'])
+            && $row['shift_active'] === '1'
+            && empty($row['shift_deleted_at'])
             && $code !== '' && $code !== '-' && $code !== 'NO-SC'
             && $name !== 'NO SCHEDULE';
     }
@@ -138,6 +141,7 @@ class Attendance_daily_report_model extends CI_Model {
     private function _status($row, $lacak_time = null) {
         if ($row['presence_type'] === 'sakit') return 'sakit';
         if (in_array($row['presence_type'], ['izin', 'cuti'], true)) return 'izin';
+        // Sesuai aturan operasional, tap Lacak pagi dihitung hadir tanpa penalti telat.
         if ($lacak_time) return 'hadir';
         if ($row['recap_status'] === 'terlambat') return 'terlambat';
         if ($row['recap_status'] === 'hadir') return 'hadir';
@@ -160,7 +164,13 @@ class Attendance_daily_report_model extends CI_Model {
         $location = strtoupper(trim((string)$row['location']));
         if (strpos($location, 'GAMBIR') !== false) return 'Gambir';
         if (strpos($location, 'KANVAS') !== false) return 'Kanvas';
-        return 'Sudirman';
+        if (strpos($location, 'SUDIRMAN') !== false) return 'Sudirman';
+
+        $branch = strtoupper(trim((string)$row['branch_name']));
+        if (strpos($branch, 'GAMBIR') !== false) return 'Gambir';
+        if (strpos($branch, 'KANVAS') !== false) return 'Kanvas';
+        if (strpos($branch, 'SUDIRMAN') !== false || preg_match('/\bSDR\b/', $branch)) return 'Sudirman';
+        return trim((string)$row['branch_name']) ?: 'Tanpa Cabang';
     }
 
     private function _empty_branch($employee) {

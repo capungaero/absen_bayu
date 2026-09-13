@@ -268,6 +268,9 @@ class Wa extends CI_Controller {
     // =========================================================================
 
     public function cron($token = '') {
+        if ($token === '') {
+            $token = (string)$this->input->get_request_header('X-Cron-Token', true);
+        }
         // Cek token dari config
         $config     = $this->wa->get_config();
         $cron_token = isset($config['cron_token']) ? (string)$config['cron_token'] : '';
@@ -371,7 +374,7 @@ class Wa extends CI_Controller {
         if (empty($sync_result['success'])) {
             $warning = "⚠️ *WARNING SINKRONISASI ABSEN*\n".$sync_result['message']
                 ."\nLaporan belum dikirim untuk mencegah penggunaan data lama.";
-            $sent = $this->_send_text_component($wa, $phones, $type.'_sync_warning', $warning, $force);
+            $sent = $this->_send_text_component($wa, $phones, $type.'_fingerprint_warning', $warning, $force);
             return ['success' => false, 'sent' => $sent, 'message' => $sync_result['message']];
         }
 
@@ -381,7 +384,7 @@ class Wa extends CI_Controller {
             if (empty($lacak_result['success'])) {
                 $warning = "⚠️ *WARNING SINKRONISASI ABSEN LACAK*\n".$lacak_result['message']
                     ."\nLaporan belum dikirim untuk mencegah data hadir dinilai alfa.";
-                $sent = $this->_send_text_component($wa, $phones, $type.'_sync_warning', $warning, $force);
+                $sent = $this->_send_text_component($wa, $phones, $type.'_lacak_warning', $warning, $force);
                 return ['success' => false, 'sent' => $sent, 'message' => $lacak_result['message']];
             }
             $lacak_attendance = $lacak_result['attendance'];

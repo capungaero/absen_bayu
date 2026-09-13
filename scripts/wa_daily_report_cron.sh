@@ -8,7 +8,11 @@ while IFS= read -r line; do
     name=${line#env[}
     name=${name%%]*}
     value=${line#*= }
-    export "$name=$value"
+    case "$name" in
+        ABSEN_DB_HOST|ABSEN_DB_PORT|ABSEN_DB_USER|ABSEN_DB_PASS|ABSEN_DB_NAME)
+            export "$name=$value"
+            ;;
+    esac
 done < <(grep '^env\[' "$POOL_CONFIG")
 
 export MYSQL_PWD="$ABSEN_DB_PASS"
@@ -28,4 +32,5 @@ fi
 
 curl --fail --silent --show-error \
     --resolve absen.4dm1n.my.id:443:127.0.0.1 \
-    "https://absen.4dm1n.my.id/wa/cron/$token"
+    --header "X-Cron-Token: $token" \
+    "https://absen.4dm1n.my.id/wa/cron"
