@@ -122,6 +122,7 @@ $route['m/submit_kertas_kerja'] = 'M/submit_kertas_kerja';
 // WA Agent
 $route['wa']					= 'Wa/index';
 $route['wa/config']				= 'Wa/config';
+$route['tools/notifikasi-absensi'] = 'Wa/config';
 $route['wa/save_config']		= 'Wa/save_config';
 $route['wa/test_send']			= 'Wa/test_send';
 $route['wa/send_rekap_pagi']	= 'Wa/send_rekap_pagi';

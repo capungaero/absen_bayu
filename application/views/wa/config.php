@@ -1,12 +1,12 @@
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
-            <h4 class="mb-0 font-size-18"><i class="mdi mdi-cog me-2"></i>Konfigurasi WA Agent</h4>
+            <h4 class="mb-0 font-size-18"><i class="mdi mdi-whatsapp me-2" style="color:#25D366"></i>Notifikasi WA Absensi</h4>
             <div class="page-title-right">
                 <ol class="breadcrumb m-0">
                     <li class="breadcrumb-item"><a href="<?= site_url('dashboard') ?>">Dashboard</a></li>
-                    <li class="breadcrumb-item"><a href="<?= site_url('wa') ?>">WA Agent</a></li>
-                    <li class="breadcrumb-item active">Konfigurasi</li>
+                    <li class="breadcrumb-item">Tools</li>
+                    <li class="breadcrumb-item active">Notifikasi WA Absensi</li>
                 </ol>
             </div>
         </div>
@@ -30,8 +30,8 @@
 
 <?php if (empty($cfg['target_phones'])): ?>
 <div class="alert alert-warning alert-dismissible fade show">
-    <i class="mdi mdi-alert me-2"></i><strong>Nomor tujuan rekap belum diisi.</strong>
-    Isi field "Nomor Tujuan Rekap" di bawah lalu klik Simpan Konfigurasi.
+    <i class="mdi mdi-alert me-2"></i><strong>Nomor tujuan notifikasi belum diisi.</strong>
+    Isi minimal satu nomor tujuan sebelum mengaktifkan pengiriman otomatis.
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 <?php endif; ?>
@@ -41,11 +41,13 @@
     <div class="col-lg-7">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="mdi mdi-webhook me-1"></i>Pengaturan Hermes WA Gateway</h5>
+                <h5 class="card-title mb-0"><i class="mdi mdi-bell-cog-outline me-1"></i>Tujuan dan Jadwal</h5>
             </div>
             <div class="card-body">
                 <form method="post" action="<?= site_url('wa/save_config') ?>">
                     <input type="hidden" name="<?= $this->security->get_csrf_token_name() ?>" value="<?= $this->security->get_csrf_hash() ?>">
+                    <input type="hidden" name="user_code" value="<?= htmlspecialchars($cfg['user_code'] ?? '') ?>">
+                    <input type="hidden" name="device_id" value="<?= htmlspecialchars($cfg['device_id'] ?? '') ?>">
 
                     <!-- Status -->
                     <div class="mb-3">
@@ -53,34 +55,20 @@
                             <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1"
                                 <?= (!empty($cfg['is_active'])) ? 'checked' : '' ?>>
                             <label class="form-check-label" for="is_active">
-                                <strong>Aktifkan WA Agent</strong>
+                                <strong>Aktifkan pengiriman otomatis</strong>
                             </label>
                         </div>
                     </div>
 
                     <hr>
 
-                    <!-- API Key -->
-                    <div class="mb-3">
-                        <label class="form-label">API Key <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="api_key" name="secret"
-                                   value="<?= htmlspecialchars($cfg['secret'] ?? '') ?>"
-                                   placeholder="X-API-Key dari server Hermes"
-                                   required>
-                            <button class="btn btn-outline-secondary" type="button" onclick="toggleApiKey()">
-                                <i class="mdi mdi-eye" id="eye_icon"></i>
-                            </button>
-                        </div>
-                        <div class="form-text">Dikirim sebagai header <code>X-API-Key</code> ke <code>wa-api.4dm1n.my.id/send</code>.</div>
-                    </div>
-
                     <!-- Nomor Target Rekap -->
                     <div class="mb-3">
-                        <label class="form-label">Nomor Tujuan Rekap <span class="text-danger">*</span></label>
-                        <textarea class="form-control" name="target_phones" rows="3"
+                        <label class="form-label" for="target_phones">Nomor Tujuan <span class="text-muted">(wajib saat aktif)</span></label>
+                        <textarea class="form-control" id="target_phones" name="target_phones" rows="3"
+                                  inputmode="tel" autocomplete="tel"
                                   placeholder="628xxxxxxxxxx, 628xxxxxxxxxx"><?= htmlspecialchars($cfg['target_phones'] ?? '') ?></textarea>
-                        <div class="form-text">Pisahkan beberapa nomor dengan koma. Format: 628xxx (tanpa +, tanpa spasi).</div>
+                        <div class="form-text">Pisahkan beberapa nomor dengan koma atau baris baru. Nomor 08xx akan otomatis diubah ke 628xx.</div>
                     </div>
 
                     <hr>
@@ -100,9 +88,10 @@
                         </div>
                         <div class="col-md-6">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="mdi mdi-clock"></i></span>
-                                <input type="time" class="form-control" name="morning_time"
-                                       value="<?= htmlspecialchars($cfg['morning_time'] ?? '08:00') ?>">
+                                <span class="input-group-text">Pukul</span>
+                                <input type="time" class="form-control" id="morning_time" name="morning_time" aria-label="Jam kirim rekap pagi" required
+                                       value="<?= htmlspecialchars($cfg['morning_time'] ?? '08:50') ?>">
+                                <span class="input-group-text">WIB</span>
                             </div>
                         </div>
                     </div>
@@ -121,9 +110,10 @@
                         </div>
                         <div class="col-md-6">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="mdi mdi-clock"></i></span>
-                                <input type="time" class="form-control" name="afternoon_time"
-                                       value="<?= htmlspecialchars($cfg['afternoon_time'] ?? '13:00') ?>">
+                                <span class="input-group-text">Pukul</span>
+                                <input type="time" class="form-control" id="afternoon_time" name="afternoon_time" aria-label="Jam kirim rekap siang" required
+                                       value="<?= htmlspecialchars($cfg['afternoon_time'] ?? '12:50') ?>">
+                                <span class="input-group-text">WIB</span>
                             </div>
                         </div>
                     </div>
@@ -136,31 +126,46 @@
                                        name="notif_absent_enabled" value="1"
                                        <?= (!empty($cfg['notif_absent_enabled'])) ? 'checked' : '' ?>>
                                 <label class="form-check-label" for="notif_absent_enabled">
-                                    <i class="mdi mdi-account-alert text-danger"></i> Notif Mitra Kerja Tidak Hadir
+                                    <i class="mdi mdi-account-alert text-danger"></i> Peringatan Belum Absen
                                 </label>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="mdi mdi-clock"></i></span>
-                                <input type="time" class="form-control" name="absent_notif_time"
+                                <span class="input-group-text">Pukul</span>
+                                <input type="time" class="form-control" id="absent_notif_time" name="absent_notif_time" aria-label="Jam kirim peringatan belum absen" required
                                        value="<?= htmlspecialchars($cfg['absent_notif_time'] ?? '09:00') ?>">
+                                <span class="input-group-text">WIB</span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="d-flex gap-2 mt-4">
+                    <details class="border rounded p-3 mt-4 mb-3">
+                        <summary class="fw-semibold"><i class="mdi mdi-tune-variant me-1"></i>Pengaturan Gateway</summary>
+                        <div class="mt-3">
+                            <label class="form-label" for="api_key">API Key Hermes <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="api_key" name="secret"
+                                       value="" placeholder="Kosongkan jika tidak diubah" autocomplete="new-password">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleApiKey()" aria-label="Tampilkan atau sembunyikan API key" title="Tampilkan API key">
+                                    <i class="mdi mdi-eye" id="eye_icon"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <div class="d-flex flex-wrap gap-2 mt-4">
                         <button type="submit" class="btn btn-primary">
-                            <i class="mdi mdi-content-save me-1"></i>Simpan Konfigurasi
+                            <i class="mdi mdi-content-save me-1"></i>Simpan Pengaturan
                         </button>
-                        <a href="<?= site_url('wa') ?>" class="btn btn-outline-secondary">Kembali</a>
+                        <a href="<?= site_url('wa') ?>" class="btn btn-outline-secondary"><i class="mdi mdi-view-dashboard me-1"></i>Dashboard Pengiriman</a>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Panel Kanan: Panduan + Test -->
+    <!-- Panel Kanan -->
     <div class="col-lg-5">
         <!-- Test Kirim Pesan -->
         <div class="card">
@@ -170,7 +175,7 @@
             <div class="card-body">
                 <div class="mb-3">
                     <label class="form-label">Nomor HP</label>
-                    <input type="text" class="form-control" id="test_phone"
+                    <input type="text" class="form-control" id="test_phone" inputmode="tel" autocomplete="tel"
                            placeholder="628xxxxxxxxxx">
                     <div class="form-text">Format: 628xxx (tanpa + atau 0)</div>
                 </div>
@@ -179,37 +184,34 @@
                     <textarea class="form-control" id="test_message" rows="3"
                               placeholder="Halo! Ini pesan test dari Sistem Absensi.">Halo! Ini pesan test dari Sistem Absensi <?= date('d/m/Y H:i') ?>.</textarea>
                 </div>
-                <div class="d-flex align-items-center gap-3">
-                    <button type="button" id="btn_test_send" class="btn btn-success flex-fill"
+                <div>
+                    <button type="button" id="btn_test_send" class="btn btn-success w-100"
                             onclick="doTestSend()">
                         <i class="mdi mdi-send me-1"></i>Kirim Test
                     </button>
-                    <span id="test_result" class="d-none"></span>
+                    <div id="test_result" class="d-none mt-3" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Panduan Hermes -->
+        <!-- Status -->
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="mdi mdi-help-circle me-1"></i>Cara Setup Hermes WA Gateway</h5>
+                <h5 class="card-title mb-0"><i class="mdi mdi-information-outline me-1"></i>Status Pengiriman</h5>
             </div>
             <div class="card-body">
-                <ol class="small text-muted ps-3">
-                    <li class="mb-2">Minta <strong>API Key</strong> (X-API-Key) dari admin server Hermes</li>
-                    <li class="mb-2">Tempel API Key di field di samping, lalu Simpan Konfigurasi</li>
-                    <li class="mb-2">Endpoint yang digunakan otomatis:<br>
-                        <code class="small">POST https://wa-api.4dm1n.my.id/send</code>
-                    </li>
-                    <li class="mb-2">Test kirim untuk memastikan koneksi berjalan</li>
-                </ol>
-                <hr>
-                <p class="small text-muted mb-1"><strong>Format Request Body:</strong></p>
-                <pre class="small bg-light p-2 rounded"><code>{
-  "chatId": "628xxx@c.us",
-  "message": "Teks pesan"
-}</code></pre>
-                <p class="small text-muted mb-0">Header: <code>X-API-Key: &lt;api key&gt;</code></p>
+                <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                    <span>Otomatisasi</span>
+                    <span class="badge <?= !empty($cfg['is_active']) ? 'bg-success' : 'bg-secondary' ?>"><?= !empty($cfg['is_active']) ? 'Aktif' : 'Nonaktif' ?></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                    <span>Nomor tujuan</span>
+                    <strong><?= count(array_filter(array_map('trim', explode(',', $cfg['target_phones'] ?? '')))) ?></strong>
+                </div>
+                <div class="d-flex justify-content-between align-items-center py-2">
+                    <span>Gateway</span>
+                    <span class="badge <?= !empty($cfg['secret']) ? 'bg-success' : 'bg-danger' ?>"><?= !empty($cfg['secret']) ? 'Dikonfigurasi' : 'Belum diatur' ?></span>
+                </div>
             </div>
         </div>
     </div>
@@ -235,7 +237,7 @@ function doTestSend() {
     var result  = document.getElementById('test_result');
 
     if (!phone || !message) {
-        result.className = 'badge bg-danger fs-6';
+        result.className = 'alert alert-danger mt-3 mb-0 py-2';
         result.textContent = 'Gagal: isi nomor dan pesan';
         return;
     }
@@ -259,17 +261,16 @@ function doTestSend() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
-            result.className = 'badge bg-success fs-6';
-            result.innerHTML = '<i class="mdi mdi-check me-1"></i>Terkirim';
+            result.className = 'alert alert-success mt-3 mb-0 py-2';
+            result.innerHTML = '<i class="mdi mdi-check me-1"></i>' + data.message;
         } else {
-            result.className = 'badge bg-danger fs-6';
-            result.innerHTML = '<i class="mdi mdi-close me-1"></i>Gagal';
-            console.error(data.message);
+            result.className = 'alert alert-danger mt-3 mb-0 py-2';
+            result.innerHTML = '<i class="mdi mdi-close me-1"></i>' + data.message;
         }
     })
     .catch(function() {
-        result.className = 'badge bg-danger fs-6';
-        result.innerHTML = '<i class="mdi mdi-close me-1"></i>Gagal';
+        result.className = 'alert alert-danger mt-3 mb-0 py-2';
+        result.innerHTML = '<i class="mdi mdi-close me-1"></i>Server tidak dapat dihubungi.';
     })
     .finally(function() {
         btn.disabled = false;

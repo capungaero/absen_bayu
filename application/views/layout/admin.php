@@ -318,14 +318,14 @@
                                     </li>
                                 <?php } ?>
 
-                                <?php if(in_array($role, ['admin', 'admin-branch'])){ ?>
+                                <?php if($role === 'admin'){ ?>
                                     <li class="nav-item dropdown">
-                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-wa" role="button">
-                                            <i class="mdi mdi-whatsapp me-2" style="color:#25D366"></i>WA Agent<div class="arrow-down"></div>
+                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-tools" role="button">
+                                            <i class="mdi mdi-tools me-2"></i>Tools<div class="arrow-down"></div>
                                         </a>
-                                        <div class="dropdown-menu" aria-labelledby="topnav-wa">
-                                            <a href="<?= site_url('wa') ?>" class="dropdown-item"><i class="mdi mdi-view-dashboard"></i> Dashboard</a>
-                                            <a href="<?= site_url('wa/config') ?>" class="dropdown-item"><i class="mdi mdi-cog"></i> Konfigurasi</a>
+                                        <div class="dropdown-menu" aria-labelledby="topnav-tools">
+                                            <a href="<?= site_url('tools/notifikasi-absensi') ?>" class="dropdown-item"><i class="mdi mdi-whatsapp" style="color:#25D366"></i> Notifikasi WA Absensi</a>
+                                            <a href="<?= site_url('wa') ?>" class="dropdown-item"><i class="mdi mdi-view-dashboard"></i> Dashboard Pengiriman</a>
                                             <a href="<?= site_url('wa/logs') ?>" class="dropdown-item"><i class="mdi mdi-history"></i> Log Pengiriman</a>
                                         </div>
                                     </li>

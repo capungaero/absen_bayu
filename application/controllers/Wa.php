@@ -32,7 +32,7 @@ class Wa extends CI_Controller {
         $this->userdata = $is_cron ? null : $this->ion_auth->user()->row();
 
         // Hanya admin yang bisa akses fitur WA Agent
-        if (!$is_cron && !in_array($this->role, ['admin', 'admin-branch'])) {
+        if (!$is_cron && $this->role !== 'admin') {
             redirect('dashboard');
         }
     }
@@ -63,9 +63,18 @@ class Wa extends CI_Controller {
             redirect('wa/config');
         }
 
+        $target_phones = $this->_normalize_target_phones($this->input->post('target_phones', true));
+        if ($target_phones === false) {
+            $this->session->set_flashdata('error', 'Nomor tujuan tidak valid. Gunakan format 628xxxxxxxxxx dan pisahkan dengan koma.');
+            redirect('tools/notifikasi-absensi');
+            return;
+        }
+
+        $existing_config = $this->wa->get_config();
+        $posted_secret = trim((string)$this->input->post('secret', true));
         $data = [
             'user_code'                => $this->input->post('user_code', true),
-            'secret'                   => $this->input->post('secret', true),
+            'secret'                   => $posted_secret !== '' ? $posted_secret : ($existing_config['secret'] ?? ''),
             'device_id'                => $this->input->post('device_id', true),
             'is_active'                => $this->input->post('is_active') ? 1 : 0,
             'send_morning_enabled'     => $this->input->post('send_morning_enabled') ? 1 : 0,
@@ -74,30 +83,38 @@ class Wa extends CI_Controller {
             'afternoon_time'           => $this->input->post('afternoon_time', true),
             'notif_absent_enabled'     => $this->input->post('notif_absent_enabled') ? 1 : 0,
             'absent_notif_time'        => $this->input->post('absent_notif_time', true),
-            'target_phones'            => $this->input->post('target_phones', true),
+            'target_phones'            => $target_phones,
             'updated_at'               => date('Y-m-d H:i:s'),
         ];
 
         // Validasi waktu format HH:MM
         $time_fields = ['morning_time', 'afternoon_time', 'absent_notif_time'];
         foreach ($time_fields as $field) {
-            if (!preg_match('/^\d{2}:\d{2}$/', $data[$field])) {
+            if (!$this->_valid_time($data[$field])) {
                 $this->session->set_flashdata('error', 'Format waktu tidak valid. Gunakan format HH:MM.');
-                redirect('wa/config');
+                redirect('tools/notifikasi-absensi');
+                return;
             }
         }
 
-        // Validasi nomor target (hanya digit, koma, spasi)
-        if (!empty($data['target_phones'])) {
-            if (!preg_match('/^[0-9,\s+\-]+$/', $data['target_phones'])) {
-                $this->session->set_flashdata('error', 'Nomor target tidak valid. Gunakan format 628xxx, pisahkan dengan koma.');
-                redirect('wa/config');
-            }
+        if ($data['is_active'] && $data['target_phones'] === '') {
+            $this->session->set_flashdata('error', 'Isi minimal satu nomor tujuan sebelum mengaktifkan notifikasi WA.');
+            redirect('tools/notifikasi-absensi');
+            return;
+        }
+        if ($data['is_active'] && $data['secret'] === '') {
+            $this->session->set_flashdata('error', 'API key Hermes harus diisi sebelum mengaktifkan notifikasi WA.');
+            redirect('tools/notifikasi-absensi');
+            return;
         }
 
-        $this->wa->save_config($data);
-        $this->session->set_flashdata('success', 'Konfigurasi WA berhasil disimpan.');
-        redirect('wa/config');
+        if (!$this->wa->save_config($data)) {
+            $this->session->set_flashdata('error', 'Pengaturan gagal disimpan. Silakan coba lagi.');
+            redirect('tools/notifikasi-absensi');
+            return;
+        }
+        $this->session->set_flashdata('success', 'Pengaturan notifikasi WA absensi berhasil disimpan.');
+        redirect('tools/notifikasi-absensi');
     }
 
     // =========================================================================
@@ -122,6 +139,19 @@ class Wa extends CI_Controller {
             $this->session->set_flashdata('error', 'Nomor HP dan pesan tidak boleh kosong.');
             redirect('wa/config');
         }
+
+        $normalized_phone = $this->_normalize_target_phones($phone);
+        if ($normalized_phone === false || $normalized_phone === '' || strpos($normalized_phone, ',') !== false) {
+            $payload = ['success' => false, 'message' => 'Nomor test tidak valid. Gunakan satu nomor dengan format 628xxxxxxxxxx.'];
+            if ($is_ajax) {
+                $this->output->set_content_type('application/json')->set_output(json_encode($payload));
+                return;
+            }
+            $this->session->set_flashdata('error', $payload['message']);
+            redirect('tools/notifikasi-absensi');
+            return;
+        }
+        $phone = $normalized_phone;
 
         $config = $this->wa->get_config();
         if (empty($config) || empty($config['secret'])) {
@@ -153,8 +183,8 @@ class Wa extends CI_Controller {
                          ->set_output(json_encode([
                              'success' => $result['success'],
                              'message' => $result['success']
-                                 ? 'Terkirim ke ' . $wa->normalize_phone($phone)
-                                 : 'Gagal: ' . $result['response'],
+                                 ? 'Pesan test terkirim ke ' . $wa->normalize_phone($phone)
+                                 : $this->_safe_test_failure_message($result),
                          ]));
             return;
         }
@@ -544,6 +574,34 @@ class Wa extends CI_Controller {
         if (empty($phones_string)) return [];
         $phones = explode(',', $phones_string);
         return array_filter(array_map('trim', $phones));
+    }
+
+    private function _normalize_target_phones($value) {
+        $value = trim((string)$value);
+        if ($value === '') return '';
+
+        $normalized = [];
+        foreach (preg_split('/[,\r\n]+/', $value) as $phone) {
+            $phone = preg_replace('/[\s+\-()]/', '', trim($phone));
+            if (strpos($phone, '0') === 0) $phone = '62'.substr($phone, 1);
+            if (!preg_match('/^62[0-9]{8,13}$/', $phone)) return false;
+            $normalized[$phone] = $phone;
+        }
+        return implode(', ', array_values($normalized));
+    }
+
+    private function _valid_time($value) {
+        if (!preg_match('/^\d{2}:\d{2}$/', (string)$value)) return false;
+        $time = DateTime::createFromFormat('!H:i', $value);
+        return $time && $time->format('H:i') === $value;
+    }
+
+    private function _safe_test_failure_message($result) {
+        $http_code = isset($result['http_code']) ? (int)$result['http_code'] : 0;
+        if (in_array($http_code, [401, 403], true)) return 'API key ditolak oleh gateway.';
+        if ($http_code >= 500) return 'Gateway WhatsApp sedang bermasalah.';
+        if ($http_code === 0) return 'Gateway WhatsApp tidak dapat dihubungi.';
+        return 'Pesan test gagal dikirim. Periksa nomor tujuan dan konfigurasi gateway.';
     }
 
     /**

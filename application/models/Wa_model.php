@@ -22,9 +22,9 @@ Class Wa_model extends CI_Model {
                 `device_id`              VARCHAR(100) NOT NULL DEFAULT '',
                 `is_active`              TINYINT(1) NOT NULL DEFAULT 1,
                 `send_morning_enabled`   TINYINT(1) NOT NULL DEFAULT 1,
-                `morning_time`           VARCHAR(10) NOT NULL DEFAULT '08:00',
+                `morning_time`           VARCHAR(10) NOT NULL DEFAULT '08:50',
                 `send_afternoon_enabled` TINYINT(1) NOT NULL DEFAULT 1,
-                `afternoon_time`         VARCHAR(10) NOT NULL DEFAULT '13:00',
+                `afternoon_time`         VARCHAR(10) NOT NULL DEFAULT '12:50',
                 `notif_absent_enabled`   TINYINT(1) NOT NULL DEFAULT 1,
                 `absent_notif_time`      VARCHAR(10) NOT NULL DEFAULT '10:00',
                 `target_phones`          TEXT,
@@ -61,7 +61,7 @@ Class Wa_model extends CI_Model {
             $cron_token = $this->db->escape($this->_new_cron_token());
             $this->db->query("
                 INSERT INTO wa_config (user_code, secret, device_id, is_active, send_morning_enabled, morning_time, send_afternoon_enabled, afternoon_time, notif_absent_enabled, absent_notif_time, cron_token)
-                VALUES ('', '', '', 0, 1, '08:00', 1, '13:00', 1, '10:00', {$cron_token})
+                VALUES ('', '', '', 0, 1, '08:50', 1, '12:50', 1, '10:00', {$cron_token})
             ");
         }
 
@@ -87,9 +87,8 @@ Class Wa_model extends CI_Model {
     public function save_config($data) {
         $existing = $this->get_config();
         if ($existing) {
-            $this->db->where('id', $existing['id'])
-                     ->update($this->config_table, $data);
-            return true;
+            return (bool)$this->db->where('id', $existing['id'])
+                                  ->update($this->config_table, $data);
         }
         $this->db->insert($this->config_table, $data);
         return $this->db->affected_rows() > 0;
