@@ -318,19 +318,6 @@
                                     </li>
                                 <?php } ?>
 
-                                <?php if($role === 'admin'){ ?>
-                                    <li class="nav-item dropdown">
-                                        <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-tools" role="button">
-                                            <i class="mdi mdi-tools me-2"></i>Tools<div class="arrow-down"></div>
-                                        </a>
-                                        <div class="dropdown-menu" aria-labelledby="topnav-tools">
-                                            <a href="<?= site_url('tools/notifikasi-absensi') ?>" class="dropdown-item"><i class="mdi mdi-whatsapp" style="color:#25D366"></i> Notifikasi WA Absensi</a>
-                                            <a href="<?= site_url('wa') ?>" class="dropdown-item"><i class="mdi mdi-view-dashboard"></i> Dashboard Pengiriman</a>
-                                            <a href="<?= site_url('wa/logs') ?>" class="dropdown-item"><i class="mdi mdi-history"></i> Log Pengiriman</a>
-                                        </div>
-                                    </li>
-                                <?php } ?>
-
                                 <?php if(in_array($role, ['admin', 'admin-branch'])){ ?>
                                     <li class="nav-item dropdown">
                                         <a class="nav-link dropdown-toggle arrow-none" href="#" id="topnav-sync" role="button">
@@ -409,6 +396,12 @@
                                             <i class="mdi mdi-tools me-2"></i>Tools<div class="arrow-down"></div>
                                         </a>
                                         <div class="dropdown-menu" aria-labelledby="topnav-tools">
+                                            <?php if($role === 'admin'){ ?>
+                                            <a href="<?= site_url('tools/notifikasi-absensi') ?>" class="dropdown-item"><i class="mdi mdi-whatsapp" style="color:#25D366"></i> Notifikasi WA Absensi</a>
+                                            <a href="<?= site_url('wa') ?>" class="dropdown-item"><i class="mdi mdi-view-dashboard"></i> Dashboard Pengiriman</a>
+                                            <a href="<?= site_url('wa/logs') ?>" class="dropdown-item"><i class="mdi mdi-history"></i> Log Pengiriman</a>
+                                            <div class="dropdown-divider"></div>
+                                            <?php } ?>
                                             <a href="<?= base_url('tools/payroll_sim/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-calculator-variant"></i> Payroll Simulator</a>
                                             <a href="<?= base_url('tools/payroll_importer/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-file-import"></i> Payroll Importer</a>
                                             <a href="<?= base_url('tools/dat_reader/index.html') ?>" target="_blank" class="dropdown-item"><i class="mdi mdi-clock-check-outline"></i> DAT Reader</a>

@@ -12,6 +12,7 @@ def test_notification_settings_are_available_from_tools_menu():
     assert "tools/notifikasi-absensi" in menu
     assert "Notifikasi WA Absensi" in menu
     assert "if($role === 'admin')" in menu
+    assert menu.count('id="topnav-tools"') == 1
     assert "$route['tools/notifikasi-absensi'] = 'Wa/config';" in routes
 
 
