@@ -134,13 +134,44 @@ class Attendance_daily_report {
         $canvas->page_text(260, 815, 'Halaman {PAGE_NUM} / {PAGE_COUNT}', null, 7, [0.35, 0.42, 0.52]);
 
         $directory = FCPATH.'exports'.DIRECTORY_SEPARATOR.'wa';
-        if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+        if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
             throw new RuntimeException('Folder laporan PDF tidak dapat dibuat.');
         }
+
+        // CLI dapat berjalan sebagai root. Samakan pemilik hasilnya dengan aplikasi
+        // agar proses web tetap bisa memperbarui laporan pada tanggal yang sama.
+        $app_owner = @fileowner(FCPATH);
+        $app_group = @filegroup(FCPATH);
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            if ($app_owner !== false) @chown($directory, $app_owner);
+            if ($app_group !== false) @chgrp($directory, $app_group);
+        }
+        @chmod($directory, 0770);
+        clearstatcache(true, $directory);
+        if (!is_writable($directory)) {
+            throw new RuntimeException('Folder laporan PDF tidak dapat ditulis.');
+        }
+
         $filename = 'rekap_absensi_'.strtolower($type).'_'.$report['date'].'.pdf';
         $path = $directory.DIRECTORY_SEPARATOR.$filename;
-        if (file_put_contents($path, $dompdf->output(), LOCK_EX) === false) {
-            throw new RuntimeException('File laporan PDF tidak dapat disimpan.');
+        $temporary_path = tempnam($directory, '.rekap_');
+        if ($temporary_path === false) {
+            throw new RuntimeException('File sementara laporan PDF tidak dapat dibuat.');
+        }
+        try {
+            if (file_put_contents($temporary_path, $dompdf->output(), LOCK_EX) === false) {
+                throw new RuntimeException('File laporan PDF tidak dapat disimpan.');
+            }
+            @chmod($temporary_path, 0660);
+            if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+                if ($app_owner !== false) @chown($temporary_path, $app_owner);
+                if ($app_group !== false) @chgrp($temporary_path, $app_group);
+            }
+            if (!@rename($temporary_path, $path)) {
+                throw new RuntimeException('File laporan PDF tidak dapat dipublikasikan.');
+            }
+        } finally {
+            if (is_file($temporary_path)) @unlink($temporary_path);
         }
         return ['path' => $path, 'filename' => $filename];
     }

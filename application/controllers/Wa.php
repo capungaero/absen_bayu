@@ -203,12 +203,24 @@ class Wa extends CI_Controller {
     // =========================================================================
 
     public function send_rekap_pagi() {
-        $this->_send_rekap('rekap_pagi', true);
+        if ($this->input->method() !== 'post') {
+            show_error('Bad Request', 400);
+            return;
+        }
+        $result = $this->_send_rekap('rekap_pagi', true);
+        $flash_key = !empty($result['success']) ? 'rekap_success' : 'rekap_error';
+        $this->session->set_flashdata($flash_key, $result['message'] ?? 'Pengiriman rekap pagi gagal.');
         redirect('wa');
     }
 
     public function send_rekap_siang() {
-        $this->_send_rekap('rekap_siang', true);
+        if ($this->input->method() !== 'post') {
+            show_error('Bad Request', 400);
+            return;
+        }
+        $result = $this->_send_rekap('rekap_siang', true);
+        $flash_key = !empty($result['success']) ? 'rekap_success' : 'rekap_error';
+        $this->session->set_flashdata($flash_key, $result['message'] ?? 'Pengiriman rekap siang gagal.');
         redirect('wa');
     }
 
@@ -438,6 +450,7 @@ class Wa extends CI_Controller {
             $pdf = $this->attendance_daily_report->render_pdf($report, $report_type, $report_time);
         } catch (Throwable $error) {
             log_message('error', 'Gagal membuat PDF rekap absensi: '.$error->getMessage());
+            $this->session->set_flashdata('rekap_error', 'Gagal membuat PDF laporan.');
             return ['success' => false, 'message' => 'Gagal membuat PDF laporan.'];
         }
 

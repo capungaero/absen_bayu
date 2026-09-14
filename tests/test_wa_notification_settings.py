@@ -33,3 +33,14 @@ def test_notification_form_exposes_operational_controls():
     assert "Pengaturan Gateway" in view
     assert "Status Pengiriman" in view
     assert "value=\"<?= htmlspecialchars($cfg['secret']" not in view
+
+
+def test_report_pdf_is_published_atomically_and_manual_result_is_visible():
+    library = (ROOT / "application/libraries/Attendance_daily_report.php").read_text(encoding="utf-8")
+    controller = (ROOT / "application/controllers/Wa.php").read_text(encoding="utf-8")
+
+    assert "tempnam($directory, '.rekap_')" in library
+    assert "rename($temporary_path, $path)" in library
+    assert "chown($directory, $app_owner)" in library
+    assert controller.count("$this->session->set_flashdata($flash_key") == 2
+    assert "Gagal membuat PDF laporan." in controller
