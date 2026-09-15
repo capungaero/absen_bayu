@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost, apiUpload } from '../api.js';
+import { compressImage } from '../imageCompress.js';
 
 export const STATUS_LABEL = {
   baru: 'Baru',
@@ -545,11 +546,19 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [compressing, setCompressing] = useState(false);
 
-  const pick = (e) => {
+  const pick = async (e) => {
     const f = e.target.files[0];
-    setFile(f || null);
-    setPreview(f ? URL.createObjectURL(f) : null);
+    if (!f) { setFile(null); setPreview(null); return; }
+    setCompressing(true);
+    try {
+      const compressed = await compressImage(f);
+      setFile(compressed);
+      setPreview(URL.createObjectURL(compressed));
+    } finally {
+      setCompressing(false);
+    }
   };
 
   const photoRequired = row.type_require_photo_done === null || row.type_require_photo_done === undefined
@@ -583,11 +592,12 @@ function DoneModal({ row, onClose, onSaved, onSessionEnd }) {
         <div className="field">
           <label>Foto hasil pengerjaan{!photoRequired && ' (opsional)'}</label>
           <input type="file" accept="image/*" capture="environment" onChange={pick} required={photoRequired} />
+          {compressing && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Memproses foto…</div>}
           {preview && <img className="preview-img" src={preview} alt="Preview" />}
         </div>
         <div className="modal-actions">
           <button className="btn btn-outline btn-sm" onClick={onClose} disabled={busy}>Batal</button>
-          <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy}>
+          <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || compressing}>
             {busy ? 'Menyimpan…' : 'Lapor Selesai'}
           </button>
         </div>

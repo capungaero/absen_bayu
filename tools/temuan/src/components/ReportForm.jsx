@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiGet, apiUpload } from '../api.js';
+import { compressImage } from '../imageCompress.js';
 
 export default function ReportForm({ me, onDone, onSessionEnd }) {
   const [branches, setBranches] = useState([]);
@@ -18,6 +19,7 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+  const [compressing, setCompressing] = useState(false);
 
   useEffect(() => {
     apiGet('/branches').then((d) => {
@@ -46,10 +48,17 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
     setSubjectIds((cur) => (cur.includes(uid) ? cur.filter((x) => x !== uid) : [...cur, uid]));
   };
 
-  const pick = (e) => {
+  const pick = async (e) => {
     const f = e.target.files[0];
-    setFile(f || null);
-    setPreview(f ? URL.createObjectURL(f) : null);
+    if (!f) { setFile(null); setPreview(null); return; }
+    setCompressing(true);
+    try {
+      const compressed = await compressImage(f);
+      setFile(compressed);
+      setPreview(URL.createObjectURL(compressed));
+    } finally {
+      setCompressing(false);
+    }
   };
 
   const submit = async (e) => {
@@ -181,10 +190,11 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
       <div className="field">
         <label>Foto temuan{!photoRequired && ' (opsional)'}</label>
         <input type="file" accept="image/*" capture="environment" onChange={pick} required={photoRequired} />
+        {compressing && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Memproses foto…</div>}
         {preview && <img className="preview-img" src={preview} alt="Preview" />}
       </div>
 
-      <button className="btn btn-primary btn-block" disabled={busy}>
+      <button className="btn btn-primary btn-block" disabled={busy || compressing}>
         {busy ? 'Mengirim…' : 'Kirim Laporan'}
       </button>
     </form>
