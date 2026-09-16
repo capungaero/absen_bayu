@@ -8,16 +8,13 @@ class Attendance_daily_report_model extends CI_Model {
         $rows = $this->db->query($this->_query(), [$date, $date, $date])->result_array();
         $branches = [];
         $missing_shift = [];
-        $off_count = 0;
 
         foreach ($rows as $row) {
-            if ($row['additional_type'] === 'free') {
-                continue;
-            }
-
             $employee = $this->_employee($row);
             if (!$this->_has_work_shift($row)) {
-                $missing_shift[] = $employee;
+                if ($row['additional_type'] !== 'free') {
+                    $missing_shift[] = $employee;
+                }
                 continue;
             }
 
@@ -25,30 +22,38 @@ class Attendance_daily_report_model extends CI_Model {
                 continue;
             }
 
-            $lacak_time = isset($lacak_attendance[(string)$row['employee_code']])
-                ? $lacak_attendance[(string)$row['employee_code']]
-                : null;
-            $status = $this->_status($row, $lacak_time);
-            $key = $employee['branch_name'];
-            if (!isset($branches[$key])) {
-                $branches[$key] = $this->_empty_branch($employee);
+            $lacak = $lacak_attendance[(string)$row['employee_code']] ?? null;
+            $status = $this->_status($row, $lacak);
+
+            $branch_key = $employee['branch_name'];
+            if (!isset($branches[$branch_key])) {
+                $branches[$branch_key] = $this->_empty_branch($employee);
+            }
+            $position_key = $employee['position_name'];
+            if (!isset($branches[$branch_key]['positions'][$position_key])) {
+                $branches[$branch_key]['positions'][$position_key] = $this->_empty_position($position_key);
             }
 
-            $branches[$key]['total']++;
-            $branches[$key][$status === 'alfa' ? 'belum' : $status]++;
-            $branches[$key]['details'][] = array_merge($employee, [
+            $detail = array_merge($employee, [
                 'shift_code' => $row['shift_code'],
                 'shift_name' => $row['shift_name'],
-                'entry_time' => $lacak_time ?: $row['entry_time'],
-                'late_minutes' => $lacak_time ? 0 : (int)$row['late_minutes'],
-                'source' => $lacak_time ? 'Lacak' : ($row['entry_time'] ? 'Fingerprint' : ''),
+                'entry_time' => $status === 'hadir_gps' ? $lacak['time'] : $row['entry_time'],
+                'late_minutes' => (int)$row['late_minutes'],
+                'vehicle' => $status === 'hadir_gps' ? $lacak['vehicle'] : '',
+                'source' => $status === 'hadir_gps' ? 'Lacak' : ($row['entry_time'] ? 'Fingerprint' : ''),
                 'status' => $status,
             ]);
+
+            $branches[$branch_key]['total']++;
+            $branches[$branch_key][$this->_bucket($status)]++;
+            $branches[$branch_key]['positions'][$position_key]['total']++;
+            $branches[$branch_key]['positions'][$position_key][$this->_bucket($status)]++;
+            $branches[$branch_key]['positions'][$position_key]['details'][] = $detail;
         }
 
         $totals = [
-            'scheduled' => 0, 'hadir' => 0, 'terlambat' => 0,
-            'izin' => 0, 'sakit' => 0, 'belum' => 0, 'off' => $off_count,
+            'scheduled' => 0, 'hadir' => 0, 'terlambat' => 0, 'hadir_gps' => 0,
+            'izin' => 0, 'sakit' => 0, 'off' => 0, 'belum' => 0,
             'missing_shift' => count($missing_shift),
         ];
         $branch_order = ['Sudirman' => 0, 'Gambir' => 1, 'Kanvas' => 2];
@@ -56,11 +61,16 @@ class Attendance_daily_report_model extends CI_Model {
             return ($branch_order[$left['branch_name']] ?? 99) <=> ($branch_order[$right['branch_name']] ?? 99);
         });
         foreach ($branches as &$branch) {
-            $branch['percent'] = $branch['total'] > 0
-                ? (int)round((($branch['hadir'] + $branch['terlambat']) / $branch['total']) * 100)
-                : 0;
+            $branch['percent'] = $this->_percent($branch);
+            foreach ($branch['positions'] as &$position) {
+                $position['percent'] = $this->_percent($position);
+            }
+            unset($position);
+            ksort($branch['positions']);
+            $branch['positions'] = array_values($branch['positions']);
+
             $totals['scheduled'] += $branch['total'];
-            foreach (['hadir', 'terlambat', 'izin', 'sakit', 'belum'] as $field) {
+            foreach (['hadir', 'terlambat', 'hadir_gps', 'izin', 'sakit', 'off', 'belum'] as $field) {
                 $totals[$field] += $branch[$field];
             }
         }
@@ -73,6 +83,16 @@ class Attendance_daily_report_model extends CI_Model {
             'missing_shift' => $missing_shift,
             'totals' => $totals,
         ];
+    }
+
+    /** "Hadir" utk rasio X/Y = hadir fingerprint + terlambat + hadir GPS (bukan izin/sakit/off/alfa). */
+    private function _percent($group) {
+        $present = $group['hadir'] + $group['terlambat'] + $group['hadir_gps'];
+        return $group['total'] > 0 ? (int)round(($present / $group['total']) * 100) : 0;
+    }
+
+    private function _bucket($status) {
+        return $status === 'alfa' ? 'belum' : $status;
     }
 
     private function _query() {
@@ -116,7 +136,9 @@ class Attendance_daily_report_model extends CI_Model {
         ";
     }
 
+    /** additional_type='free' (OFF/Libur) LOLOS di sini -- statusnya ditentukan di _status(). */
     private function _has_work_shift($row) {
+        if ($row['additional_type'] === 'free') { return true; }
         $code = strtoupper(trim((string)$row['shift_code']));
         $name = strtoupper(trim((string)$row['shift_name']));
         return $row['additional_type'] === 'work'
@@ -128,6 +150,7 @@ class Attendance_daily_report_model extends CI_Model {
     }
 
     private function _matches_report_period($row, $type) {
+        if ($row['additional_type'] === 'free') { return true; }
         $code = strtoupper(trim((string)$row['shift_code']));
         $name = strtoupper(trim((string)$row['shift_name']));
         if ($type === 'siang') {
@@ -138,11 +161,13 @@ class Attendance_daily_report_model extends CI_Model {
             || $code === 'KVS';
     }
 
-    private function _status($row, $lacak_time = null) {
+    private function _status($row, $lacak = null) {
+        if ($row['additional_type'] === 'free') return 'off';
         if ($row['presence_type'] === 'sakit') return 'sakit';
         if (in_array($row['presence_type'], ['izin', 'cuti'], true)) return 'izin';
-        // Sesuai aturan operasional, tap Lacak pagi dihitung hadir tanpa penalti telat.
-        if ($lacak_time) return 'hadir';
+        // Tap Lacak (kanvas GPS) = status sendiri "Hadir GPS", terpisah dari
+        // fingerprint -- sesuai format rekap PDF acuan (bukan digabung ke hadir biasa).
+        if ($lacak) return 'hadir_gps';
         if ($row['recap_status'] === 'terlambat') return 'terlambat';
         if ($row['recap_status'] === 'hadir') return 'hadir';
         return 'alfa';
@@ -177,8 +202,17 @@ class Attendance_daily_report_model extends CI_Model {
         return [
             'branch_id' => (int)$employee['branch_id'],
             'branch_name' => $employee['branch_name'],
-            'total' => 0, 'hadir' => 0, 'terlambat' => 0,
-            'izin' => 0, 'sakit' => 0, 'belum' => 0,
+            'total' => 0, 'hadir' => 0, 'terlambat' => 0, 'hadir_gps' => 0,
+            'izin' => 0, 'sakit' => 0, 'off' => 0, 'belum' => 0,
+            'percent' => 0, 'positions' => [],
+        ];
+    }
+
+    private function _empty_position($position_name) {
+        return [
+            'position_name' => $position_name,
+            'total' => 0, 'hadir' => 0, 'terlambat' => 0, 'hadir_gps' => 0,
+            'izin' => 0, 'sakit' => 0, 'off' => 0, 'belum' => 0,
             'percent' => 0, 'details' => [],
         ];
     }

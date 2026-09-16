@@ -119,6 +119,7 @@ class Attendance_daily_report {
             'report' => $report,
             'label' => strtoupper($type === 'pagi' ? 'PAGI' : 'SIANG'),
             'report_date' => $this->indonesian_report_datetime($report['date'], $report_time, false),
+            'report_date_only' => $this->indonesian_report_date($report['date']),
             'printed_datetime' => $this->indonesian_datetime($report['generated_at']),
         ], true);
 
@@ -203,8 +204,10 @@ class Attendance_daily_report {
     private function _employees_by_status($report, $status) {
         $employees = [];
         foreach ($report['branches'] as $branch) {
-            foreach ($branch['details'] as $employee) {
-                if ($employee['status'] === $status) $employees[] = $employee;
+            foreach ($branch['positions'] as $position) {
+                foreach ($position['details'] as $employee) {
+                    if ($employee['status'] === $status) $employees[] = $employee;
+                }
             }
         }
         return $employees;

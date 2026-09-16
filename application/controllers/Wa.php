@@ -297,7 +297,7 @@ class Wa extends CI_Controller {
             'date' => $report['date'],
             'totals' => $report['totals'],
             'branches' => array_map(function ($branch) {
-                return array_diff_key($branch, ['details' => true]);
+                return array_diff_key($branch, ['positions' => true]);
             }, $report['branches']),
             'lacak_codes' => array_keys($lacak_attendance),
             'pdf' => $pdf['path'],

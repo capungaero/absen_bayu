@@ -42,14 +42,20 @@ class Lacak_attendance_client {
             return ['success' => false, 'message' => 'Format data absensi Lacak tidak valid.', 'attendance' => []];
         }
 
+        // $attendance[code] = ['time' => createdAt, 'vehicle' => vehicleName] -- vehicleName
+        // dipakai sbg keterangan "Hadir GPS" (mis. "BA 8146 MB HD 125 KUNING TENDA"),
+        // sesuai format rekap PDF acuan.
         $attendance = [];
         foreach ($decoded['recap'] as $item) {
             $code = trim((string)($item['username'] ?? ''));
             $absen = isset($item['absen']) && is_array($item['absen']) ? $item['absen'] : [];
             $created_at = trim((string)($absen['createdAt'] ?? ''));
             if ($code === '' || $created_at === '' || date('Y-m-d', strtotime($created_at)) !== $date) continue;
-            if (!isset($attendance[$code]) || strtotime($created_at) < strtotime($attendance[$code])) {
-                $attendance[$code] = $created_at;
+            if (!isset($attendance[$code]) || strtotime($created_at) < strtotime($attendance[$code]['time'])) {
+                $attendance[$code] = [
+                    'time' => $created_at,
+                    'vehicle' => trim((string)($item['vehicleName'] ?? $absen['vehicleName'] ?? '')),
+                ];
             }
         }
 
