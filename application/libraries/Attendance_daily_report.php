@@ -24,17 +24,18 @@ class Attendance_daily_report {
             '📋 *RINGKASAN PER CABANG*',
             '',
             '```',
-            sprintf('%-12s %5s %5s %5s %5s %4s', 'Cabang', 'Total', 'Hadir', 'Telat', 'Belum', '%'),
-            sprintf('%-12s %5s %5s %5s %5s %4s', str_repeat('-', 12), '-----', '-----', '-----', '-----', '----'),
+            sprintf('%-12s %5s %5s %5s %5s %5s %4s', 'Cabang', 'Total', 'Hadir', 'Telat', 'Off', 'Belum', '%'),
+            sprintf('%-12s %5s %5s %5s %5s %5s %4s', str_repeat('-', 12), '-----', '-----', '-----', '-----', '-----', '----'),
         ];
 
         foreach ($report['branches'] as $branch) {
             $lines[] = sprintf(
-                '%-12s %5d %5d %5d %5d %3d%%',
+                '%-12s %5d %5d %5d %5d %5d %3d%%',
                 strtoupper($branch['branch_name']),
                 $branch['total'],
                 $branch['hadir'] + $branch['terlambat'],
                 $branch['terlambat'],
+                $branch['off'],
                 $branch['belum'],
                 $branch['percent']
             );
@@ -44,9 +45,9 @@ class Attendance_daily_report {
         $percent = $totals['scheduled'] > 0
             ? (int)round(($present / $totals['scheduled']) * 100)
             : 0;
-        $lines[] = sprintf('%-12s %5s %5s %5s %5s %4s', str_repeat('-', 12), '-----', '-----', '-----', '-----', '----');
-        $lines[] = sprintf('%-12s %5d %5d %5d %5d %3d%%', 'TOTAL',
-            $totals['scheduled'], $present, $totals['terlambat'], $totals['belum'], $percent);
+        $lines[] = sprintf('%-12s %5s %5s %5s %5s %5s %4s', str_repeat('-', 12), '-----', '-----', '-----', '-----', '-----', '----');
+        $lines[] = sprintf('%-12s %5d %5d %5d %5d %5d %3d%%', 'TOTAL',
+            $totals['scheduled'], $present, $totals['terlambat'], $totals['off'], $totals['belum'], $percent);
         $lines[] = '```';
 
         $lines[] = '';
