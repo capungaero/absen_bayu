@@ -16,7 +16,7 @@ class Wa extends CI_Controller {
         $this->load->library('lacak_attendance_client');
 
         $method = $this->router->fetch_method();
-        $is_report_cli = in_array($method, ['test_report_cli', 'preview_report_cli'], true) && is_cli();
+        $is_report_cli = in_array($method, ['test_report_cli', 'preview_report_cli', 'check_sync_health_cli'], true) && is_cli();
         $is_cron = $method === 'cron' || $is_report_cli;
 
         if (in_array($method, ['test_report_cli', 'preview_report_cli'], true) && !is_cli()) {
@@ -266,6 +266,16 @@ class Wa extends CI_Controller {
         echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).PHP_EOL;
     }
 
+    /** Cek manual dari shell VPS (tanpa menunggu jadwal cron, tanpa throttle was_sent_today). */
+    public function check_sync_health_cli() {
+        if (!is_cli()) {
+            show_error('CLI only', 403);
+            return;
+        }
+        $stale = $this->_stale_sync_tables();
+        echo json_encode(['stale' => $stale], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).PHP_EOL;
+    }
+
     /** Pratinjau laporan dari shell VPS tanpa sinkronisasi dan tanpa kirim WA. */
     public function preview_report_cli($date = '', $type = 'pagi') {
         if (!is_cli()) {
@@ -333,6 +343,8 @@ class Wa extends CI_Controller {
             echo json_encode(['status' => 'busy', 'time' => date('H:i')]);
             return;
         }
+
+        $this->_check_sync_health();
 
         $now = date('H:i');
         $results = [];
@@ -581,6 +593,59 @@ class Wa extends CI_Controller {
 
         $count = $absent_count;
         $this->session->set_flashdata('rekap_success', "Notifikasi tidak hadir dikirim ke {$success_count} nomor. ({$count} mitra kerja tidak hadir)");
+    }
+
+    /**
+     * Cek seberapa jauh attendance_day/pray_day ketinggalan dari hari ini.
+     * Ditambahkan 18 Sep 2026 setelah insiden pray_day macet 11 hari tanpa
+     * ada satupun log error -- classify_range(only_dirty=true) berhenti
+     * menemukan baris baru begitu backlog awal habis, dan tak ada yang
+     * menyadari sampai ditanya manual. Return hanya tabel yang bermasalah.
+     */
+    private function _stale_sync_tables($threshold_days = 2) {
+        $today = date('Y-m-d');
+        $checks = [
+            ['table' => 'attendance_day', 'label' => 'Absensi Kerja'],
+            ['table' => 'pray_day', 'label' => 'Absensi Sholat'],
+        ];
+        $stale = [];
+        foreach ($checks as $c) {
+            $row = $this->db->select_max('flow_date')->get($c['table'])->row_array();
+            $latest = !empty($row['flow_date']) ? $row['flow_date'] : null;
+            $days_behind = $latest ? (int)round((strtotime($today) - strtotime($latest)) / 86400) : null;
+            if ($latest === null || $days_behind > $threshold_days) {
+                $stale[] = ['table' => $c['table'], 'label' => $c['label'], 'latest' => $latest, 'days_behind' => $days_behind];
+            }
+        }
+        return $stale;
+    }
+
+    /** Kirim WA sekali sehari ke target_phones kalau ada tabel sync yang macet. */
+    private function _check_sync_health() {
+        $stale = $this->_stale_sync_tables();
+        if (empty($stale)) return;
+        if ($this->wa->was_sent_today('sync_health_alert')) return;
+
+        $wa = $this->_get_wa_instance();
+        $config = $this->wa->get_config();
+        if (!$wa || !$config) return;
+        $phones = $this->_parse_phones($config['target_phones']);
+        if (empty($phones)) return;
+
+        $lines = ['⚠️ *PERINGATAN SYNC MACET*', ''];
+        foreach ($stale as $s) {
+            $detail = $s['latest'] ? $s['latest'].' ('.$s['days_behind'].' hari lalu)' : 'TIDAK ADA DATA';
+            $lines[] = '• '.$s['label'].': data terakhir '.$detail;
+        }
+        $lines[] = '';
+        $lines[] = 'Kemungkinan sync_api / absen_sync.py berhenti jalan. Cek segera.';
+        $message = implode("\n", $lines);
+
+        foreach ($phones as $phone) {
+            $normalized = $wa->normalize_phone($phone);
+            $result = $wa->send($phone, $message);
+            $this->_log_delivery('sync_health_alert', $normalized, $message, $result);
+        }
     }
 
     private function _parse_phones($phones_string) {
