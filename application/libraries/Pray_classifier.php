@@ -167,7 +167,33 @@ class Pray_classifier
                 ->where('flow_date >=', $from)->where('flow_date <=', $to)
                 ->where('needs_reclass', 1);
             if (!empty($user_ids)) { $this->CI->db->where_in('user_id', $user_ids); }
-            return $this->CI->db->get('pray_day')->result_array();
+            $dirty = $this->CI->db->get('pray_day')->result_array();
+
+            // Tap baru yang BELUM PERNAH punya baris pray_day sama sekali (mis.
+            // tanggal baru sejak run sebelumnya) harus tetap ikut diproses walau
+            // only_dirty=true -- kalau tidak, begitu tak ada lagi needs_reclass=1
+            // tersisa, sync otomatis diam-diam berhenti mengklasifikasi tanggal
+            // baru selamanya (bug ditemukan 18 Sep 2026: pray_day macet di baris
+            // terakhir tanggal 7 Sep sementara tap terus masuk tiap hari).
+            $this->CI->db->select('DISTINCT t.user_id, t.tap_date AS flow_date', FALSE)
+                ->from('attendance_tap t')
+                ->join('pray_day pd', 'pd.user_id = t.user_id AND pd.flow_date = t.tap_date', 'left')
+                ->where('t.machine_type', 'pray')
+                ->where('t.user_id IS NOT NULL', NULL, FALSE)
+                ->where('t.tap_date >=', $from)->where('t.tap_date <=', $to)
+                ->where('pd.user_id IS NULL', NULL, FALSE);
+            if (!empty($user_ids)) { $this->CI->db->where_in('t.user_id', $user_ids); }
+            $unseeded = $this->CI->db->get()->result_array();
+
+            $out = [];
+            foreach ($dirty as $r) { $out[$r['user_id'].'|'.$r['flow_date']] = $r; }
+            foreach ($unseeded as $r) {
+                $key = $r['user_id'].'|'.$r['flow_date'];
+                if (!isset($out[$key])) {
+                    $out[$key] = ['user_id' => $r['user_id'], 'flow_date' => $r['flow_date'], 'is_edited' => 0];
+                }
+            }
+            return array_values($out);
         }
 
         $this->CI->db->select('DISTINCT t.user_id, t.tap_date AS flow_date', FALSE)
