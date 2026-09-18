@@ -16,7 +16,7 @@ class Wa extends CI_Controller {
         $this->load->library('lacak_attendance_client');
 
         $method = $this->router->fetch_method();
-        $is_report_cli = in_array($method, ['test_report_cli', 'preview_report_cli', 'check_sync_health_cli'], true) && is_cli();
+        $is_report_cli = in_array($method, ['test_report_cli', 'preview_report_cli', 'check_sync_health_cli', 'test_sync_health_cli'], true) && is_cli();
         $is_cron = $method === 'cron' || $is_report_cli;
 
         if (in_array($method, ['test_report_cli', 'preview_report_cli'], true) && !is_cli()) {
@@ -274,6 +274,42 @@ class Wa extends CI_Controller {
         }
         $stale = $this->_stale_sync_tables();
         echo json_encode(['stale' => $stale], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).PHP_EOL;
+    }
+
+    /** Kirim contoh alarm sync ke 1 nomor test, tanpa throttle was_sent_today & tanpa syarat macet. */
+    public function test_sync_health_cli($phone = '') {
+        if (!is_cli()) {
+            show_error('CLI only', 403);
+            return;
+        }
+        $phone = preg_replace('/[^0-9]/', '', (string)$phone);
+        if (!preg_match('/^62[0-9]{8,13}$/', $phone)) {
+            fwrite(STDERR, "Nomor tujuan tidak valid. Gunakan format 62xxxxxxxxxx.\n");
+            return;
+        }
+        $wa = $this->_get_wa_instance();
+        if (!$wa) {
+            fwrite(STDERR, "Config WA belum diatur.\n");
+            return;
+        }
+
+        $checks = $this->_sync_table_status();
+        $any_stale = false;
+        $lines = ['🧪 *TEST ALARM SYNC* (kiriman manual, bukan alarm otomatis)', ''];
+        foreach ($checks as $c) {
+            $detail = $c['latest'] ? $c['latest'].' ('.$c['days_behind'].' hari lalu)' : 'TIDAK ADA DATA';
+            $lines[] = ($c['is_stale'] ? '⚠️' : '✅').' '.$c['label'].': data terakhir '.$detail;
+            if ($c['is_stale']) $any_stale = true;
+        }
+        $lines[] = '';
+        $lines[] = $any_stale
+            ? 'Ada tabel yang macet -- ini akan jadi isi alarm otomatis berikutnya.'
+            : 'Semua jalur sync sehat saat ini. Format ini contoh tampilan alarm kalau nanti macet.';
+        $message = implode("\n", $lines);
+
+        $result = $wa->send($phone, $message);
+        $this->_log_delivery('sync_health_test', $wa->normalize_phone($phone), $message, $result);
+        echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).PHP_EOL;
     }
 
     /** Pratinjau laporan dari shell VPS tanpa sinkronisasi dan tanpa kirim WA. */
@@ -602,22 +638,27 @@ class Wa extends CI_Controller {
      * menemukan baris baru begitu backlog awal habis, dan tak ada yang
      * menyadari sampai ditanya manual. Return hanya tabel yang bermasalah.
      */
-    private function _stale_sync_tables($threshold_days = 2) {
+    private function _sync_table_status($threshold_days = 2) {
         $today = date('Y-m-d');
         $checks = [
             ['table' => 'attendance_day', 'label' => 'Absensi Kerja'],
             ['table' => 'pray_day', 'label' => 'Absensi Sholat'],
         ];
-        $stale = [];
+        $out = [];
         foreach ($checks as $c) {
             $row = $this->db->select_max('flow_date')->get($c['table'])->row_array();
             $latest = !empty($row['flow_date']) ? $row['flow_date'] : null;
             $days_behind = $latest ? (int)round((strtotime($today) - strtotime($latest)) / 86400) : null;
-            if ($latest === null || $days_behind > $threshold_days) {
-                $stale[] = ['table' => $c['table'], 'label' => $c['label'], 'latest' => $latest, 'days_behind' => $days_behind];
-            }
+            $out[] = [
+                'table' => $c['table'], 'label' => $c['label'], 'latest' => $latest,
+                'days_behind' => $days_behind, 'is_stale' => ($latest === null || $days_behind > $threshold_days),
+            ];
         }
-        return $stale;
+        return $out;
+    }
+
+    private function _stale_sync_tables($threshold_days = 2) {
+        return array_values(array_filter($this->_sync_table_status($threshold_days), function ($s) { return $s['is_stale']; }));
     }
 
     /** Kirim WA sekali sehari ke target_phones kalau ada tabel sync yang macet. */
