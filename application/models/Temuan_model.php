@@ -94,6 +94,27 @@ class Temuan_model extends CI_Model {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
+        // Snapshot harian "Daily Report Temuan & Inspeksi" -- dibuat sekali oleh
+        // cron jam 22:00 (lihat Temuan::cron()), dibaca ulang persis sama untuk
+        // ditampilkan online dan untuk isi pesan WA jam 22:15. Tanggal hari ini
+        // (belum ada snapshot) dihitung live langsung dari tabel temuan.
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `temuan_daily_report` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `report_date` DATE NOT NULL,
+                `total` INT NOT NULL DEFAULT 0,
+                `executed_count` INT NOT NULL DEFAULT 0,
+                `on_time_count` INT NOT NULL DEFAULT 0,
+                `late_count` INT NOT NULL DEFAULT 0,
+                `not_executed_count` INT NOT NULL DEFAULT 0,
+                `overall_status` VARCHAR(30) NOT NULL DEFAULT '',
+                `categories_json` TEXT NULL,
+                `created_at` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_report_date` (`report_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->config_table}` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -424,6 +445,114 @@ class Temuan_model extends CI_Model {
         } else {
             $this->db->insert($this->config_table, $data);
         }
+    }
+
+    // ====================================================================
+    // DAILY REPORT TEMUAN & INSPEKSI
+    // ====================================================================
+
+    /**
+     * Hitung rekap 1 hari langsung dari tabel temuan (bukan baca snapshot).
+     * Dipakai baik untuk preview live tanggal hari ini, maupun oleh cron jam
+     * 22:00 untuk membuat snapshot yang disimpan (lihat save_daily_report()).
+     *
+     * Definisi (independen dari flag is_late di Temuan.php yang menganggap
+     * 'baru'-lewat-deadline sebagai telat -- di sini 'baru' yang sama sekali
+     * belum disentuh masuk not_executed, bukan late):
+     *  - not_executed : status masih 'baru' (belum ada yang mengambil)
+     *  - executed     : status != 'baru' (sudah diambil/diputuskan, apa pun hasilnya)
+     *  - on_time      : status 'selesai' & done_at <= deadline efektif
+     *  - late         : (status 'selesai' & done_at > deadline) ATAU (masih
+     *                    berjalan/dikerjakan & sekarang sudah lewat deadline)
+     *  - 'ditolak' dihitung masuk executed tapi sengaja tidak masuk on_time/late.
+     */
+    public function compute_daily_report($date) {
+        $now = date('Y-m-d H:i:s');
+        $rows = $this->db
+            ->select('t.status, t.done_at, t.due_at, t.due_extended_at, ty.name AS type_name')
+            ->from("{$this->temuan_table} t")
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
+            ->where('t.is_deleted', 0)
+            ->where('t.created_at >=', $date.' 00:00:00')
+            ->where('t.created_at <=', $date.' 23:59:59')
+            ->get()->result_array();
+
+        $categories = [];
+        $executed = 0; $on_time = 0; $late = 0; $not_executed = 0;
+
+        foreach ($rows as $r) {
+            $type_name = $r['type_name'] ?: 'Tanpa Jenis';
+            if (!isset($categories[$type_name])) { $categories[$type_name] = 0; }
+            $categories[$type_name]++;
+
+            if ($r['status'] === 'baru') {
+                $not_executed++;
+                continue;
+            }
+            $executed++;
+            if ($r['status'] === 'ditolak') { continue; }
+
+            $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
+            if ($r['status'] === 'selesai') {
+                if ($effective_due && strtotime($r['done_at']) > strtotime($effective_due)) { $late++; }
+                else { $on_time++; }
+            } elseif ($effective_due && strtotime($now) > strtotime($effective_due)) {
+                $late++;
+            }
+            // masih berjalan & belum lewat deadline: sengaja tidak masuk on_time/late.
+        }
+
+        ksort($categories);
+        $category_list = [];
+        foreach ($categories as $name => $count) { $category_list[] = ['name' => $name, 'total' => $count]; }
+
+        return [
+            'date'               => $date,
+            'total'              => count($rows),
+            'categories'         => $category_list,
+            'executed_count'     => $executed,
+            'on_time_count'      => $on_time,
+            'late_count'         => $late,
+            'not_executed_count' => $not_executed,
+            'overall_status'     => $this->_daily_report_status(count($rows), $late, $not_executed),
+        ];
+    }
+
+    private function _daily_report_status($total, $late, $not_executed) {
+        if ($total === 0) { return 'tidak_ada'; }
+        $ratio = ($late + $not_executed) / $total;
+        if ($ratio <= 0) { return 'baik'; }
+        if ($ratio <= 0.2) { return 'cukup'; }
+        return 'perlu_perhatian';
+    }
+
+    public function save_daily_report($date, $data) {
+        $payload = [
+            'report_date'        => $date,
+            'total'              => (int)$data['total'],
+            'executed_count'     => (int)$data['executed_count'],
+            'on_time_count'      => (int)$data['on_time_count'],
+            'late_count'         => (int)$data['late_count'],
+            'not_executed_count' => (int)$data['not_executed_count'],
+            'overall_status'     => $data['overall_status'],
+            'categories_json'    => json_encode($data['categories'], JSON_UNESCAPED_UNICODE),
+            'created_at'         => date('Y-m-d H:i:s'),
+        ];
+        $existing = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
+        if ($existing) {
+            $this->db->where('id', $existing['id'])->update('temuan_daily_report', $payload);
+        } else {
+            $this->db->insert('temuan_daily_report', $payload);
+        }
+    }
+
+    /** NULL kalau belum pernah ada snapshot utk tanggal itu. */
+    public function get_daily_report($date) {
+        $row = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
+        if (!$row) { return null; }
+        $row['categories'] = json_decode($row['categories_json'], true) ?: [];
+        unset($row['categories_json']);
+        return $row;
     }
 
     // ====================================================================

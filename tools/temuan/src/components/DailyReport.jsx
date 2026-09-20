@@ -1,0 +1,125 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { apiGet } from '../api.js';
+
+const STATUS_META = {
+  baik: { label: '✅ BAIK', desc: 'Semua tertangani tepat waktu', cls: 's-selesai' },
+  cukup: { label: '🟡 CUKUP', desc: 'Sebagian kecil terlambat/belum dieksekusi', cls: 's-dikerjakan' },
+  perlu_perhatian: { label: '🔴 PERLU PERHATIAN', desc: 'Banyak yang terlambat/belum dieksekusi', cls: 's-baru' },
+  tidak_ada: { label: '⚪ TIDAK ADA TEMUAN', desc: 'Tidak ada temuan pada tanggal ini', cls: 's-ditolak' },
+};
+
+const SOURCE_LABEL = {
+  live: '🔴 Live — terus diperbarui sampai snapshot jam 22:00',
+  snapshot: '📦 Tersimpan — snapshot resmi jam 22:00',
+  live_fallback: '⚠️ Dihitung langsung (belum pernah di-snapshot pada tanggal ini)',
+};
+
+function fmtDate(d) {
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const dt = new Date(d + 'T12:00:00');
+  return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
+export default function DailyReport({ onSessionEnd }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(today);
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async (d) => {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await apiGet('/daily_report', { date: d });
+      setReport(data.report);
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }, [onSessionEnd]);
+
+  useEffect(() => { load(date); }, [date, load]);
+
+  const status = report ? (STATUS_META[report.overall_status] || { label: report.overall_status, desc: '', cls: '' }) : null;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+        <h2 style={{ fontSize: 18 }}>📋 Daily Report Temuan &amp; Inspeksi</h2>
+        <div className="filter-row" style={{ marginBottom: 0 }}>
+          <input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} className="date-input" />
+          <button className="btn btn-outline btn-sm" onClick={() => load(date)} disabled={busy}>↻ Muat ulang</button>
+        </div>
+      </div>
+
+      {error && <div className="alert alert-error">{error}</div>}
+      {!report && !error && <div className="empty">Memuat…</div>}
+
+      {report && (
+        <>
+          <div className="admin-section">
+            <h3 style={{ marginBottom: 4 }}>{fmtDate(report.date)}</h3>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>{SOURCE_LABEL[report.source] || ''}</div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                Total Temuan Hari Ini
+              </div>
+              <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.2 }}>{report.total}</div>
+            </div>
+
+            <div className="summary-row">
+              <div className="summary-card s-selesai">
+                <div className="num">{report.executed_count}</div>
+                <div className="lbl">Sudah Dieksekusi</div>
+              </div>
+              <div className="summary-card s-selesai">
+                <div className="num">{report.on_time_count}</div>
+                <div className="lbl">Selesai Tepat Waktu</div>
+              </div>
+              <div className="summary-card s-baru">
+                <div className="num">{report.late_count}</div>
+                <div className="lbl">Terlambat Dieksekusi</div>
+              </div>
+              <div className="summary-card s-dikerjakan">
+                <div className="num">{report.not_executed_count}</div>
+                <div className="lbl">Belum/Tidak Dieksekusi</div>
+              </div>
+            </div>
+
+            <div className={`badge ${status.cls}`} style={{ fontSize: 13, padding: '6px 12px' }}>
+              {status.label}
+            </div>
+            {status.desc && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{status.desc}</div>}
+          </div>
+
+          <div className="admin-section">
+            <h3>📂 Jumlah Temuan per Kategori/Jenis</h3>
+            <div className="table-wrap">
+              <table className="loc-table">
+                <thead>
+                  <tr><th>Kategori / Jenis Temuan</th><th>Jumlah</th></tr>
+                </thead>
+                <tbody>
+                  {report.categories.map((c) => (
+                    <tr key={c.name}>
+                      <td>{c.name}</td>
+                      <td>{c.total}</td>
+                    </tr>
+                  ))}
+                  {report.categories.length === 0 && (
+                    <tr><td colSpan="2" style={{ color: 'var(--muted)' }}>Tidak ada temuan pada tanggal ini.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

@@ -988,6 +988,32 @@ class Temuan extends CI_Controller {
         ]);
     }
 
+    // GET temuan/daily_report?date=YYYY-MM-DD — Daily Report Temuan & Inspeksi.
+    // Tanggal hari ini dihitung LIVE (real-time, terus berubah sampai snapshot
+    // 22:00 dibuat oleh cron()). Tanggal lampau dibaca dari snapshot tersimpan;
+    // kalau kebetulan belum pernah di-snapshot (mis. sebelum fitur ini ada),
+    // fallback dihitung live juga supaya halaman tetap menampilkan sesuatu.
+    public function daily_report() {
+        if (!$this->_auth()) return;
+        $date = $this->input->get('date') ?: date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $this->_json(['status' => false, 'message' => 'Tanggal tidak valid'], 422); return;
+        }
+        if ($date === date('Y-m-d')) {
+            $report = $this->temuan->compute_daily_report($date);
+            $report['source'] = 'live';
+        } else {
+            $report = $this->temuan->get_daily_report($date);
+            if ($report) {
+                $report['source'] = 'snapshot';
+            } else {
+                $report = $this->temuan->compute_daily_report($date);
+                $report['source'] = 'live_fallback';
+            }
+        }
+        $this->_json(['status' => true, 'report' => $report]);
+    }
+
     // GET temuan/report_excel?branch_id=&from=&to=&token= — unduh rekap bulanan .xlsx
     public function report_excel() {
         if (!$this->_auth()) return;
@@ -1750,6 +1776,156 @@ class Temuan extends CI_Controller {
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
         }
+    }
+
+    // ====================================================================
+    // DAILY REPORT CRON (snapshot 22:00 + kirim WA 22:15)
+    // ====================================================================
+
+    // CLI only: php index.php temuan daily_report_test_cli <phone> [date]
+    // Kirim contoh pesan Daily Report ke 1 nomor test, lepas dari jadwal
+    // 22:00/22:15 -- tak perlu tunggu jam malam buat verifikasi format WA.
+    public function daily_report_test_cli($phone = '', $date = '') {
+        if (!is_cli()) { show_error('CLI only', 403); return; }
+        $phone = preg_replace('/[^0-9]/', '', (string)$phone);
+        if (!preg_match('/^62[0-9]{8,13}$/', $phone)) {
+            fwrite(STDERR, "Nomor tujuan tidak valid. Gunakan format 62xxxxxxxxxx.\n");
+            return;
+        }
+        $date = $date ?: date('Y-m-d');
+        $this->load->model('wa_model', 'wa');
+        $result = $this->_send_daily_report_wa($date, $phone);
+        echo json_encode(['result' => $result], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).PHP_EOL;
+    }
+
+    // GET temuan/cron — dipanggil scripts/temuan_daily_report_cron.sh tiap 5
+    // menit. Bukan token per-fitur seperti Wa/cron -- reuse ADMIN_API_KEY
+    // global yang sama dengan Api_admin.php/sync_api (sudah ada infra & env
+    // var-nya, tak perlu bikin jenis token baru).
+    public function cron() {
+        $this->load->library('Api_admin_key', null, 'adminkey');
+        if (!$this->adminkey->verify($this->_bearer())) {
+            $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return;
+        }
+        $lock = $this->_daily_report_cron_lock();
+        if ($lock === false) { $this->_json(['status' => 'busy']); return; }
+
+        $today = date('Y-m-d');
+        $results = [];
+        if ($this->_is_due('22:00')) {
+            $report = $this->temuan->compute_daily_report($today);
+            $this->temuan->save_daily_report($today, $report);
+            $results['snapshot'] = 'saved';
+        }
+        if ($this->_is_due('22:15')) {
+            $this->load->model('wa_model', 'wa');
+            $results['send'] = $this->wa->was_sent_today('temuan_daily_report')
+                ? 'already_sent'
+                : $this->_send_daily_report_wa($today);
+        }
+
+        flock($lock, LOCK_UN);
+        fclose($lock);
+        $this->_json(['status' => 'ok', 'results' => $results, 'time' => date('H:i')]);
+    }
+
+    private function _is_due($scheduled_time, $window_minutes = 15) {
+        if (!preg_match('/^\d{2}:\d{2}$/', (string)$scheduled_time)) return false;
+        $scheduled = strtotime(date('Y-m-d').' '.$scheduled_time.':00');
+        $difference = time() - $scheduled;
+        return $difference >= 0 && $difference < ($window_minutes * 60);
+    }
+
+    private function _daily_report_cron_lock() {
+        $path = APPPATH.'cache'.DIRECTORY_SEPARATOR.'temuan_daily_report_cron.lock';
+        $handle = fopen($path, 'c');
+        if ($handle === false || !flock($handle, LOCK_EX | LOCK_NB)) {
+            if (is_resource($handle)) fclose($handle);
+            return false;
+        }
+        return $handle;
+    }
+
+    /** Kirim snapshot (buat kalau belum ada) ke target_phones milik config Temuan, atau ke $phone_override kalau diisi (utk test manual). */
+    private function _send_daily_report_wa($date, $phone_override = null) {
+        $report = $this->temuan->get_daily_report($date);
+        if (!$report) {
+            $report = $this->temuan->compute_daily_report($date);
+            $this->temuan->save_daily_report($date, $report);
+        }
+
+        if ($phone_override !== null) {
+            $phones = [$phone_override];
+        } else {
+            $cfg = $this->temuan->get_config();
+            $phones = $cfg ? array_filter(array_map('trim', explode(',', (string)$cfg['target_phones']))) : [];
+        }
+        if (empty($phones)) return 'no_phones';
+
+        $wa_cfg = $this->wa->get_config();
+        if (empty($wa_cfg) || empty($wa_cfg['secret']) || empty($wa_cfg['is_active'])) return 'wa_inactive';
+
+        $this->load->library('hermes_wa');
+        $wa = new Hermes_wa(['api_key' => $wa_cfg['secret']]);
+        $message = $this->_build_daily_report_message($report);
+
+        $sent = 0;
+        foreach ($phones as $phone) {
+            $result = $wa->send($phone, $message);
+            $this->wa->insert_log([
+                'type'       => 'temuan_daily_report',
+                'phone'      => $wa->normalize_phone($phone),
+                'message'    => $message,
+                'status'     => $result['success'] ? 'success' : 'failed',
+                'http_code'  => $result['http_code'],
+                'response'   => $result['response'],
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+            if ($result['success']) $sent++;
+        }
+        return $sent.'/'.count($phones);
+    }
+
+    private function _build_daily_report_message($report) {
+        $status_label = [
+            'baik'            => '✅ BAIK — semua tertangani tepat waktu',
+            'cukup'           => '🟡 CUKUP — sebagian kecil terlambat/belum dieksekusi',
+            'perlu_perhatian' => '🔴 PERLU PERHATIAN — banyak yang terlambat/belum dieksekusi',
+            'tidak_ada'       => '⚪ Tidak ada temuan hari ini',
+        ];
+        $lines = [
+            str_repeat('━', 27),
+            '📋 *DAILY REPORT TEMUAN & INSPEKSI*',
+            '📅 '.$this->_indonesian_date($report['date']),
+            str_repeat('━', 27),
+            '',
+            '*Total Temuan Hari Ini:* '.(int)$report['total'],
+            '',
+            '📂 *Per Kategori/Jenis:*',
+        ];
+        if (empty($report['categories'])) {
+            $lines[] = '_Tidak ada temuan_';
+        } else {
+            foreach ($report['categories'] as $c) {
+                $lines[] = '• '.$c['name'].': '.(int)$c['total'];
+            }
+        }
+        $lines[] = '';
+        $lines[] = '✅ Sudah Dieksekusi: '.(int)$report['executed_count'];
+        $lines[] = '🟢 Selesai Tepat Waktu: '.(int)$report['on_time_count'];
+        $lines[] = '🔴 Terlambat Dieksekusi: '.(int)$report['late_count'];
+        $lines[] = '⚪ Belum/Tidak Dieksekusi: '.(int)$report['not_executed_count'];
+        $lines[] = '';
+        $lines[] = '*Status Keseluruhan:* '.($status_label[$report['overall_status']] ?? $report['overall_status']);
+        return implode("\n", $lines);
+    }
+
+    private function _indonesian_date($date) {
+        $days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        $months = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        $ts = strtotime($date.' 12:00:00');
+        return $days[(int)date('w', $ts)].', '.date('j', $ts).' '.$months[(int)date('n', $ts)].' '.date('Y', $ts);
     }
 
     /** Baris lokasi (mode objek) atau nama karyawan yang ditag (mode individu) utk pesan WA. */

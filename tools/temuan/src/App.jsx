@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard.jsx';
 import ReportForm from './components/ReportForm.jsx';
 import Admin from './components/Admin.jsx';
 import Report from './components/Report.jsx';
+import DailyReport from './components/DailyReport.jsx';
 
 export default function App() {
   const [me, setMe] = useState(null);
@@ -52,6 +53,7 @@ export default function App() {
           <button className={tab === 'lapor' ? 'active' : ''} onClick={() => setTab('lapor')}>+ Lapor</button>
         )}
         <button className={tab === 'laporan' ? 'active' : ''} onClick={() => setTab('laporan')}>Laporan</button>
+        <button className={tab === 'daily' ? 'active' : ''} onClick={() => setTab('daily')}>Daily Report</button>
         {me.is_admin && (
           <button className={tab === 'kelola' ? 'active' : ''} onClick={() => setTab('kelola')}>Kelola</button>
         )}
@@ -61,6 +63,7 @@ export default function App() {
         {tab === 'dashboard' && <Dashboard me={me} onSessionEnd={logout} />}
         {tab === 'lapor' && <ReportForm me={me} onDone={() => setTab('dashboard')} onSessionEnd={logout} />}
         {tab === 'laporan' && <Report me={me} onSessionEnd={logout} />}
+        {tab === 'daily' && <DailyReport onSessionEnd={logout} />}
         {tab === 'kelola' && me.is_admin && <Admin me={me} onSessionEnd={logout} />}
       </main>
     </>
