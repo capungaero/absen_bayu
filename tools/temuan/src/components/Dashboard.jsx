@@ -37,6 +37,8 @@ export default function Dashboard({ me, onSessionEnd }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
+  const [qInput, setQInput] = useState('');
+  const [q, setQ] = useState('');
   const [branchId, setBranchId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [typeId, setTypeId] = useState('');
@@ -58,11 +60,16 @@ export default function Dashboard({ me, onSessionEnd }) {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => setQ(qInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [qInput]);
+
   const load = useCallback(async (p = 1, append = false) => {
     setBusy(true);
     setError('');
     try {
-      const data = await apiGet('/list', { status, branch_id: branchId, location_id: locationId, type_id: typeId, page: p });
+      const data = await apiGet('/list', { status, branch_id: branchId, location_id: locationId, type_id: typeId, q, page: p });
       setRows((prev) => (append ? [...prev, ...data.rows] : data.rows));
       setSummary(data.summary);
       setTotal(data.total);
@@ -73,7 +80,7 @@ export default function Dashboard({ me, onSessionEnd }) {
     } finally {
       setBusy(false);
     }
-  }, [status, branchId, locationId, typeId, onSessionEnd]);
+  }, [status, branchId, locationId, typeId, q, onSessionEnd]);
 
   useEffect(() => { load(1); }, [load]);
 
@@ -133,6 +140,13 @@ export default function Dashboard({ me, onSessionEnd }) {
       </div>
 
       <div className="filter-row">
+        <input
+          type="text"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          placeholder="🔍 Cari keterangan, kode area, jenis, pelapor…"
+          style={{ flex: '1 1 220px', minWidth: 180 }}
+        />
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Semua status</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

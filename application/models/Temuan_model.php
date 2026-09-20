@@ -1024,7 +1024,10 @@ class Temuan_model extends CI_Model {
 
     public function count_temuan($filters = []) {
         $this->db->from("{$this->temuan_table} t")
-                 ->join("{$this->location_table} l", 'l.id = t.location_id', 'left');
+                 ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+                 ->join('branch b', 'b.id = t.branch_id', 'left')
+                 ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
+                 ->join('users r', 'r.id = t.reporter_id', 'left');
         $this->_apply_filters($filters);
         return (int)$this->db->count_all_results();
     }
@@ -1064,6 +1067,19 @@ class Temuan_model extends CI_Model {
         }
         if (!empty($filters['to'])) {
             $this->db->where('t.created_at <=', $filters['to'] . ' 23:59:59');
+        }
+        // Search bebas dipakai tab Dashboard & Laporan -- cari di keterangan,
+        // kode area, cabang, jenis temuan, dan nama pelapor sekaligus.
+        if (!empty($filters['q'])) {
+            $q = trim($filters['q']);
+            $this->db->group_start()
+                ->like('t.description', $q)
+                ->or_like('l.name', $q)
+                ->or_like('b.branch_name', $q)
+                ->or_like('ty.name', $q)
+                ->or_like('r.first_name', $q)
+                ->or_like('r.last_name', $q)
+                ->group_end();
         }
     }
 

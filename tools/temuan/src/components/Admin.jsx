@@ -8,6 +8,7 @@ export default function Admin({ me, onSessionEnd }) {
         icon="🕵️" title="Inspector" label="inspector"
         desc="Hanya mitra yang terdaftar sebagai inspector (dan admin) yang bisa memposting temuan."
         listPath="/inspectors" addPath="/inspector_add" delPath="/inspector_delete"
+        withLevel setLevelPath="/inspector_set_level"
         onSessionEnd={onSessionEnd}
       />
       <CategoryAdmin onSessionEnd={onSessionEnd} />
@@ -20,10 +21,11 @@ export default function Admin({ me, onSessionEnd }) {
   );
 }
 
-function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onSessionEnd }) {
+function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, withLevel, setLevelPath, onSessionEnd }) {
   const [rows, setRows] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [pick, setPick] = useState('');
+  const [pickLevel, setPickLevel] = useState('utama');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -48,14 +50,26 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
     setBusy(true);
     setError('');
     try {
-      await apiPost(addPath, { user_id: pick });
+      await apiPost(addPath, withLevel ? { user_id: pick, level: pickLevel } : { user_id: pick });
       setPick('');
+      setPickLevel('utama');
       load();
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const changeLevel = async (row, level) => {
+    if (level === row.level) return;
+    try {
+      await apiPost(setLevelPath, { id: row.id, level });
+      load();
+    } catch (err) {
+      if (err.auth) return onSessionEnd();
+      alert(err.message);
     }
   };
 
@@ -84,12 +98,18 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
             <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>
           ))}
         </select>
+        {withLevel && (
+          <select value={pickLevel} onChange={(e) => setPickLevel(e.target.value)} style={{ flex: '0 0 160px' }}>
+            <option value="utama">Inspector Utama</option>
+            <option value="asisten">Inspector Asisten</option>
+          </select>
+        )}
         <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || !pick}>+ Tambah {title}</button>
       </div>
       <div className="table-wrap">
         <table className="loc-table">
           <thead>
-            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th><th></th></tr>
+            <tr><th>Nama</th><th>Posisi</th><th>Cabang</th>{withLevel && <th>Status</th>}<th></th></tr>
           </thead>
           <tbody>
             {rows.map((row) => (
@@ -97,11 +117,19 @@ function RosterAdmin({ icon, title, label, desc, listPath, addPath, delPath, onS
                 <td>{row.name}</td>
                 <td>{row.position_name || '-'}</td>
                 <td>{row.branch_name || '-'}</td>
+                {withLevel && (
+                  <td>
+                    <select value={row.level || 'utama'} onChange={(e) => changeLevel(row, e.target.value)}>
+                      <option value="utama">Utama</option>
+                      <option value="asisten">Asisten</option>
+                    </select>
+                  </td>
+                )}
                 <td><button className="btn btn-danger" onClick={() => remove(row)}>Hapus</button></td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
+              <tr><td colSpan={withLevel ? 5 : 4} style={{ color: 'var(--muted)' }}>Belum ada {label} terdaftar.</td></tr>
             )}
           </tbody>
         </table>

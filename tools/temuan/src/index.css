@@ -120,7 +120,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .summary-card.s-ditolak .num { color: var(--muted); }
 
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.filter-row select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }
+.filter-row select, .filter-row input[type="text"] { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }
 
 .cards { display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (min-width: 760px) { .cards { grid-template-columns: repeat(2, 1fr); } }

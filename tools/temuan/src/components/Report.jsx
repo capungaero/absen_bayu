@@ -7,6 +7,8 @@ export default function Report({ me, onSessionEnd }) {
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(today);
+  const [qInput, setQInput] = useState('');
+  const [q, setQ] = useState('');
   const [branchId, setBranchId] = useState('');
   const [branches, setBranches] = useState([]);
   const [rows, setRows] = useState([]);
@@ -19,12 +21,17 @@ export default function Report({ me, onSessionEnd }) {
     apiGet('/branches').then((d) => setBranches(d.rows)).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => setQ(qInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [qInput]);
+
   const load = useCallback(async () => {
     setBusy(true);
     setError('');
     try {
       const [data, sum] = await Promise.all([
-        apiGet('/report', { from, to, branch_id: branchId }),
+        apiGet('/report', { from, to, branch_id: branchId, q }),
         apiGet('/report_summary', { from, to, branch_id: branchId }),
       ]);
       setRows(data.rows);
@@ -36,7 +43,7 @@ export default function Report({ me, onSessionEnd }) {
     } finally {
       setBusy(false);
     }
-  }, [from, to, branchId, onSessionEnd]);
+  }, [from, to, branchId, q, onSessionEnd]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -66,6 +73,13 @@ export default function Report({ me, onSessionEnd }) {
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="filter-row">
+        <input
+          type="text"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          placeholder="🔍 Cari keterangan, kode area, jenis, pelapor…"
+          style={{ flex: '1 1 220px', minWidth: 180 }}
+        />
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="date-input" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="date-input" />
         {branches.length > 1 && (

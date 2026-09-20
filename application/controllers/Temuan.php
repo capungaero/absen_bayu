@@ -609,6 +609,7 @@ class Temuan extends CI_Controller {
             'type_id'     => $this->input->get('type_id'),
             'from'        => $this->input->get('from'),
             'to'          => $this->input->get('to'),
+            'q'           => $this->input->get('q'),
         ], $vis_filters);
         $page  = max(1, (int)($this->input->get('page') ?: 1));
         $limit = 50;
@@ -949,6 +950,7 @@ class Temuan extends CI_Controller {
             'from'            => $from,
             'to'              => $to,
             'include_deleted' => true,
+            'q'               => $this->input->get('q'),
         ], $vis_filters);
         $rows = $this->temuan->list_temuan($filters, 500, 0);
         $this->_json([
