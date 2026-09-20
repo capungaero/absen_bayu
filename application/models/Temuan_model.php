@@ -1237,6 +1237,12 @@ class Temuan_model extends CI_Model {
         // kode area, cabang, jenis temuan, dan nama pelapor sekaligus.
         if (!empty($filters['q'])) {
             $q = trim($filters['q']);
+            $lq = $this->db->escape_like_str($q);
+            // PJ & Pengawas (SPV) area disimpan di tabel terpisah (banyak-ke-satu
+            // lokasi), namanya cuma tersedia sbg subquery GROUP_CONCAT di
+            // _select_full() -- tak bisa langsung di-LIKE di WHERE. Dicek lewat
+            // EXISTS ke tabel PJ/SPV area + individu_spv_id (pengawas ad-hoc
+            // mode individu) supaya cari nama PJ/pengawas ikut ketemu.
             $this->db->group_start()
                 ->like('t.description', $q)
                 ->or_like('l.name', $q)
@@ -1244,6 +1250,12 @@ class Temuan_model extends CI_Model {
                 ->or_like('ty.name', $q)
                 ->or_like('r.first_name', $q)
                 ->or_like('r.last_name', $q)
+                ->or_where("EXISTS (SELECT 1 FROM {$this->location_pj_table} lp JOIN users upj ON upj.id = lp.user_id
+                    WHERE lp.location_id = l.id AND (upj.first_name LIKE '%{$lq}%' ESCAPE '!' OR upj.last_name LIKE '%{$lq}%' ESCAPE '!'))", null, false)
+                ->or_where("EXISTS (SELECT 1 FROM {$this->location_spv_table} ls JOIN users usv ON usv.id = ls.user_id
+                    WHERE ls.location_id = l.id AND (usv.first_name LIKE '%{$lq}%' ESCAPE '!' OR usv.last_name LIKE '%{$lq}%' ESCAPE '!'))", null, false)
+                ->or_where("EXISTS (SELECT 1 FROM users uisv
+                    WHERE uisv.id = t.individu_spv_id AND (uisv.first_name LIKE '%{$lq}%' ESCAPE '!' OR uisv.last_name LIKE '%{$lq}%' ESCAPE '!'))", null, false)
                 ->group_end();
         }
     }
