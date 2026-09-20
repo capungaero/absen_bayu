@@ -32,7 +32,7 @@ export default function Report({ me, onSessionEnd }) {
     try {
       const [data, sum] = await Promise.all([
         apiGet('/report', { from, to, branch_id: branchId, q }),
-        apiGet('/report_summary', { from, to, branch_id: branchId }),
+        apiGet('/report_summary', { from, to, branch_id: branchId, q }),
       ]);
       setRows(data.rows);
       setSummary(data.summary);

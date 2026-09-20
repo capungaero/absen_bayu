@@ -970,7 +970,7 @@ class Temuan extends CI_Controller {
         $to   = $this->input->get('to') ?: date('Y-m-d');
         $this->_json([
             'status' => true, 'from' => $from, 'to' => $to,
-            'rows'   => $this->_aggregate_report($branch_id, $from, $to, $this->_visibility_filters()),
+            'rows'   => $this->_aggregate_report($branch_id, $from, $to, $this->_visibility_filters(), $this->input->get('q')),
         ]);
     }
 
@@ -1201,8 +1201,8 @@ class Temuan extends CI_Controller {
     }
 
     /** Agregasi per kode area: jumlah temuan, selesai tepat waktu, tidak selesai (telat/masih terbuka). */
-    private function _aggregate_report($branch_id, $from, $to, $vis_filters = []) {
-        $rows = $this->temuan->get_report_rows($branch_id, $from, $to);
+    private function _aggregate_report($branch_id, $from, $to, $vis_filters = [], $q = null) {
+        $rows = $this->temuan->get_report_rows($branch_id, $from, $to, $q);
         $vis_uid = !empty($vis_filters['visible_to']) ? (int)$vis_filters['visible_to'] : 0;
         $reporter_uid = !empty($vis_filters['reporter_id']) ? (int)$vis_filters['reporter_id'] : 0;
         $groups = [];

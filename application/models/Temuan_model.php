@@ -1245,11 +1245,12 @@ class Temuan_model extends CI_Model {
     }
 
     /** Baris mentah utk rekap bulanan (exclude soft-delete & ditolak; join info PJ/SPV area). */
-    public function get_report_rows($branch_id, $from, $to) {
+    public function get_report_rows($branch_id, $from, $to, $q = null) {
         $this->db
-            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at, t.reporter_id,
+            ->select("t.id, t.status, t.created_at, t.done_at, t.due_at, t.due_extended_at, t.reporter_id, t.description,
                       ty.name AS type_name, ty.target_mode AS type_target_mode, cat.name AS category_name,
                       l.id AS location_id, l.name AS location_name, b.branch_name, dv.name AS division_name,
+                      TRIM(CONCAT(r.first_name,' ',COALESCE(r.last_name,''))) AS reporter_name,
                       (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
                          FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
                         WHERE lp2.location_id = l.id) AS pj_name,
@@ -1273,12 +1274,24 @@ class Temuan_model extends CI_Model {
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->join("{$this->category_table} cat", 'cat.id = ty.category_id', 'left')
             ->join('branch b', 'b.id = t.branch_id', 'left')
+            ->join('users r', 'r.id = t.reporter_id', 'left')
             ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
             ->where('t.is_deleted', 0)
             ->where('t.status !=', 'ditolak')
             ->where('t.created_at >=', $from . ' 00:00:00')
             ->where('t.created_at <=', $to . ' 23:59:59');
         if ($branch_id !== null) { $this->db->where('t.branch_id', $branch_id); }
+        if (!empty($q)) {
+            $q = trim($q);
+            $this->db->group_start()
+                ->like('t.description', $q)
+                ->or_like('l.name', $q)
+                ->or_like('b.branch_name', $q)
+                ->or_like('ty.name', $q)
+                ->or_like('r.first_name', $q)
+                ->or_like('r.last_name', $q)
+                ->group_end();
+        }
         return $this->db->get()->result_array();
     }
 
