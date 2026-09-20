@@ -4,13 +4,16 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 /**
  * Attendance_recap_model
  *
- * Menyusun ulang tabel attendance_recap (rekap harian absen KERJA saja,
+ * Menyusun ulang tabel attendance_recap (rekap harian absen KERJA + OFF/Libur,
  * sudah final dihitung terhadap jadwal shift) dari attendance_day +
  * users_shift_additional. Tidak menyentuh presence sama sekali -- terpisah
  * dari siklus sync presence utama supaya tetap segar walau sync utama lag.
  *
  * Karyawan yang dijadwalkan shift 'work' tapi belum ada tap sama sekali di
- * attendance_day tetap disertakan dengan status 'belum_absen'.
+ * attendance_day tetap disertakan dengan status 'belum_absen'. Karyawan
+ * berjadwal 'free' (OFF/Libur) disertakan dengan status 'off' -- shift_id
+ * dkk akan NULL karena hari OFF memang tidak punya shift (paritas dengan
+ * _has_work_shift() di Attendance_daily_report_model.php).
  */
 class Attendance_recap_model extends CI_Model
 {
@@ -20,6 +23,7 @@ class Attendance_recap_model extends CI_Model
         $sql = "
             SELECT
                 usa.additional_date AS flow_date,
+                usa.additional_type,
                 u.id AS user_id,
                 u.employee_code,
                 TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS employee_name,
@@ -43,10 +47,10 @@ class Attendance_recap_model extends CI_Model
             JOIN users u ON u.id = usa.user_id
             JOIN position p ON p.id = u.position_id
             JOIN branch b ON b.id = p.branch_id
-            JOIN shift s ON s.id = usa.shift_id
+            LEFT JOIN shift s ON s.id = usa.shift_id
             LEFT JOIN attendance_day ad ON ad.user_id = u.id AND ad.flow_date = usa.additional_date
             WHERE u.active = 1
-              AND usa.additional_type = 'work'
+              AND usa.additional_type IN ('work', 'free')
               AND usa.additional_date >= ?
               AND usa.additional_date <= ?
               AND usa.additional_date <= CURDATE()
@@ -66,7 +70,9 @@ class Attendance_recap_model extends CI_Model
             $vals  = [];
             foreach ($chunk as $r) {
                 $late = (int) $r['entry_late'];
-                if ($r['entry_time'] === NULL && $r['out_time'] === NULL) {
+                if ($r['additional_type'] === 'free') {
+                    $status = 'off';
+                } elseif ($r['entry_time'] === NULL && $r['out_time'] === NULL) {
                     $status = 'belum_absen';
                 } elseif ($late > 0) {
                     $status = 'terlambat';
