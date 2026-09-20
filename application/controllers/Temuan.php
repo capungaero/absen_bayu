@@ -1897,37 +1897,73 @@ class Temuan extends CI_Controller {
         return $sent.'/'.count($phones);
     }
 
+    // Label per-baris kategori: status "selesai" pakai ✓, status lain (masih
+    // berjalan/menunggu) pakai ⏳. Urutan tampil = urutan array ini.
+    const DAILY_REPORT_STATUS_WORD = [
+        'selesai'            => 'selesai',
+        'dikerjakan'         => 'proses',
+        'menunggu_acc'       => 'menunggu ACC',
+        'menunggu_acc_tolak' => 'menunggu ACC tolak',
+        'baru'               => 'belum diambil',
+        'ditolak'            => 'ditolak',
+    ];
+    const DAILY_REPORT_STATUS_LABEL = [
+        'selesai'            => 'Selesai',
+        'dikerjakan'         => 'Dikerjakan',
+        'menunggu_acc'       => 'Menunggu ACC',
+        'menunggu_acc_tolak' => 'Menunggu ACC Tolak',
+        'baru'               => 'Belum Diambil',
+        'ditolak'            => 'Ditolak',
+    ];
+
     private function _build_daily_report_message($report) {
-        $status_label = [
-            'baik'            => '✅ BAIK — semua tertangani tepat waktu',
-            'cukup'           => '🟡 CUKUP — sebagian kecil terlambat/belum dieksekusi',
-            'perlu_perhatian' => '🔴 PERLU PERHATIAN — banyak yang terlambat/belum dieksekusi',
-            'tidak_ada'       => '⚪ Tidak ada temuan hari ini',
-        ];
         $lines = [
-            str_repeat('━', 27),
-            '📋 *DAILY REPORT TEMUAN & INSPEKSI*',
-            '📅 '.$this->_indonesian_date($report['date']),
-            str_repeat('━', 27),
+            '📅 *DAILY REPORT — TIFFANY HOUSEWARE*',
+            '🕐 '.$this->_indonesian_date($report['date']).' | ⏰ '.date('H:i').' WIB',
+            str_repeat('━', 29),
             '',
-            '*Total Temuan Hari Ini:* '.(int)$report['total'],
+            '🏷️ *TEMUAN & INSPEKSI*',
+            'Total hari ini: '.(int)$report['total'].' temuan',
             '',
-            '📂 *Per Kategori/Jenis:*',
+            '*Per Jenis:*',
         ];
+
         if (empty($report['categories'])) {
             $lines[] = '_Tidak ada temuan_';
         } else {
             foreach ($report['categories'] as $c) {
-                $lines[] = '• '.$c['name'].': '.(int)$c['total'];
+                $parts = [];
+                foreach (self::DAILY_REPORT_STATUS_WORD as $st => $word) {
+                    $n = (int)($c['by_status'][$st] ?? 0);
+                    if ($n > 0) { $parts[] = $n.($st === 'selesai' ? '✓' : '⏳').' '.$word; }
+                }
+                $lines[] = '• '.$c['name'].': '.(int)$c['total'].(empty($parts) ? '' : ' ('.implode(', ', $parts).')');
             }
         }
+
         $lines[] = '';
-        $lines[] = '✅ Sudah Dieksekusi: '.(int)$report['executed_count'];
-        $lines[] = '🟢 Selesai Tepat Waktu: '.(int)$report['on_time_count'];
-        $lines[] = '🔴 Terlambat Dieksekusi: '.(int)$report['late_count'];
-        $lines[] = '⚪ Belum/Tidak Dieksekusi: '.(int)$report['not_executed_count'];
+        $lines[] = '*Status Keseluruhan:*';
+        $sc = $report['status_counts'] ?? [];
+        $overall_parts = [];
+        foreach (self::DAILY_REPORT_STATUS_LABEL as $st => $label) {
+            $n = (int)($sc[$st] ?? 0);
+            if ($n > 0) { $overall_parts[] = $label.': '.$n; }
+        }
+        $lines[] = '• '.(empty($overall_parts) ? 'Tidak ada temuan' : implode(' | ', $overall_parts));
+
         $lines[] = '';
-        $lines[] = '*Status Keseluruhan:* '.($status_label[$report['overall_status']] ?? $report['overall_status']);
+        $lines[] = str_repeat('━', 29);
+        $lines[] = '';
+        $lines[] = '⚠️ *HAL YANG PERLU PERHATIAN:*';
+        $attention = $this->temuan->get_open_findings_summary($report['date']);
+        if (empty($attention)) {
+            $lines[] = 'Tidak ada, semua temuan hari ini sudah tertangani.';
+        } else {
+            foreach ($attention as $i => $desc) {
+                $lines[] = ($i + 1).'. '.$desc;
+            }
+        }
+
         return implode("\n", $lines);
     }
 

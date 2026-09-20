@@ -109,11 +109,15 @@ class Temuan_model extends CI_Model {
                 `not_executed_count` INT NOT NULL DEFAULT 0,
                 `overall_status` VARCHAR(30) NOT NULL DEFAULT '',
                 `categories_json` TEXT NULL,
+                `status_counts_json` TEXT NULL,
                 `created_at` DATETIME NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uniq_report_date` (`report_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        if ($this->db->query("SHOW COLUMNS FROM `temuan_daily_report` LIKE 'status_counts_json'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `temuan_daily_report` ADD COLUMN `status_counts_json` TEXT NULL AFTER `categories_json`");
+        }
 
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->config_table}` (
@@ -466,6 +470,8 @@ class Temuan_model extends CI_Model {
      *                    berjalan/dikerjakan & sekarang sudah lewat deadline)
      *  - 'ditolak' dihitung masuk executed tapi sengaja tidak masuk on_time/late.
      */
+    const STATUSES = ['baru', 'dikerjakan', 'menunggu_acc', 'menunggu_acc_tolak', 'selesai', 'ditolak'];
+
     public function compute_daily_report($date) {
         $now = date('Y-m-d H:i:s');
         $rows = $this->db
@@ -478,12 +484,17 @@ class Temuan_model extends CI_Model {
             ->get()->result_array();
 
         $categories = [];
+        $status_counts = array_fill_keys(self::STATUSES, 0);
         $executed = 0; $on_time = 0; $late = 0; $not_executed = 0;
 
         foreach ($rows as $r) {
             $type_name = $r['type_name'] ?: 'Tanpa Jenis';
-            if (!isset($categories[$type_name])) { $categories[$type_name] = 0; }
-            $categories[$type_name]++;
+            if (!isset($categories[$type_name])) {
+                $categories[$type_name] = ['total' => 0, 'by_status' => array_fill_keys(self::STATUSES, 0)];
+            }
+            $categories[$type_name]['total']++;
+            $categories[$type_name]['by_status'][$r['status']]++;
+            $status_counts[$r['status']]++;
 
             if ($r['status'] === 'baru') {
                 $not_executed++;
@@ -504,18 +515,40 @@ class Temuan_model extends CI_Model {
 
         ksort($categories);
         $category_list = [];
-        foreach ($categories as $name => $count) { $category_list[] = ['name' => $name, 'total' => $count]; }
+        foreach ($categories as $name => $c) {
+            $category_list[] = ['name' => $name, 'total' => $c['total'], 'by_status' => $c['by_status']];
+        }
 
         return [
             'date'               => $date,
             'total'              => count($rows),
             'categories'         => $category_list,
+            'status_counts'      => $status_counts,
             'executed_count'     => $executed,
             'on_time_count'      => $on_time,
             'late_count'         => $late,
             'not_executed_count' => $not_executed,
             'overall_status'     => $this->_daily_report_status(count($rows), $late, $not_executed),
         ];
+    }
+
+    /** Deskripsi singkat (baris pertama) temuan yang MASIH TERBUKA (bukan selesai/ditolak) -- utk seksi "Hal Perlu Perhatian" pesan WA. */
+    public function get_open_findings_summary($date, $limit = 10) {
+        $rows = $this->db->select('description')
+            ->from("{$this->temuan_table} t")
+            ->where('t.is_deleted', 0)
+            ->where('t.created_at >=', $date.' 00:00:00')
+            ->where('t.created_at <=', $date.' 23:59:59')
+            ->where_not_in('t.status', ['selesai', 'ditolak'])
+            ->order_by('t.created_at', 'ASC')
+            ->limit($limit)
+            ->get()->result_array();
+        $out = [];
+        foreach ($rows as $r) {
+            $first_line = trim(strtok((string)$r['description'], "\r\n"));
+            if ($first_line !== '') { $out[] = mb_substr($first_line, 0, 140); }
+        }
+        return $out;
     }
 
     private function _daily_report_status($total, $late, $not_executed) {
@@ -528,15 +561,16 @@ class Temuan_model extends CI_Model {
 
     public function save_daily_report($date, $data) {
         $payload = [
-            'report_date'        => $date,
-            'total'              => (int)$data['total'],
-            'executed_count'     => (int)$data['executed_count'],
-            'on_time_count'      => (int)$data['on_time_count'],
-            'late_count'         => (int)$data['late_count'],
-            'not_executed_count' => (int)$data['not_executed_count'],
-            'overall_status'     => $data['overall_status'],
-            'categories_json'    => json_encode($data['categories'], JSON_UNESCAPED_UNICODE),
-            'created_at'         => date('Y-m-d H:i:s'),
+            'report_date'         => $date,
+            'total'               => (int)$data['total'],
+            'executed_count'      => (int)$data['executed_count'],
+            'on_time_count'       => (int)$data['on_time_count'],
+            'late_count'          => (int)$data['late_count'],
+            'not_executed_count'  => (int)$data['not_executed_count'],
+            'overall_status'      => $data['overall_status'],
+            'categories_json'     => json_encode($data['categories'], JSON_UNESCAPED_UNICODE),
+            'status_counts_json'  => json_encode($data['status_counts'] ?? [], JSON_UNESCAPED_UNICODE),
+            'created_at'          => date('Y-m-d H:i:s'),
         ];
         $existing = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
         if ($existing) {
@@ -550,8 +584,10 @@ class Temuan_model extends CI_Model {
     public function get_daily_report($date) {
         $row = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
         if (!$row) { return null; }
+        $row['date'] = $row['report_date']; // samakan shape dgn compute_daily_report()
         $row['categories'] = json_decode($row['categories_json'], true) ?: [];
-        unset($row['categories_json']);
+        $row['status_counts'] = json_decode($row['status_counts_json'] ?? '', true) ?: array_fill_keys(self::STATUSES, 0);
+        unset($row['categories_json'], $row['status_counts_json']);
         return $row;
     }
 
