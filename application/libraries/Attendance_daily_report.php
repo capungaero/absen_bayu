@@ -77,6 +77,20 @@ class Attendance_daily_report {
             }
         }
 
+        $lines[] = '';
+        $lines[] = '🏝️ *OFF / LIBUR:*';
+        $off_by_branch = $this->_group_by_branch($this->_employees_by_status($report, 'off'));
+        if (!$off_by_branch) {
+            $lines[] = 'Tidak ada';
+        } else {
+            foreach ($off_by_branch as $branch_name => $employees) {
+                $lines[] = '*'.strtoupper($branch_name).'*';
+                foreach ($employees as $employee) {
+                    $lines[] = '• '.strtoupper($employee['name']).' ('.strtoupper($employee['position_name']).')';
+                }
+            }
+        }
+
         if (!empty($report['missing_shift'])) {
             $lines[] = '';
             $lines[] = '⚠️ *WARNING BELUM ADA SHIFT:*';
