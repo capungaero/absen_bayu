@@ -1011,6 +1011,17 @@ class Temuan extends CI_Controller {
                 $report['source'] = 'live_fallback';
             }
         }
+        // Detail per-temuan selalu dihitung live (bukan bagian snapshot beku) --
+        // data mentahnya permanen di tabel temuan, jadi query ulang tetap akurat
+        // & tak perlu diarsipkan dobel. Dibatasi 500 baris spt Report.jsx.
+        $detail_rows = $this->temuan->list_temuan(array_merge([
+            'branch_id'       => $this->_scope_branch(null),
+            'from'            => $date,
+            'to'              => $date,
+            'include_deleted' => true,
+        ], $this->_visibility_filters()), 500, 0);
+        $report['details'] = array_map([$this, '_row_out'], $detail_rows);
+
         $this->_json(['status' => true, 'report' => $report]);
     }
 

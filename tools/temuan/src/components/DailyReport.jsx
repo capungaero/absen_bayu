@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiGet } from '../api.js';
+import { STATUS_LABEL, fmtTime } from './Dashboard.jsx';
 
 const STATUS_META = {
   baik: { label: '✅ BAIK', desc: 'Semua tertangani tepat waktu', cls: 's-selesai' },
@@ -113,6 +114,52 @@ export default function DailyReport({ onSessionEnd }) {
                   ))}
                   {report.categories.length === 0 && (
                     <tr><td colSpan="2" style={{ color: 'var(--muted)' }}>Tidak ada temuan pada tanggal ini.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="admin-section">
+            <h3>📄 Detail Temuan</h3>
+            <div className="table-wrap">
+              <table className="loc-table report-table">
+                <thead>
+                  <tr>
+                    <th>Waktu</th><th>Jenis</th><th>Kode Area / Mitra</th><th>Cabang</th>
+                    <th>Temuan</th><th>Pelapor</th><th>Status</th><th>Penanganan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(report.details || []).map((r) => (
+                    <tr key={r.id} className={Number(r.is_deleted) ? 'inactive' : ''}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{fmtTime(r.created_at)}</td>
+                      <td>{r.type_name || '-'}</td>
+                      <td>{r.type_target_mode === 'individu' ? (r.subject_names || '-') : r.location_name}</td>
+                      <td>{r.branch_name}</td>
+                      <td>
+                        {r.description}
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                          {r.photo_url && <a href={r.photo_url} target="_blank" rel="noreferrer">📎 foto temuan</a>}
+                          {r.done_photo_url && <a href={r.done_photo_url} target="_blank" rel="noreferrer">📎 foto pengerjaan</a>}
+                        </div>
+                      </td>
+                      <td>{r.reporter_name}</td>
+                      <td>
+                        <span className={`badge badge-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+                        {Number(r.is_deleted) ? <div style={{ fontSize: 11, color: 'var(--muted)' }}>dihapus admin</div> : null}
+                      </td>
+                      <td style={{ fontSize: 13 }}>
+                        {r.taken_by_name && <div>Dikerjakan: {r.taken_by_name} {fmtTime(r.taken_at)}</div>}
+                        {r.done_by_name && <div>Lapor selesai: {r.done_by_name} {fmtTime(r.done_at)}</div>}
+                        {r.acc_by_name && <div>ACC: {r.acc_by_name} {fmtTime(r.acc_at)}</div>}
+                        {r.status === 'ditolak' && <div>Ditolak: {r.reject_by_name} — {r.reject_reason}</div>}
+                        {!r.taken_by_name && !r.done_by_name && !r.acc_by_name && r.status !== 'ditolak' && '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  {(report.details || []).length === 0 && (
+                    <tr><td colSpan="8" style={{ color: 'var(--muted)' }}>Tidak ada temuan pada tanggal ini.</td></tr>
                   )}
                 </tbody>
               </table>
