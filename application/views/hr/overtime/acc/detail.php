@@ -1,4 +1,11 @@
-<?php $role = $this->ion_auth->get_users_groups()->row()->name; ?>
+<?php
+$role = $this->ion_auth->get_users_groups()->row()->name;
+// overtime_proof kadang diisi TEKS ALASAN (bukan path foto) oleh jalur input
+// otomatis (agen WA "Fany"), bukan cuma path gambar upload manual -- kalau
+// dipaksa render sbg <img> hasilnya ikon gambar rusak. Deteksi dari ekstensi.
+$overtime_proof_is_image = !empty($overtime['overtime_proof'])
+    && preg_match('/\.(jpe?g|png|gif|pdf)$/i', $overtime['overtime_proof']);
+?>
 <div class="row">
     <div class="col-12">
         <div class="page-title-box d-flex align-items-center justify-content-between">
@@ -67,6 +74,12 @@
 
                                         <td><i class="dripicons-clock"></i> Waktu Konfirmasi<br><b> <?= $overtime['confirm_at'] != '' ? indonesian_date($overtime['confirm_at'], true) : '-' ?></b></td>
                                     </tr>
+
+                                    <?php if(!empty($overtime['overtime_proof']) && !$overtime_proof_is_image){ ?>
+                                    <tr>
+                                        <td colspan="2"><i class="dripicons-article"></i> Alasan Lembur<br><b><?= htmlspecialchars($overtime['overtime_proof']) ?></b></td>
+                                    </tr>
+                                    <?php } ?>
                                 </table>
                             </div>
                         </div>
@@ -75,7 +88,11 @@
                     <div class="col-md-6">
                         <div class="row">
                             <div class="col-md-5">
+                                <?php if($overtime_proof_is_image){ ?>
                                 <a href="javascript:void(0)" data-bs-target="#modalPreview" data-bs-toggle="modal" class="btn btn-primary"><i class="fa fa-image"></i> Lihat Bukti Lembur</a>
+                                <?php } else { ?>
+                                <span class="text-muted"><i class="fa fa-image"></i> Tidak ada foto bukti</span>
+                                <?php } ?>
                             </div>
 
                             <div class="col-md-7 text-end">
