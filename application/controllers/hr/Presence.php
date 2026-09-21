@@ -24,6 +24,7 @@ class Presence extends CI_Controller{
 		$this->load->library('attendance_ingest');
 		$this->load->library('attendance_classifier');
 
+		$this->is_system_actor = false;
 		if(is_cli()){
 			// Mode CLI (cron sync_cron). Tidak ada sesi login; akses hanya mungkin
 			// dari shell server. Pakai identitas admin pertama untuk created_by log.
@@ -36,6 +37,7 @@ class Presence extends CI_Controller{
 				->order_by('users.id', 'ASC')
 				->get()->row();
 			$this->userdata = (object)['id' => $admin ? (int)$admin->id : 0, 'branch_id' => 0];
+			$this->is_system_actor = true;
 		}elseif(in_array($this->router->fetch_method(), ['sync_api', 'sync_api_status', 'attendance_recap_refresh'], true) && $this->_sync_api_authorized()){
 			// Pemanggil sync_api() lewat HTTP dgn Bearer ADMIN_API_KEY (bukan sesi
 			// browser). Harus dicek di sini -- gate ion_auth di bawah akan redirect
@@ -49,6 +51,7 @@ class Presence extends CI_Controller{
 				->order_by('users.id', 'ASC')
 				->get()->row();
 			$this->userdata = (object)['id' => $admin ? (int)$admin->id : 0, 'branch_id' => 0];
+			$this->is_system_actor = true;
 		}else{
 			if(!$this->ion_auth->logged_in()){
 				redirect('');
@@ -57,9 +60,18 @@ class Presence extends CI_Controller{
 			$this->role     = $this->ion_auth->get_users_groups()->row()->name;
 			$this->userdata = $this->ion_auth->user()->row();
 		}
-		// Tandai user aktif untuk trigger audit_log
-		$audit_uid = isset($this->userdata->id) ? (int)$this->userdata->id : 0;
-		$this->db->query("SET @audit_user_id = {$audit_uid}");
+		// Tandai user aktif untuk trigger audit_log. Jalur CLI/sync_api di atas
+		// pakai identitas admin PERTAMA (id terkecil) hanya sbg placeholder utk
+		// pengecekan role/branch internal -- itu bukan editor sungguhan, jadi
+		// JANGAN dicatat di audit_log seolah admin itu yang mengedit manual
+		// (bug ditemukan 21 Sep 2026: seluruh tulisan sync_api selama ini salah
+		// tercatat sbg perubahan manual oleh admin ber-id terkecil).
+		if($this->is_system_actor){
+			$this->db->query("SET @audit_user_id = NULL");
+		}else{
+			$audit_uid = isset($this->userdata->id) ? (int)$this->userdata->id : 0;
+			$this->db->query("SET @audit_user_id = {$audit_uid}");
+		}
 	}
 
 	private function _resolve_branch_id($posted_branch_id = null){
@@ -2315,7 +2327,7 @@ class Presence extends CI_Controller{
 				foreach($branches as $b){
 					if(!$this->_derive_branch_enabled((int)$b['id'])){ continue; }
 					$res = $this->deriver->derive((int)$b['id'], $from, $to, [
-						'actor_id' => isset($this->userdata->id) ? (int)$this->userdata->id : 0,
+						'actor_id' => $this->is_system_actor ? null : (isset($this->userdata->id) ? (int)$this->userdata->id : 0),
 					]);
 					$log('DERIVE '.$b['branch_name'].': '.$res['inserted'].' baru, '.$res['updated'].' diperbarui, '
 						.$res['blocked'].' ditolak trigger (baris manual), '.$res['skipped_locked'].' terkunci, '
@@ -2373,7 +2385,7 @@ class Presence extends CI_Controller{
 				foreach($branches as $b){
 					if(!$this->_pray_derive_branch_enabled((int)$b['id'])){ continue; }
 					$res = $this->pray_deriver->derive((int)$b['id'], $from, $to, [
-						'actor_id' => isset($this->userdata->id) ? (int)$this->userdata->id : 0,
+						'actor_id' => $this->is_system_actor ? null : (isset($this->userdata->id) ? (int)$this->userdata->id : 0),
 					]);
 					$log('PRAY DERIVE '.$b['branch_name'].': '.$res['updated'].' diperbarui, '
 						.$res['blocked'].' ditolak trigger (baris manual), '.$res['skipped_locked'].' terkunci, '
@@ -2519,7 +2531,7 @@ class Presence extends CI_Controller{
 			$res = $this->deriver->derive((int)$b['id'], $from, $to, [
 				'force'    => $mode === 'force',
 				'dry_run'  => $mode === 'dry',
-				'actor_id' => isset($this->userdata->id) ? (int)$this->userdata->id : 0,
+				'actor_id' => $this->is_system_actor ? null : (isset($this->userdata->id) ? (int)$this->userdata->id : 0),
 			]);
 			$log($b['branch_name'].': '.$res['inserted'].' baru, '.$res['updated'].' diperbarui, '
 				.$res['blocked'].' ditolak trigger, '.$res['skipped_locked'].' terkunci, '
