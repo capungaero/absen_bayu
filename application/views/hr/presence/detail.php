@@ -923,14 +923,11 @@ td.attendance { position: relative; }
                                     </div>
 
                                     <?php if(empty($payroll)){ ?>
-                                    
+
                                         <hr>
 
                                         <div class="row">
                                             <div class="col-md-7">
-                                                <?php if($role == 'admin'){ ?>
-                                                    <a href="javascript:void(0)" id="cancel_presence" class="btn btn-outline-danger"><i class="fa fa-times-circle"></i> Batalkan Kehadiran</a>
-                                                <?php } ?>
                                             </div>
 
                                             <div class="col-md-5 text-end">
@@ -939,12 +936,25 @@ td.attendance { position: relative; }
                                                 <?php if($role == 'admin'){ ?>
                                                     <button id="btnUpdate_workhour" class="btn btn-warning waves-effect waves-light"><i class="fa fa-check"></i> Ubah</button>
                                                 <?php } ?>
-                                                
+
                                             </div>
                                         </div>
                                     <?php } ?>
 
                                 </div>
+
+                                <?php if(empty($payroll) && $role == 'admin'){ ?>
+                                    <!-- DI LUAR #bodyPresence dgn sengaja: hari bertipe sakit/izin/cuti
+                                         menyembunyikan #bodyPresence sepenuhnya (lihat JS di bawah), tapi
+                                         tombol batalkan tetap harus bisa dipakai utk hari-hari itu juga
+                                         (bug ditemukan 21 Sep 2026 -- tombolnya ikut tersembunyi & tak
+                                         bisa diklik kalau ditaruh di dalam #bodyPresence). -->
+                                    <div class="row mt-2">
+                                        <div class="col-md-12">
+                                            <a href="javascript:void(0)" id="cancel_presence" class="btn btn-outline-danger"><i class="fa fa-times-circle"></i> Batalkan Kehadiran</a>
+                                        </div>
+                                    </div>
+                                <?php } ?>
                             </div>
 
                             <div class="tab-pane" id="tab3" role="tabpanel">
