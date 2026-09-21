@@ -101,7 +101,7 @@ $overtime_proof_is_image = !empty($overtime['overtime_proof'])
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalApproveNote" class="btn btn-outline-success text-end bodyStatus"><i class="fa fa-edit"></i> Setujui dengan Catatan</a> &nbsp;
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalDeny" class="btn btn-outline-danger text-end bodyStatus"><i class="fa fa-ban"></i> Tolak</a>
 
-                                <?php }else if($overtime['overtime_status'] == 'approve'){ ?>
+                                <?php }else if($overtime['overtime_status'] == 'approve' && $role == 'admin'){ ?>
                                     <a href="javascript:void(0)" id="btnCancel" class="btn btn-outline-danger"><i class="fa fa-ban"></i> Batalkan Pengajuan Lembur</a>
                                 <?php } ?>
                             </div>

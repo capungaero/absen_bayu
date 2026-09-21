@@ -379,7 +379,9 @@ class Overtime extends CI_Controller{
 	}
 
 	public function cancel_status($overtime_id){
-		if(in_array($this->role, ['admin', 'admin-branch', 'supervisor']) && $this->input->is_ajax_request()) {
+		// Batalkan pengajuan yang sudah approve khusus admin (diminta 21 Sep 2026) --
+		// sebelumnya admin-branch & supervisor juga bisa, sekarang tidak lagi.
+		if(in_array($this->role, ['admin']) && $this->input->is_ajax_request()) {
 
 			$find = [
 				'overtime.id' 	  => $overtime_id,

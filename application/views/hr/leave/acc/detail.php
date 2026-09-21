@@ -100,7 +100,7 @@
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalApprove" class="btn btn-success text-end bodyStatus"><i class="fa fa-check-circle"></i> Setujui</a> &nbsp;
                                     <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#modalDeny" class="btn btn-outline-danger text-end bodyStatus"><i class="fa fa-ban"></i> Tolak</a>
                                    
-                                <?php }else if($leave['leave_status'] == 'approve'){ ?>
+                                <?php }else if($leave['leave_status'] == 'approve' && $role == 'admin'){ ?>
                                     <a href="javascript:void(0)" id="btnCancel" class="btn btn-outline-danger"><i class="fa fa-ban"></i> Batalkan Pengajuan Izin</a>
                                 <?php } ?>
                             </div>
