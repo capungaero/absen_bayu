@@ -128,7 +128,7 @@ Class Overtime_model extends CI_Model{
                      data-date="'.$row['overtime_date'].'"
                      data-name="'.$row['first_name'].'"
                      data-code="'.$row['employee_code'].'"';
-            return "<center><a class='btn btn-primary btn-sm' href='".site_url('hr/overtime/detail/'.$row['id'])."'><i class='fa fa-search'></i></a> <a href='javascript:void(0)' ".$edit." class='btn btn-warning btn-sm edit'><i class='fa fa-pencil'></i></a></center>";
+            return "<center><a class='btn btn-primary btn-sm' href='".site_url('hr/overtime/detail/'.$row['id'])."'><i class='fa fa-search'></i></a> <a href='javascript:void(0)' ".$edit." class='btn btn-warning btn-sm edit'><i class='fa fa-pencil-alt'></i></a></center>";
          });
 
       $this->datatables->create('tableContent', $dt);
