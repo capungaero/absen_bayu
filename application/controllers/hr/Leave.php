@@ -406,6 +406,18 @@ class leave extends CI_Controller{
 
 			if($tr->num_rows() > 0){
 				$leave = $tr->row_array();
+				$range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
+
+				// Lock penggajian: sama spt pengecekan di change_status() saat approve --
+				// potongan izin ini sudah ikut jadi angka beku di payroll kalau periodenya
+				// sudah dibuat. Tolak dulu, minta rollback payroll periode itu, supaya
+				// tidak ada potongan yang "nyantol" tanpa disadari setelah izin dibatalkan.
+				$locked = payroll_locked_dates(payroll_user_branch($leave['user_id']), $range);
+				if(!empty($locked)){
+					echo json_encode(['status'=>false, 'message'=>'Tidak bisa membatalkan izin: tanggal masuk periode pembagian fee terkunci ('.implode(', ', $locked).'). Rollback pembagian fee periode tersebut dulu.']);
+					return;
+				}
+
 				$this->db->trans_begin();
 				$data = [
 					'leave_status' => 'cancel',
@@ -413,7 +425,6 @@ class leave extends CI_Controller{
 				];
 				$this->leave->update($data, $leave_id);
 
-				$range = get_daterange_list($leave['leave_start'], $leave['leave_end']);
 				$this->db->where('user_id', $leave['user_id'])
 						 ->where_in('flow_date', $range)
 						 ->delete('presence');

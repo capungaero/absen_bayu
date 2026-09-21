@@ -92,6 +92,10 @@
                     <div class="col-md-6">
                         <a href="javascript:void(0)" data-bs-target="#modalPreview" data-bs-toggle="modal" class="btn btn-primary"><i class="fa fa-image"></i> Lihat Bukti Izin</a>
 
+                        <?php if($leave['leave_status'] == 'approve' && $role == 'admin'){ ?>
+                            &nbsp;<a href="javascript:void(0)" id="btnCancelLeave" class="btn btn-outline-danger"><i class="fa fa-ban"></i> Batalkan Pengajuan Izin</a>
+                        <?php } ?>
+
                         <?php if($leave['leave_status'] != 'pending'){ ?>
                             <div class="row">
                                 <div class="col-md-12">
@@ -157,3 +161,31 @@
         </div><!-- /.modal-content -->
     </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
+
+<?php if($leave['leave_status'] == 'approve' && $role == 'admin'){ ?>
+<script type="text/javascript">
+$(document).on('click', '#btnCancelLeave', function(){
+    if(!confirm('Batalkan pengajuan izin ini? Presensi pada rentang tanggal izin akan ikut dihapus (agar bisa disinkron ulang secara normal).')) return;
+    var btn = $('#btnCancelLeave');
+    $.ajax({
+        url      : "<?= site_url('cancel_status_leave/'.$leave['id']) ?>",
+        dataType : "json",
+        method   : "POST",
+        data     : { <?php echo $this->security->get_csrf_token_name() ?>: "<?php echo $this->security->get_csrf_hash() ?>" },
+        beforeSend: function(){ btn.html('<i class="fa fa-spinner fa-spin"></i> Proses...').addClass('disabled'); },
+        success  : function(res){
+            if(res.status){
+                window.location.reload();
+            }else{
+                alert(res.message || 'Gagal membatalkan.');
+                btn.html('<i class="fa fa-ban"></i> Batalkan Pengajuan Izin').removeClass('disabled');
+            }
+        },
+        error : function(){
+            alert('Terjadi kesalahan, coba lagi nanti');
+            btn.html('<i class="fa fa-ban"></i> Batalkan Pengajuan Izin').removeClass('disabled');
+        }
+    });
+});
+</script>
+<?php } ?>
