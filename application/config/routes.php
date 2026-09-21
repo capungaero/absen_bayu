@@ -277,6 +277,7 @@ $route['hr/overtime/acc']  = 'hr/Overtime/acc';
 $route['hr/overtime/acc/detail/(:num)'] = 'hr/Overtime/detail_acc/$1';
 $route['change_status_overtime/(:num)'] = 'hr/Overtime/change_status/$1';
 $route['cancel_status_overtime/(:num)'] = 'hr/Overtime/cancel_status/$1';
+$route['delete_overtime/(:num)'] = 'hr/Overtime/delete_overtime/$1';
 
 // KERTAS KERJA
 $route['hr/kertas_kerja']               = 'hr/KertasKerja/index';

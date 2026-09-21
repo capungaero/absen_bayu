@@ -417,9 +417,62 @@ class Overtime extends CI_Controller{
 			}else{
 				show_404();
 			}
-			
+
 		}else{
 			show_404();
+		}
+	}
+
+	/**
+	 * Hapus (soft-delete) pengajuan lembur, khusus admin. Ikut menarik/membatalkan
+	 * bonus lembur: overtime_status dipaksa jadi 'cancel' (bukan cuma deleted_at)
+	 * supaya baris ini otomatis TIDAK ikut hitungan bonus lembur di manapun --
+	 * baik query gabungan presence/payroll (Presence_model::get_attendance_by_branch
+	 * dkk mensyaratkan overtime_status IN ('approve','pending')) maupun proses
+	 * generate payroll (hr/Payroll menjumlahkan overtime approve/pending). Kalau
+	 * penggajian periode tsb SUDAH dibuat (terkunci), angka bonus di baris payroll
+	 * sudah jadi snapshot beku -- tidak otomatis ikut berubah hanya dari sini.
+	 * Makanya dihapus DITOLAK selama masih terkunci; admin wajib rollback
+	 * penggajian periode itu dulu (hr/Payroll rollback) baru bisa hapus, supaya
+	 * tidak pernah ada bonus "nyantol" di payroll yang sudah jadi tanpa disadari.
+	 */
+	public function delete_overtime($overtime_id){
+		if(!in_array($this->role, ['admin']) || !$this->input->is_ajax_request()){
+			show_404(); return;
+		}
+
+		$tr = $this->overtime->get_detail(['overtime.id' => $overtime_id]);
+		if($tr->num_rows() == 0){
+			show_404(); return;
+		}
+		$overtime = $tr->row_array();
+		if(!empty($overtime['deleted_at'])){
+			show_404(); return;
+		}
+
+		if(payroll_locked_for_user_date($overtime['user_id'], $overtime['overtime_date'])){
+			$pp = payroll_period_of_date($overtime['overtime_date']);
+			echo json_encode([
+				'status'  => false,
+				'message' => 'Penggajian periode '.str_pad($pp['month'], 2, '0', STR_PAD_LEFT).'/'.$pp['year'].' sudah dibuat (terkunci). '
+					.'Rollback penggajian periode tersebut dulu supaya bonus lembur ini ikut ditarik balik, baru hapus pengajuannya.'
+			]);
+			return;
+		}
+
+		$this->db->trans_begin();
+		$this->overtime->update([
+			'overtime_status' => 'cancel',
+			'deleted_at'       => date('Y-m-d H:i:s'),
+			'updated_at'       => date('Y-m-d H:i:s'),
+		], $overtime_id);
+
+		if($this->db->trans_status()){
+			$this->db->trans_commit();
+			echo json_encode(['status' => true]);
+		}else{
+			$this->db->trans_rollback();
+			echo json_encode(['status' => false, 'message' => 'Terjadi kesalahan, coba lagi nanti']);
 		}
 	}
 }

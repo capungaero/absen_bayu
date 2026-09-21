@@ -104,6 +104,9 @@ $overtime_proof_is_image = !empty($overtime['overtime_proof'])
                                 <?php }else if($overtime['overtime_status'] == 'approve' && $role == 'admin'){ ?>
                                     <a href="javascript:void(0)" id="btnCancel" class="btn btn-outline-danger"><i class="fa fa-ban"></i> Batalkan Pengajuan Lembur</a>
                                 <?php } ?>
+                                <?php if($role == 'admin'){ ?>
+                                    &nbsp;<a href="javascript:void(0)" id="btnDeleteOvertime" class="btn btn-outline-danger"><i class="fa fa-trash"></i> Hapus</a>
+                                <?php } ?>
                             </div>
                         </div>
 
@@ -419,5 +422,36 @@ $overtime_proof_is_image = !empty($overtime['overtime_proof'])
         }
     });
 
+<?php } ?>
+
+<?php if($role == 'admin'){ ?>
+    $(document).on('click', '#btnDeleteOvertime', function(){
+        if(!confirm('Hapus pengajuan lembur ini? Bonus lembur terkait akan ikut dibatalkan (kalau penggajian periode ini belum dibuat).')) return;
+        var btn = $('#btnDeleteOvertime');
+
+        $.ajax({
+            url         : "<?= site_url('delete_overtime/'.$overtime['id']) ?>",
+            dataType    : "json",
+            method      : "POST",
+            data        : {
+                myToken : "<?php echo $this->security->get_csrf_hash() ?>"
+            },
+            beforeSend  : function(){
+                btn.html('<i class="fa fa-spinner fa-spin"></i> Menghapus...').addClass('disabled')
+            },
+            success : function(res){
+                if(res.status){
+                    window.location.href = "<?= site_url('hr/overtime/acc') ?>";
+                }else{
+                    alert(res.message || 'Gagal menghapus.');
+                    btn.html('<i class="fa fa-trash"></i> Hapus').removeClass('disabled');
+                }
+            },
+            error : function(){
+                alert('Terjadi kesalahan, coba lagi nanti');
+                btn.html('<i class="fa fa-trash"></i> Hapus').removeClass('disabled');
+            }
+        });
+    });
 <?php } ?>
 </script>

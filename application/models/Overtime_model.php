@@ -82,6 +82,7 @@ Class Overtime_model extends CI_Model{
            users.first_name, users.employee_code, branch_name, branch_code, position_name
           ')
                ->from($this->table)
+               ->where('overtime.deleted_at IS NULL', null, false)
                ->join('users', 'users.id = overtime.user_id')
                ->join('position', 'position.id = users.position_id');
 
@@ -94,11 +95,12 @@ Class Overtime_model extends CI_Model{
           ')
                ->from($this->table)
                ->where($find)
+               ->where('overtime.deleted_at IS NULL', null, false)
                ->join('users', 'users.id = overtime.user_id')
                ->join('position', 'position.id = users.position_id')
                ->join('branch', 'branch.id = position.branch_id');
       }
-      
+
       $dt->style(array(
          'class' => 'table table-striped table-bordered',
           ))
@@ -145,6 +147,7 @@ Class Overtime_model extends CI_Model{
            users.first_name, users.employee_code, branch_name, branch_code, position_name
           ')
                ->from($this->table)
+               ->where('overtime.deleted_at IS NULL', null, false)
                ->join('users', 'users.id = overtime.user_id')
                ->join('position', 'position.id = users.position_id');
 
@@ -157,6 +160,7 @@ Class Overtime_model extends CI_Model{
           ')
                ->from($this->table)
                ->where($find)
+               ->where('overtime.deleted_at IS NULL', null, false)
                ->join('users', 'users.id = overtime.user_id')
                ->join('position', 'position.id = users.position_id')
                ->join('branch', 'branch.id = position.branch_id');
