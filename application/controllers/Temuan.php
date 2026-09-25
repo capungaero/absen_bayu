@@ -1922,8 +1922,8 @@ class Temuan extends CI_Controller {
             '🕐 '.$this->_indonesian_date($report['date']).' | ⏰ '.date('H:i').' WIB',
             str_repeat('━', 29),
             '',
-            '🏷️ *TEMUAN & INSPEKSI*',
-            'Total hari ini: '.(int)$report['total'].' temuan',
+            '🏷️ *TEMUAN BARU HARI INI*',
+            'Total temuan baru: '.(int)$report['total'].' temuan',
             '',
             '*Per Jenis:*',
         ];
@@ -1954,10 +1954,36 @@ class Temuan extends CI_Controller {
         $lines[] = '';
         $lines[] = str_repeat('━', 29);
         $lines[] = '';
-        $lines[] = '⚠️ *HAL YANG PERLU PERHATIAN:*';
-        $attention = $this->temuan->get_open_findings_summary($report['date']);
+        $act = $report['activity'] ?? [];
+        $lines[] = '🔄 *AKTIVITAS HARI INI* _(termasuk temuan hari sebelumnya)_';
+        $lines[] = '• Mulai dikerjakan: '.(int)($act['started_count'] ?? 0);
+        $lines[] = '• Lapor selesai: '.(int)($act['reported_done_count'] ?? 0);
+        $lines[] = '• Ditutup/ACC: '.(int)($act['closed_count'] ?? 0)
+            .' (✓'.(int)($act['closed_on_time_count'] ?? 0).' tepat waktu, ⏳'.(int)($act['closed_late_count'] ?? 0).' telat)';
+        if (!empty($act['rejected_final_count'])) { $lines[] = '• Ditolak (final): '.(int)$act['rejected_final_count']; }
+        if (!empty($act['reopened_count'])) { $lines[] = '• Penolakan tidak diterima, lanjut dikerjakan: '.(int)$act['reopened_count']; }
+        if (!empty($act['carried_over_count'])) {
+            $lines[] = '_'.(int)$act['carried_over_count'].' dari '.(int)($act['total_touched'] ?? 0).' aktivitas di atas adalah temuan HARI SEBELUMNYA yang baru bergerak hari ini._';
+        }
+
+        $lines[] = '';
+        $lines[] = str_repeat('━', 29);
+        $lines[] = '';
+        $bl = $report['backlog'] ?? [];
+        $lines[] = '📊 *REKAP TEMUAN TERBUKA (SEMUA TANGGAL)*';
+        $lines[] = '• Total masih terbuka: '.(int)($bl['total_open'] ?? 0);
+        $lines[] = '• Belum diambil: '.(int)($bl['not_started'] ?? 0);
+        $lines[] = '• Sedang berjalan: '.(int)($bl['in_progress'] ?? 0);
+        $lines[] = '• Sudah lewat deadline: '.(int)($bl['overdue'] ?? 0);
+        if (!empty($bl['oldest_open_days'])) { $lines[] = '• Temuan terbuka paling lama: '.(int)$bl['oldest_open_days'].' hari'; }
+
+        $lines[] = '';
+        $lines[] = str_repeat('━', 29);
+        $lines[] = '';
+        $lines[] = '⚠️ *HAL YANG PERLU PERHATIAN (LEWAT DEADLINE):*';
+        $attention = $this->temuan->get_overdue_findings_summary();
         if (empty($attention)) {
-            $lines[] = 'Tidak ada, semua temuan hari ini sudah tertangani.';
+            $lines[] = 'Tidak ada, semua temuan terbuka masih dalam batas waktu.';
         } else {
             foreach ($attention as $i => $desc) {
                 $lines[] = ($i + 1).'. '.$desc;

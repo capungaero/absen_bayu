@@ -110,6 +110,8 @@ class Temuan_model extends CI_Model {
                 `overall_status` VARCHAR(30) NOT NULL DEFAULT '',
                 `categories_json` TEXT NULL,
                 `status_counts_json` TEXT NULL,
+                `activity_json` TEXT NULL,
+                `backlog_json` TEXT NULL,
                 `created_at` DATETIME NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uniq_report_date` (`report_date`)
@@ -117,6 +119,12 @@ class Temuan_model extends CI_Model {
         ");
         if ($this->db->query("SHOW COLUMNS FROM `temuan_daily_report` LIKE 'status_counts_json'")->num_rows() === 0) {
             $this->db->query("ALTER TABLE `temuan_daily_report` ADD COLUMN `status_counts_json` TEXT NULL AFTER `categories_json`");
+        }
+        if ($this->db->query("SHOW COLUMNS FROM `temuan_daily_report` LIKE 'activity_json'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `temuan_daily_report` ADD COLUMN `activity_json` TEXT NULL AFTER `status_counts_json`");
+        }
+        if ($this->db->query("SHOW COLUMNS FROM `temuan_daily_report` LIKE 'backlog_json'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `temuan_daily_report` ADD COLUMN `backlog_json` TEXT NULL AFTER `activity_json`");
         }
 
         $this->db->query("
@@ -529,24 +537,120 @@ class Temuan_model extends CI_Model {
             'late_count'         => $late,
             'not_executed_count' => $not_executed,
             'overall_status'     => $this->_daily_report_status(count($rows), $late, $not_executed),
+            'activity'           => $this->compute_daily_activity($date),
+            'backlog'            => $this->compute_backlog_summary(),
         ];
     }
 
-    /** Deskripsi singkat (baris pertama) temuan yang MASIH TERBUKA (bukan selesai/ditolak) -- utk seksi "Hal Perlu Perhatian" pesan WA. */
-    public function get_open_findings_summary($date, $limit = 10) {
-        $rows = $this->db->select('description')
+    /**
+     * Aktivitas hari ini terhadap temuan APA PUN tanggal dibuatnya -- beda dari
+     * blok di atas yang hanya menghitung temuan yang DIBUAT tanggal ini.
+     * Ini menangkap kasus "temuan kemarin baru dikerjakan/diselesaikan hari
+     * ini", yang sebelumnya tidak pernah muncul di laporan sama sekali.
+     * done_at = waktu pelapor menandai selesai (dipakai jg utk on-time/telat,
+     * konsisten dgn compute_daily_report()); acc_at = waktu inspector ACC
+     * (penentu status final 'selesai').
+     */
+    public function compute_daily_activity($date) {
+        $rows = $this->db
+            ->select('t.status, t.created_at, t.taken_at, t.done_at, t.acc_at, t.due_at, t.due_extended_at,
+                      t.reject_at, t.reject_decision, t.reject_decided_at')
             ->from("{$this->temuan_table} t")
             ->where('t.is_deleted', 0)
-            ->where('t.created_at >=', $date.' 00:00:00')
-            ->where('t.created_at <=', $date.' 23:59:59')
+            ->group_start()
+                ->where('DATE(t.taken_at)', $date)
+                ->or_where('DATE(t.done_at)', $date)
+                ->or_where('DATE(t.acc_at)', $date)
+                ->or_where('DATE(t.reject_at)', $date)
+                ->or_where('DATE(t.reject_decided_at)', $date)
+            ->group_end()
+            ->get()->result_array();
+
+        $carried_over = 0; $started = 0; $reported_done = 0;
+        $closed = 0; $closed_on_time = 0; $closed_late = 0;
+        $rejected_final = 0; $reopened = 0;
+
+        foreach ($rows as $r) {
+            if (substr((string)$r['created_at'], 0, 10) !== $date) { $carried_over++; }
+            if (substr((string)$r['taken_at'], 0, 10) === $date) { $started++; }
+            if (substr((string)$r['done_at'], 0, 10) === $date) { $reported_done++; }
+            if ($r['status'] === 'selesai' && substr((string)$r['acc_at'], 0, 10) === $date) {
+                $closed++;
+                $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
+                if ($effective_due && $r['done_at'] && strtotime($r['done_at']) > strtotime($effective_due)) { $closed_late++; }
+                else { $closed_on_time++; }
+            }
+            if (substr((string)$r['reject_decided_at'], 0, 10) === $date) {
+                if ($r['reject_decision'] === 'approved') { $rejected_final++; }
+                elseif ($r['reject_decision'] === 'denied') { $reopened++; }
+            }
+        }
+
+        return [
+            'total_touched'        => count($rows),
+            'carried_over_count'   => $carried_over,
+            'started_count'        => $started,
+            'reported_done_count'  => $reported_done,
+            'closed_count'         => $closed,
+            'closed_on_time_count' => $closed_on_time,
+            'closed_late_count'    => $closed_late,
+            'rejected_final_count' => $rejected_final,
+            'reopened_count'       => $reopened,
+        ];
+    }
+
+    /** Rekap temuan yang MASIH TERBUKA saat ini juga (live, lintas tanggal dibuat) -- dipanggil saat snapshot dibuat, jadi utk tanggal lampau nilainya beku sesuai kondisi saat snapshot itu diambil. */
+    public function compute_backlog_summary() {
+        $now = date('Y-m-d H:i:s');
+        $rows = $this->db
+            ->select('t.status, t.due_at, t.due_extended_at, t.created_at')
+            ->from("{$this->temuan_table} t")
+            ->where('t.is_deleted', 0)
             ->where_not_in('t.status', ['selesai', 'ditolak'])
-            ->order_by('t.created_at', 'ASC')
+            ->get()->result_array();
+
+        $not_started = 0; $in_progress = 0; $overdue = 0; $oldest_days = 0;
+        foreach ($rows as $r) {
+            if ($r['status'] === 'baru') { $not_started++; } else { $in_progress++; }
+            $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
+            if ($effective_due && strtotime($now) > strtotime($effective_due)) { $overdue++; }
+            $age_days = (int)floor((strtotime($now) - strtotime($r['created_at'])) / 86400);
+            if ($age_days > $oldest_days) { $oldest_days = $age_days; }
+        }
+
+        return [
+            'total_open'       => count($rows),
+            'not_started'      => $not_started,
+            'in_progress'      => $in_progress,
+            'overdue'          => $overdue,
+            'oldest_open_days' => $oldest_days,
+        ];
+    }
+
+    /**
+     * Deskripsi singkat (baris pertama) temuan yang SUDAH LEWAT DEADLINE dan
+     * masih terbuka SAAT INI -- lintas tanggal dibuat (bukan cuma temuan hari
+     * ini), diurutkan yang paling lama menunggak duluan. Sebelumnya seksi ini
+     * cuma menampilkan temuan yang dibuat hari itu, jadi temuan lama yang
+     * menunggak berhari-hari tidak pernah ditagih di WA.
+     */
+    public function get_overdue_findings_summary($limit = 10) {
+        $now = date('Y-m-d H:i:s');
+        $rows = $this->db->select("t.description, t.created_at, COALESCE(t.due_extended_at, t.due_at) AS effective_due")
+            ->from("{$this->temuan_table} t")
+            ->where('t.is_deleted', 0)
+            ->where_not_in('t.status', ['selesai', 'ditolak'])
+            ->where('COALESCE(t.due_extended_at, t.due_at) IS NOT NULL', null, false)
+            ->where('COALESCE(t.due_extended_at, t.due_at) <', $now)
+            ->order_by('effective_due', 'ASC')
             ->limit($limit)
             ->get()->result_array();
         $out = [];
         foreach ($rows as $r) {
             $first_line = trim(strtok((string)$r['description'], "\r\n"));
-            if ($first_line !== '') { $out[] = mb_substr($first_line, 0, 140); }
+            if ($first_line === '') { continue; }
+            $days_late = max(0, (int)floor((strtotime($now) - strtotime($r['effective_due'])) / 86400));
+            $out[] = mb_substr($first_line, 0, 140).' _('.$days_late.' hari telat)_';
         }
         return $out;
     }
@@ -570,6 +674,8 @@ class Temuan_model extends CI_Model {
             'overall_status'      => $data['overall_status'],
             'categories_json'     => json_encode($data['categories'], JSON_UNESCAPED_UNICODE),
             'status_counts_json'  => json_encode($data['status_counts'] ?? [], JSON_UNESCAPED_UNICODE),
+            'activity_json'       => json_encode($data['activity'] ?? [], JSON_UNESCAPED_UNICODE),
+            'backlog_json'        => json_encode($data['backlog'] ?? [], JSON_UNESCAPED_UNICODE),
             'created_at'          => date('Y-m-d H:i:s'),
         ];
         $existing = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
@@ -587,7 +693,9 @@ class Temuan_model extends CI_Model {
         $row['date'] = $row['report_date']; // samakan shape dgn compute_daily_report()
         $row['categories'] = json_decode($row['categories_json'], true) ?: [];
         $row['status_counts'] = json_decode($row['status_counts_json'] ?? '', true) ?: array_fill_keys(self::STATUSES, 0);
-        unset($row['categories_json'], $row['status_counts_json']);
+        $row['activity'] = json_decode($row['activity_json'] ?? '', true) ?: [];
+        $row['backlog'] = json_decode($row['backlog_json'] ?? '', true) ?: [];
+        unset($row['categories_json'], $row['status_counts_json'], $row['activity_json'], $row['backlog_json']);
         return $row;
     }
 

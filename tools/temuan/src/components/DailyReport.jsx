@@ -68,7 +68,7 @@ export default function DailyReport({ onSessionEnd }) {
 
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
-                Total Temuan Hari Ini
+                Total Temuan Baru Hari Ini
               </div>
               <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1.2 }}>{report.total}</div>
             </div>
@@ -96,6 +96,55 @@ export default function DailyReport({ onSessionEnd }) {
               {status.label}
             </div>
             {status.desc && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{status.desc}</div>}
+          </div>
+
+          <div className="admin-section">
+            <h3>🔄 Aktivitas Hari Ini <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}>(termasuk temuan hari sebelumnya yang baru bergerak hari ini)</span></h3>
+            <div className="summary-row">
+              <div className="summary-card s-dikerjakan">
+                <div className="num">{report.activity?.started_count ?? 0}</div>
+                <div className="lbl">Mulai Dikerjakan</div>
+              </div>
+              <div className="summary-card s-dikerjakan">
+                <div className="num">{report.activity?.reported_done_count ?? 0}</div>
+                <div className="lbl">Lapor Selesai</div>
+              </div>
+              <div className="summary-card s-selesai">
+                <div className="num">{report.activity?.closed_count ?? 0}</div>
+                <div className="lbl">Ditutup/ACC ({report.activity?.closed_on_time_count ?? 0} tepat waktu, {report.activity?.closed_late_count ?? 0} telat)</div>
+              </div>
+              <div className="summary-card s-baru">
+                <div className="num">{report.activity?.carried_over_count ?? 0}</div>
+                <div className="lbl">Dari Temuan Hari Sebelumnya</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="admin-section">
+            <h3>📊 Rekap Temuan Terbuka <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}>(semua tanggal, live)</span></h3>
+            <div className="summary-row">
+              <div className="summary-card s-dikerjakan">
+                <div className="num">{report.backlog?.total_open ?? 0}</div>
+                <div className="lbl">Total Masih Terbuka</div>
+              </div>
+              <div className="summary-card s-dikerjakan">
+                <div className="num">{report.backlog?.not_started ?? 0}</div>
+                <div className="lbl">Belum Diambil</div>
+              </div>
+              <div className="summary-card s-dikerjakan">
+                <div className="num">{report.backlog?.in_progress ?? 0}</div>
+                <div className="lbl">Sedang Berjalan</div>
+              </div>
+              <div className="summary-card s-baru">
+                <div className="num">{report.backlog?.overdue ?? 0}</div>
+                <div className="lbl">Sudah Lewat Deadline</div>
+              </div>
+            </div>
+            {!!report.backlog?.oldest_open_days && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
+                Temuan terbuka paling lama: {report.backlog.oldest_open_days} hari
+              </div>
+            )}
           </div>
 
           <div className="admin-section">
