@@ -1915,6 +1915,18 @@ class Temuan extends CI_Controller {
         'baru'               => 'Belum Diambil',
         'ditolak'            => 'Ditolak',
     ];
+    // Urutan & label persis kategori status di halaman aplikasi -- dipakai
+    // khusus seksi "REKAP TEMUAN" (beda dari DAILY_REPORT_STATUS_LABEL di
+    // atas yang labelnya "Belum Diambil" utk 'baru').
+    const DAILY_REPORT_RECAP_ORDER = ['baru', 'dikerjakan', 'menunggu_acc', 'menunggu_acc_tolak', 'selesai', 'ditolak'];
+    const DAILY_REPORT_RECAP_LABEL = [
+        'baru'               => 'Baru',
+        'dikerjakan'         => 'Dikerjakan',
+        'menunggu_acc'       => 'Menunggu ACC',
+        'menunggu_acc_tolak' => 'Menunggu ACC Tolak',
+        'selesai'            => 'Selesai',
+        'ditolak'            => 'Ditolak',
+    ];
 
     private function _build_daily_report_message($report) {
         $lines = [
@@ -1969,13 +1981,11 @@ class Temuan extends CI_Controller {
         $lines[] = '';
         $lines[] = str_repeat('━', 29);
         $lines[] = '';
-        $bl = $report['backlog'] ?? [];
-        $lines[] = '📊 *REKAP TEMUAN TERBUKA (SEMUA TANGGAL)*';
-        $lines[] = '• Total masih terbuka: '.(int)($bl['total_open'] ?? 0);
-        $lines[] = '• Belum diambil: '.(int)($bl['not_started'] ?? 0);
-        $lines[] = '• Sedang berjalan: '.(int)($bl['in_progress'] ?? 0);
-        $lines[] = '• Sudah lewat deadline: '.(int)($bl['overdue'] ?? 0);
-        if (!empty($bl['oldest_open_days'])) { $lines[] = '• Temuan terbuka paling lama: '.(int)$bl['oldest_open_days'].' hari'; }
+        $recap = $report['recap']['status_counts'] ?? [];
+        $lines[] = '📊 *REKAP TEMUAN*';
+        foreach (self::DAILY_REPORT_RECAP_ORDER as $st) {
+            $lines[] = '• '.self::DAILY_REPORT_RECAP_LABEL[$st].': '.(int)($recap[$st] ?? 0);
+        }
 
         $lines[] = '';
         $lines[] = str_repeat('━', 29);

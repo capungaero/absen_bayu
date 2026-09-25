@@ -9,6 +9,8 @@ const STATUS_META = {
   tidak_ada: { label: '⚪ TIDAK ADA TEMUAN', desc: 'Tidak ada temuan pada tanggal ini', cls: 's-ditolak' },
 };
 
+const RECAP_ORDER = ['baru', 'dikerjakan', 'menunggu_acc', 'menunggu_acc_tolak', 'selesai', 'ditolak'];
+
 const SOURCE_LABEL = {
   live: '🔴 Live — terus diperbarui sampai snapshot jam 22:00',
   snapshot: '📦 Tersimpan — snapshot resmi jam 22:00',
@@ -121,30 +123,15 @@ export default function DailyReport({ onSessionEnd }) {
           </div>
 
           <div className="admin-section">
-            <h3>📊 Rekap Temuan Terbuka <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}>(semua tanggal, live)</span></h3>
+            <h3>📊 Rekap Temuan <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}>(semua tanggal, live)</span></h3>
             <div className="summary-row">
-              <div className="summary-card s-dikerjakan">
-                <div className="num">{report.backlog?.total_open ?? 0}</div>
-                <div className="lbl">Total Masih Terbuka</div>
-              </div>
-              <div className="summary-card s-dikerjakan">
-                <div className="num">{report.backlog?.not_started ?? 0}</div>
-                <div className="lbl">Belum Diambil</div>
-              </div>
-              <div className="summary-card s-dikerjakan">
-                <div className="num">{report.backlog?.in_progress ?? 0}</div>
-                <div className="lbl">Sedang Berjalan</div>
-              </div>
-              <div className="summary-card s-baru">
-                <div className="num">{report.backlog?.overdue ?? 0}</div>
-                <div className="lbl">Sudah Lewat Deadline</div>
-              </div>
+              {RECAP_ORDER.map((st) => (
+                <div key={st} className={`summary-card s-${st}`}>
+                  <div className="num">{report.recap?.status_counts?.[st] ?? 0}</div>
+                  <div className="lbl">{STATUS_LABEL[st]}</div>
+                </div>
+              ))}
             </div>
-            {!!report.backlog?.oldest_open_days && (
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
-                Temuan terbuka paling lama: {report.backlog.oldest_open_days} hari
-              </div>
-            )}
           </div>
 
           <div className="admin-section">

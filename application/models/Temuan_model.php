@@ -538,7 +538,7 @@ class Temuan_model extends CI_Model {
             'not_executed_count' => $not_executed,
             'overall_status'     => $this->_daily_report_status(count($rows), $late, $not_executed),
             'activity'           => $this->compute_daily_activity($date),
-            'backlog'            => $this->compute_backlog_summary(),
+            'recap'              => $this->compute_overall_recap(),
         ];
     }
 
@@ -599,31 +599,21 @@ class Temuan_model extends CI_Model {
         ];
     }
 
-    /** Rekap temuan yang MASIH TERBUKA saat ini juga (live, lintas tanggal dibuat) -- dipanggil saat snapshot dibuat, jadi utk tanggal lampau nilainya beku sesuai kondisi saat snapshot itu diambil. */
-    public function compute_backlog_summary() {
-        $now = date('Y-m-d H:i:s');
-        $rows = $this->db
-            ->select('t.status, t.due_at, t.due_extended_at, t.created_at')
-            ->from("{$this->temuan_table} t")
-            ->where('t.is_deleted', 0)
-            ->where_not_in('t.status', ['selesai', 'ditolak'])
+    /** Rekap SELURUH temuan (live, lintas tanggal dibuat) per status persis kategori di halaman aplikasi -- dipanggil saat snapshot dibuat, jadi utk tanggal lampau nilainya beku sesuai kondisi saat snapshot itu diambil. */
+    public function compute_overall_recap() {
+        $rows = $this->db->select('status')
+            ->from("{$this->temuan_table}")
+            ->where('is_deleted', 0)
             ->get()->result_array();
 
-        $not_started = 0; $in_progress = 0; $overdue = 0; $oldest_days = 0;
+        $counts = array_fill_keys(self::STATUSES, 0);
         foreach ($rows as $r) {
-            if ($r['status'] === 'baru') { $not_started++; } else { $in_progress++; }
-            $effective_due = !empty($r['due_extended_at']) ? $r['due_extended_at'] : $r['due_at'];
-            if ($effective_due && strtotime($now) > strtotime($effective_due)) { $overdue++; }
-            $age_days = (int)floor((strtotime($now) - strtotime($r['created_at'])) / 86400);
-            if ($age_days > $oldest_days) { $oldest_days = $age_days; }
+            if (isset($counts[$r['status']])) { $counts[$r['status']]++; }
         }
 
         return [
-            'total_open'       => count($rows),
-            'not_started'      => $not_started,
-            'in_progress'      => $in_progress,
-            'overdue'          => $overdue,
-            'oldest_open_days' => $oldest_days,
+            'total'         => count($rows),
+            'status_counts' => $counts,
         ];
     }
 
@@ -675,7 +665,7 @@ class Temuan_model extends CI_Model {
             'categories_json'     => json_encode($data['categories'], JSON_UNESCAPED_UNICODE),
             'status_counts_json'  => json_encode($data['status_counts'] ?? [], JSON_UNESCAPED_UNICODE),
             'activity_json'       => json_encode($data['activity'] ?? [], JSON_UNESCAPED_UNICODE),
-            'backlog_json'        => json_encode($data['backlog'] ?? [], JSON_UNESCAPED_UNICODE),
+            'backlog_json'        => json_encode($data['recap'] ?? [], JSON_UNESCAPED_UNICODE),
             'created_at'          => date('Y-m-d H:i:s'),
         ];
         $existing = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
@@ -694,7 +684,7 @@ class Temuan_model extends CI_Model {
         $row['categories'] = json_decode($row['categories_json'], true) ?: [];
         $row['status_counts'] = json_decode($row['status_counts_json'] ?? '', true) ?: array_fill_keys(self::STATUSES, 0);
         $row['activity'] = json_decode($row['activity_json'] ?? '', true) ?: [];
-        $row['backlog'] = json_decode($row['backlog_json'] ?? '', true) ?: [];
+        $row['recap'] = json_decode($row['backlog_json'] ?? '', true) ?: [];
         unset($row['categories_json'], $row['status_counts_json'], $row['activity_json'], $row['backlog_json']);
         return $row;
     }
