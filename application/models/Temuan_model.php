@@ -624,10 +624,24 @@ class Temuan_model extends CI_Model {
      * cuma menampilkan temuan yang dibuat hari itu, jadi temuan lama yang
      * menunggak berhari-hari tidak pernah ditagih di WA.
      */
+    /** Detail per-kasus (lokasi/mitra, jenis, PJ) utk kasus yang sudah lewat deadline -- dipakai seksi "Hal Perlu Perhatian" pesan WA. */
     public function get_overdue_findings_summary($limit = 10) {
         $now = date('Y-m-d H:i:s');
-        $rows = $this->db->select("t.description, t.created_at, COALESCE(t.due_extended_at, t.due_at) AS effective_due")
+        $rows = $this->db
+            ->select("t.description, COALESCE(t.due_extended_at, t.due_at) AS effective_due,
+                      ty.name AS type_name, ty.target_mode AS type_target_mode,
+                      l.name AS location_name,
+                      TRIM(CONCAT(isv.first_name,' ',COALESCE(isv.last_name,''))) AS individu_spv_name,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u2.first_name,' ',COALESCE(u2.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->location_pj_table} lp2 JOIN users u2 ON u2.id = lp2.user_id
+                        WHERE lp2.location_id = l.id) AS pj_name,
+                      (SELECT GROUP_CONCAT(TRIM(CONCAT(u3.first_name,' ',COALESCE(u3.last_name,''))) SEPARATOR ', ')
+                         FROM {$this->subject_table} sj2 JOIN users u3 ON u3.id = sj2.user_id
+                        WHERE sj2.temuan_id = t.id) AS subject_names")
             ->from("{$this->temuan_table} t")
+            ->join("{$this->location_table} l", 'l.id = t.location_id', 'left')
+            ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
+            ->join('users isv', 'isv.id = t.individu_spv_id', 'left')
             ->where('t.is_deleted', 0)
             ->where_not_in('t.status', ['selesai', 'ditolak'])
             ->where('COALESCE(t.due_extended_at, t.due_at) IS NOT NULL', null, false)
@@ -635,12 +649,24 @@ class Temuan_model extends CI_Model {
             ->order_by('effective_due', 'ASC')
             ->limit($limit)
             ->get()->result_array();
+
         $out = [];
         foreach ($rows as $r) {
             $first_line = trim(strtok((string)$r['description'], "\r\n"));
             if ($first_line === '') { continue; }
             $days_late = max(0, (int)floor((strtotime($now) - strtotime($r['effective_due'])) / 86400));
-            $out[] = mb_substr($first_line, 0, 140).' _('.$days_late.' hari telat)_';
+            $is_individu = ($r['type_target_mode'] ?? 'objek') === 'individu';
+            $pj_name = $is_individu
+                ? ($r['individu_spv_name'] ?: $r['subject_names'] ?: 'Belum ada penanggung jawab')
+                : ($r['pj_name'] ?: 'Belum ada PJ');
+            $out[] = [
+                'target'      => $is_individu ? ($r['subject_names'] ?: '-') : ($r['location_name'] ?: '-'),
+                'is_individu' => $is_individu,
+                'type_name'   => $r['type_name'] ?: 'Tanpa Jenis',
+                'description' => mb_substr($first_line, 0, 140),
+                'pj_name'     => $pj_name,
+                'days_late'   => $days_late,
+            ];
         }
         return $out;
     }

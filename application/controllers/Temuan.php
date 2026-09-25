@@ -1928,14 +1928,25 @@ class Temuan extends CI_Controller {
         'ditolak'            => 'Ditolak',
     ];
 
+    // Ikon per status -- dipakai konsisten di seksi "Per Jenis" & "REKAP TEMUAN"
+    // supaya gampang dipindai sekilas tanpa baca teks.
+    const DAILY_REPORT_STATUS_ICON = [
+        'baru'               => '🆕',
+        'dikerjakan'         => '🛠️',
+        'menunggu_acc'       => '⏳',
+        'menunggu_acc_tolak' => '🚫',
+        'selesai'            => '✅',
+        'ditolak'            => '❌',
+    ];
+
     private function _build_daily_report_message($report) {
         $lines = [
             '📅 *DAILY REPORT — TIFFANY HOUSEWARE*',
             '🕐 '.$this->_indonesian_date($report['date']).' | ⏰ '.date('H:i').' WIB',
             str_repeat('━', 29),
             '',
-            '🏷️ *TEMUAN BARU HARI INI*',
-            'Total temuan baru: '.(int)$report['total'].' temuan',
+            '🆕 *TEMUAN BARU HARI INI*',
+            '📌 Total temuan baru: '.(int)$report['total'].' temuan',
             '',
             '*Per Jenis:*',
         ];
@@ -1949,7 +1960,7 @@ class Temuan extends CI_Controller {
                     $n = (int)($c['by_status'][$st] ?? 0);
                     if ($n > 0) { $parts[] = $n.($st === 'selesai' ? '✓' : '⏳').' '.$word; }
                 }
-                $lines[] = '• '.$c['name'].': '.(int)$c['total'].(empty($parts) ? '' : ' ('.implode(', ', $parts).')');
+                $lines[] = '▪️ '.$c['name'].': *'.(int)$c['total'].'*'.(empty($parts) ? '' : ' ('.implode(', ', $parts).')');
             }
         }
 
@@ -1959,44 +1970,48 @@ class Temuan extends CI_Controller {
         $overall_parts = [];
         foreach (self::DAILY_REPORT_STATUS_LABEL as $st => $label) {
             $n = (int)($sc[$st] ?? 0);
-            if ($n > 0) { $overall_parts[] = $label.': '.$n; }
+            if ($n > 0) { $overall_parts[] = (self::DAILY_REPORT_STATUS_ICON[$st] ?? '').' '.$label.': '.$n; }
         }
-        $lines[] = '• '.(empty($overall_parts) ? 'Tidak ada temuan' : implode(' | ', $overall_parts));
+        $lines[] = empty($overall_parts) ? '_Tidak ada temuan_' : implode('  ', $overall_parts);
 
         $lines[] = '';
         $lines[] = str_repeat('━', 29);
         $lines[] = '';
         $act = $report['activity'] ?? [];
         $lines[] = '🔄 *AKTIVITAS HARI INI* _(termasuk temuan hari sebelumnya)_';
-        $lines[] = '• Mulai dikerjakan: '.(int)($act['started_count'] ?? 0);
-        $lines[] = '• Lapor selesai: '.(int)($act['reported_done_count'] ?? 0);
-        $lines[] = '• Ditutup/ACC: '.(int)($act['closed_count'] ?? 0)
-            .' (✓'.(int)($act['closed_on_time_count'] ?? 0).' tepat waktu, ⏳'.(int)($act['closed_late_count'] ?? 0).' telat)';
-        if (!empty($act['rejected_final_count'])) { $lines[] = '• Ditolak (final): '.(int)$act['rejected_final_count']; }
-        if (!empty($act['reopened_count'])) { $lines[] = '• Penolakan tidak diterima, lanjut dikerjakan: '.(int)$act['reopened_count']; }
+        $lines[] = '▶️ Mulai dikerjakan: *'.(int)($act['started_count'] ?? 0).'*';
+        $lines[] = '📝 Lapor selesai: *'.(int)($act['reported_done_count'] ?? 0).'*';
+        $lines[] = '✅ Ditutup/ACC: *'.(int)($act['closed_count'] ?? 0)
+            .'* (✓'.(int)($act['closed_on_time_count'] ?? 0).' tepat waktu, ⏳'.(int)($act['closed_late_count'] ?? 0).' telat)';
+        if (!empty($act['rejected_final_count'])) { $lines[] = '❌ Ditolak (final): *'.(int)$act['rejected_final_count'].'*'; }
+        if (!empty($act['reopened_count'])) { $lines[] = '↩️ Penolakan tidak diterima, lanjut dikerjakan: *'.(int)$act['reopened_count'].'*'; }
         if (!empty($act['carried_over_count'])) {
-            $lines[] = '_'.(int)$act['carried_over_count'].' dari '.(int)($act['total_touched'] ?? 0).' aktivitas di atas adalah temuan HARI SEBELUMNYA yang baru bergerak hari ini._';
+            $lines[] = '_↳ '.(int)$act['carried_over_count'].' dari '.(int)($act['total_touched'] ?? 0).' aktivitas di atas adalah temuan HARI SEBELUMNYA yang baru bergerak hari ini._';
         }
 
         $lines[] = '';
         $lines[] = str_repeat('━', 29);
         $lines[] = '';
         $recap = $report['recap']['status_counts'] ?? [];
-        $lines[] = '📊 *REKAP TEMUAN*';
+        $lines[] = '📊 *REKAP TEMUAN* _(semua tanggal)_';
         foreach (self::DAILY_REPORT_RECAP_ORDER as $st) {
-            $lines[] = '• '.self::DAILY_REPORT_RECAP_LABEL[$st].': '.(int)($recap[$st] ?? 0);
+            $lines[] = self::DAILY_REPORT_STATUS_ICON[$st].' '.self::DAILY_REPORT_RECAP_LABEL[$st].': *'.(int)($recap[$st] ?? 0).'*';
         }
 
         $lines[] = '';
         $lines[] = str_repeat('━', 29);
         $lines[] = '';
-        $lines[] = '⚠️ *HAL YANG PERLU PERHATIAN (LEWAT DEADLINE):*';
+        $lines[] = '⚠️ *HAL YANG PERLU PERHATIAN (LEWAT DEADLINE)*';
         $attention = $this->temuan->get_overdue_findings_summary();
         if (empty($attention)) {
-            $lines[] = 'Tidak ada, semua temuan terbuka masih dalam batas waktu.';
+            $lines[] = '✅ Tidak ada, semua temuan terbuka masih dalam batas waktu.';
         } else {
-            foreach ($attention as $i => $desc) {
-                $lines[] = ($i + 1).'. '.$desc;
+            foreach ($attention as $i => $a) {
+                $target_icon = $a['is_individu'] ? '👤' : '📍';
+                $lines[] = '';
+                $lines[] = ($i + 1).". {$target_icon} *{$a['target']}* — {$a['type_name']}";
+                $lines[] = '   📝 '.$a['description'];
+                $lines[] = '   🧑‍💼 PJ: '.$a['pj_name'].'   ⏰ *'.$a['days_late'].' hari telat*';
             }
         }
 
