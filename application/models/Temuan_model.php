@@ -126,6 +126,15 @@ class Temuan_model extends CI_Model {
         if ($this->db->query("SHOW COLUMNS FROM `temuan_daily_report` LIKE 'backlog_json'")->num_rows() === 0) {
             $this->db->query("ALTER TABLE `temuan_daily_report` ADD COLUMN `backlog_json` TEXT NULL AFTER `activity_json`");
         }
+        // Snapshot per-cabang (Daily Report dipisah GBR/SDR, 30 Sep 2026) --
+        // branch_id=0 tetap dipakai utk snapshot GABUNGAN (dipakai halaman
+        // online Daily Report, tidak berubah), branch_id>0 khusus utk kirim
+        // WA per cabang.
+        if ($this->db->query("SHOW COLUMNS FROM `temuan_daily_report` LIKE 'branch_id'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `temuan_daily_report` ADD COLUMN `branch_id` INT NOT NULL DEFAULT 0 AFTER `report_date`");
+            $this->db->query("ALTER TABLE `temuan_daily_report` DROP INDEX `uniq_report_date`");
+            $this->db->query("ALTER TABLE `temuan_daily_report` ADD UNIQUE KEY `uniq_report_date_branch` (`report_date`, `branch_id`)");
+        }
 
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `{$this->config_table}` (
@@ -137,6 +146,16 @@ class Temuan_model extends CI_Model {
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
+        // Nomor tambahan khusus Daily Report per cabang (30 Sep 2026) --
+        // `target_phones` (di atas) TETAP dipakai, selalu ikut dikirimi KEDUA
+        // laporan cabang (permintaan user); dua kolom ini nomor tambahan yang
+        // cuma dapat laporan cabang masing-masing.
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->config_table}` LIKE 'daily_report_phones_gbr'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->config_table}` ADD COLUMN `daily_report_phones_gbr` TEXT NULL AFTER `target_phones`");
+        }
+        if ($this->db->query("SHOW COLUMNS FROM `{$this->config_table}` LIKE 'daily_report_phones_sdr'")->num_rows() === 0) {
+            $this->db->query("ALTER TABLE `{$this->config_table}` ADD COLUMN `daily_report_phones_sdr` TEXT NULL AFTER `daily_report_phones_gbr`");
+        }
 
         // Migrasi tabel lama: kolom label pelaku respon (PJ/SPV/Admin)
         if ($this->db->query("SHOW COLUMNS FROM `{$this->temuan_table}` LIKE 'taken_as'")->num_rows() === 0) {
@@ -480,16 +499,17 @@ class Temuan_model extends CI_Model {
      */
     const STATUSES = ['baru', 'dikerjakan', 'menunggu_acc', 'menunggu_acc_tolak', 'selesai', 'ditolak'];
 
-    public function compute_daily_report($date) {
+    public function compute_daily_report($date, $branch_id = 0) {
         $now = date('Y-m-d H:i:s');
-        $rows = $this->db
+        $q = $this->db
             ->select('t.status, t.done_at, t.due_at, t.due_extended_at, ty.name AS type_name')
             ->from("{$this->temuan_table} t")
             ->join("{$this->type_table} ty", 'ty.id = t.type_id', 'left')
             ->where('t.is_deleted', 0)
             ->where('t.created_at >=', $date.' 00:00:00')
-            ->where('t.created_at <=', $date.' 23:59:59')
-            ->get()->result_array();
+            ->where('t.created_at <=', $date.' 23:59:59');
+        if ($branch_id) { $q->where('t.branch_id', $branch_id); }
+        $rows = $q->get()->result_array();
 
         $categories = [];
         $status_counts = array_fill_keys(self::STATUSES, 0);
@@ -529,6 +549,7 @@ class Temuan_model extends CI_Model {
 
         return [
             'date'               => $date,
+            'branch_id'          => $branch_id,
             'total'              => count($rows),
             'categories'         => $category_list,
             'status_counts'      => $status_counts,
@@ -537,8 +558,8 @@ class Temuan_model extends CI_Model {
             'late_count'         => $late,
             'not_executed_count' => $not_executed,
             'overall_status'     => $this->_daily_report_status(count($rows), $late, $not_executed),
-            'activity'           => $this->compute_daily_activity($date),
-            'recap'              => $this->compute_overall_recap(),
+            'activity'           => $this->compute_daily_activity($date, $branch_id),
+            'recap'              => $this->compute_overall_recap($branch_id),
         ];
     }
 
@@ -551,8 +572,8 @@ class Temuan_model extends CI_Model {
      * konsisten dgn compute_daily_report()); acc_at = waktu inspector ACC
      * (penentu status final 'selesai').
      */
-    public function compute_daily_activity($date) {
-        $rows = $this->db
+    public function compute_daily_activity($date, $branch_id = 0) {
+        $q = $this->db
             ->select('t.status, t.created_at, t.taken_at, t.done_at, t.acc_at, t.due_at, t.due_extended_at,
                       t.reject_at, t.reject_decision, t.reject_decided_at')
             ->from("{$this->temuan_table} t")
@@ -563,8 +584,9 @@ class Temuan_model extends CI_Model {
                 ->or_where('DATE(t.acc_at)', $date)
                 ->or_where('DATE(t.reject_at)', $date)
                 ->or_where('DATE(t.reject_decided_at)', $date)
-            ->group_end()
-            ->get()->result_array();
+            ->group_end();
+        if ($branch_id) { $q->where('t.branch_id', $branch_id); }
+        $rows = $q->get()->result_array();
 
         $carried_over = 0; $started = 0; $reported_done = 0;
         $closed = 0; $closed_on_time = 0; $closed_late = 0;
@@ -600,11 +622,12 @@ class Temuan_model extends CI_Model {
     }
 
     /** Rekap SELURUH temuan (live, lintas tanggal dibuat) per status persis kategori di halaman aplikasi -- dipanggil saat snapshot dibuat, jadi utk tanggal lampau nilainya beku sesuai kondisi saat snapshot itu diambil. */
-    public function compute_overall_recap() {
-        $rows = $this->db->select('status')
+    public function compute_overall_recap($branch_id = 0) {
+        $q = $this->db->select('status')
             ->from("{$this->temuan_table}")
-            ->where('is_deleted', 0)
-            ->get()->result_array();
+            ->where('is_deleted', 0);
+        if ($branch_id) { $q->where('branch_id', $branch_id); }
+        $rows = $q->get()->result_array();
 
         $counts = array_fill_keys(self::STATUSES, 0);
         foreach ($rows as $r) {
@@ -625,9 +648,9 @@ class Temuan_model extends CI_Model {
      * menunggak berhari-hari tidak pernah ditagih di WA.
      */
     /** Detail per-kasus (lokasi/mitra, jenis, PJ) utk kasus yang sudah lewat deadline -- dipakai seksi "Hal Perlu Perhatian" pesan WA. */
-    public function get_overdue_findings_summary($limit = 10) {
+    public function get_overdue_findings_summary($limit = 10, $branch_id = 0) {
         $now = date('Y-m-d H:i:s');
-        $rows = $this->db
+        $q = $this->db
             ->select("t.description, COALESCE(t.due_extended_at, t.due_at) AS effective_due,
                       ty.name AS type_name, ty.target_mode AS type_target_mode,
                       l.name AS location_name,
@@ -645,10 +668,9 @@ class Temuan_model extends CI_Model {
             ->where('t.is_deleted', 0)
             ->where_not_in('t.status', ['selesai', 'ditolak'])
             ->where('COALESCE(t.due_extended_at, t.due_at) IS NOT NULL', null, false)
-            ->where('COALESCE(t.due_extended_at, t.due_at) <', $now)
-            ->order_by('effective_due', 'ASC')
-            ->limit($limit)
-            ->get()->result_array();
+            ->where('COALESCE(t.due_extended_at, t.due_at) <', $now);
+        if ($branch_id) { $q->where('t.branch_id', $branch_id); }
+        $rows = $q->order_by('effective_due', 'ASC')->limit($limit)->get()->result_array();
 
         $out = [];
         foreach ($rows as $r) {
@@ -679,9 +701,10 @@ class Temuan_model extends CI_Model {
         return 'perlu_perhatian';
     }
 
-    public function save_daily_report($date, $data) {
+    public function save_daily_report($date, $data, $branch_id = 0) {
         $payload = [
             'report_date'         => $date,
+            'branch_id'           => $branch_id,
             'total'               => (int)$data['total'],
             'executed_count'      => (int)$data['executed_count'],
             'on_time_count'       => (int)$data['on_time_count'],
@@ -694,7 +717,7 @@ class Temuan_model extends CI_Model {
             'backlog_json'        => json_encode($data['recap'] ?? [], JSON_UNESCAPED_UNICODE),
             'created_at'          => date('Y-m-d H:i:s'),
         ];
-        $existing = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
+        $existing = $this->db->where('report_date', $date)->where('branch_id', $branch_id)->get('temuan_daily_report')->row_array();
         if ($existing) {
             $this->db->where('id', $existing['id'])->update('temuan_daily_report', $payload);
         } else {
@@ -702,9 +725,9 @@ class Temuan_model extends CI_Model {
         }
     }
 
-    /** NULL kalau belum pernah ada snapshot utk tanggal itu. */
-    public function get_daily_report($date) {
-        $row = $this->db->where('report_date', $date)->get('temuan_daily_report')->row_array();
+    /** NULL kalau belum pernah ada snapshot utk tanggal (+ cabang) itu. */
+    public function get_daily_report($date, $branch_id = 0) {
+        $row = $this->db->where('report_date', $date)->where('branch_id', $branch_id)->get('temuan_daily_report')->row_array();
         if (!$row) { return null; }
         $row['date'] = $row['report_date']; // samakan shape dgn compute_daily_report()
         $row['categories'] = json_decode($row['categories_json'], true) ?: [];

@@ -929,6 +929,8 @@ function ConfigAdmin({ onSessionEnd }) {
         notify_enabled: Number(cfg.notify_enabled),
         notify_done_enabled: Number(cfg.notify_done_enabled),
         target_phones: cfg.target_phones || '',
+        daily_report_phones_gbr: cfg.daily_report_phones_gbr || '',
+        daily_report_phones_sdr: cfg.daily_report_phones_sdr || '',
       });
       setSuccess('Konfigurasi tersimpan.');
     } catch (err) {
@@ -975,6 +977,22 @@ function ConfigAdmin({ onSessionEnd }) {
         <label>Nomor tujuan (628xxx, pisah koma)</label>
         <textarea value={cfg.target_phones || ''} onChange={(e) => set('target_phones', e.target.value)} placeholder="6281234567890, 6289876543210" />
       </div>
+
+      <hr style={{ margin: '18px 0' }} />
+      <h4 style={{ fontSize: 14, marginBottom: 4 }}>📊 Daily Report per Cabang</h4>
+      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
+        Laporan harian jam 22:15 dikirim TERPISAH per cabang. Nomor tujuan di atas (⬆) selalu ikut
+        dikirimi KEDUA laporan; nomor di bawah ini nomor TAMBAHAN yang cuma dapat laporan cabangnya sendiri.
+      </p>
+      <div className="field">
+        <label>Nomor tambahan — Daily Report Gambir (628xxx, pisah koma)</label>
+        <textarea value={cfg.daily_report_phones_gbr || ''} onChange={(e) => set('daily_report_phones_gbr', e.target.value)} placeholder="6281234567890" />
+      </div>
+      <div className="field">
+        <label>Nomor tambahan — Daily Report Sudirman (628xxx, pisah koma)</label>
+        <textarea value={cfg.daily_report_phones_sdr || ''} onChange={(e) => set('daily_report_phones_sdr', e.target.value)} placeholder="6281234567890, 6289876543210" />
+      </div>
+
       <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Menyimpan…' : 'Simpan Konfigurasi'}</button>
 
       <hr style={{ margin: '18px 0' }} />

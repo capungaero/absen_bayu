@@ -1643,19 +1643,27 @@ class Temuan extends CI_Controller {
         $this->_json(['status' => true, 'config' => $this->temuan->get_config()]);
     }
 
-    // POST temuan/save_config {notify_enabled, notify_done_enabled, target_phones}
+    // POST temuan/save_config {notify_enabled, notify_done_enabled, target_phones,
+    //                          daily_report_phones_gbr, daily_report_phones_sdr}
     public function save_config() {
         if (!$this->_auth()) return;
         if (!$this->_is_admin()) { $this->_json(['status' => false, 'message' => 'Forbidden'], 403); return; }
         $p = $this->_body();
-        $phones = isset($p['target_phones']) ? trim($p['target_phones']) : '';
-        if ($phones !== '' && !preg_match('/^[0-9,\s+\-]+$/', $phones)) {
-            $this->_json(['status' => false, 'message' => 'Nomor target tidak valid. Gunakan 628xxx, pisahkan dengan koma.'], 422); return;
+        $phone_fields = ['target_phones', 'daily_report_phones_gbr', 'daily_report_phones_sdr'];
+        $clean = [];
+        foreach ($phone_fields as $f) {
+            $v = isset($p[$f]) ? trim($p[$f]) : '';
+            if ($v !== '' && !preg_match('/^[0-9,\s+\-]+$/', $v)) {
+                $this->_json(['status' => false, 'message' => 'Nomor target tidak valid. Gunakan 628xxx, pisahkan dengan koma.'], 422); return;
+            }
+            $clean[$f] = $v;
         }
         $this->temuan->save_config([
-            'notify_enabled'      => !empty($p['notify_enabled']) ? 1 : 0,
-            'notify_done_enabled' => !empty($p['notify_done_enabled']) ? 1 : 0,
-            'target_phones'       => $phones,
+            'notify_enabled'           => !empty($p['notify_enabled']) ? 1 : 0,
+            'notify_done_enabled'      => !empty($p['notify_done_enabled']) ? 1 : 0,
+            'target_phones'            => $clean['target_phones'],
+            'daily_report_phones_gbr'  => $clean['daily_report_phones_gbr'],
+            'daily_report_phones_sdr'  => $clean['daily_report_phones_sdr'],
         ]);
         $this->_json(['status' => true]);
     }
@@ -1793,10 +1801,11 @@ class Temuan extends CI_Controller {
     // DAILY REPORT CRON (snapshot 22:00 + kirim WA 22:15)
     // ====================================================================
 
-    // CLI only: php index.php temuan daily_report_test_cli <phone> [date]
+    // CLI only: php index.php temuan daily_report_test_cli <phone> [date] [gbr|sdr]
     // Kirim contoh pesan Daily Report ke 1 nomor test, lepas dari jadwal
     // 22:00/22:15 -- tak perlu tunggu jam malam buat verifikasi format WA.
-    public function daily_report_test_cli($phone = '', $date = '') {
+    // Tanpa cabang = laporan gabungan (dipakai jg oleh halaman online).
+    public function daily_report_test_cli($phone = '', $date = '', $branch = '') {
         if (!is_cli()) { show_error('CLI only', 403); return; }
         $phone = preg_replace('/[^0-9]/', '', (string)$phone);
         if (!preg_match('/^62[0-9]{8,13}$/', $phone)) {
@@ -1805,8 +1814,32 @@ class Temuan extends CI_Controller {
         }
         $date = $date ?: date('Y-m-d');
         $this->load->model('wa_model', 'wa');
-        $result = $this->_send_daily_report_wa($date, $phone);
+        $branches = $this->_daily_report_branches();
+        if ($branch !== '' && isset($branches[$branch])) {
+            $result = $this->_send_daily_report_wa($date, $branches[$branch]['branch_id'], $branches[$branch]['label'], $phone);
+        } else {
+            $result = $this->_send_daily_report_wa($date, 0, null, $phone);
+        }
         echo json_encode(['result' => $result], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).PHP_EOL;
+    }
+
+    // Cabang yang di-scope utk Daily Report terpisah (permintaan user 30 Sep
+    // 2026) -- dicocokkan by NAMA (bukan hardcode id) supaya tetap benar
+    // kalau id cabang beda antar environment. `phones_field` = kolom
+    // temuan_config berisi nomor TAMBAHAN khusus cabang itu (di luar
+    // target_phones global yang tetap ikut dikirimi KEDUA laporan).
+    private function _daily_report_branches() {
+        static $cache = null;
+        if ($cache !== null) { return $cache; }
+        $cache = [];
+        foreach ($this->db->select('id, branch_name')->get('branch')->result_array() as $r) {
+            if (stripos($r['branch_name'], 'GBR') !== false) {
+                $cache['gbr'] = ['branch_id' => (int)$r['id'], 'label' => 'GAMBIR', 'phones_field' => 'daily_report_phones_gbr', 'wa_type' => 'temuan_daily_report_gbr'];
+            } elseif (stripos($r['branch_name'], 'SDR') !== false) {
+                $cache['sdr'] = ['branch_id' => (int)$r['id'], 'label' => 'SUDIRMAN', 'phones_field' => 'daily_report_phones_sdr', 'wa_type' => 'temuan_daily_report_sdr'];
+            }
+        }
+        return $cache;
     }
 
     // GET temuan/cron — dipanggil scripts/temuan_daily_report_cron.sh tiap 5
@@ -1822,17 +1855,26 @@ class Temuan extends CI_Controller {
         if ($lock === false) { $this->_json(['status' => 'busy']); return; }
 
         $today = date('Y-m-d');
+        $branches = $this->_daily_report_branches();
         $results = [];
         if ($this->_is_due('22:00')) {
-            $report = $this->temuan->compute_daily_report($today);
-            $this->temuan->save_daily_report($today, $report);
+            // Gabungan (branch_id=0) dipertahankan utk halaman online Daily
+            // Report -- tidak lagi dikirim via WA (diganti 2 laporan cabang).
+            $this->temuan->save_daily_report($today, $this->temuan->compute_daily_report($today));
+            foreach ($branches as $b) {
+                $this->temuan->save_daily_report($today, $this->temuan->compute_daily_report($today, $b['branch_id']), $b['branch_id']);
+            }
             $results['snapshot'] = 'saved';
         }
         if ($this->_is_due('22:15')) {
             $this->load->model('wa_model', 'wa');
-            $results['send'] = $this->wa->was_sent_today('temuan_daily_report')
-                ? 'already_sent'
-                : $this->_send_daily_report_wa($today);
+            $send = [];
+            foreach ($branches as $key => $b) {
+                $send[$key] = $this->wa->was_sent_today($b['wa_type'])
+                    ? 'already_sent'
+                    : $this->_send_daily_report_wa($today, $b['branch_id'], $b['label']);
+            }
+            $results['send'] = $send;
         }
 
         flock($lock, LOCK_UN);
@@ -1857,19 +1899,34 @@ class Temuan extends CI_Controller {
         return $handle;
     }
 
-    /** Kirim snapshot (buat kalau belum ada) ke target_phones milik config Temuan, atau ke $phone_override kalau diisi (utk test manual). */
-    private function _send_daily_report_wa($date, $phone_override = null) {
-        $report = $this->temuan->get_daily_report($date);
+    /**
+     * Kirim snapshot cabang $branch_id (buat kalau belum ada) ke target_phones
+     * global + nomor tambahan cabang tsb, atau ke $phone_override kalau diisi
+     * (utk test manual -- test tetap kirim laporan CABANG itu, cuma ke 1 nomor).
+     * $branch_id=0 & $branch_label=null = laporan gabungan (dipakai test CLI
+     * tanpa argumen cabang; tidak dipakai cron sejak dipisah per cabang).
+     */
+    private function _send_daily_report_wa($date, $branch_id = 0, $branch_label = null, $phone_override = null) {
+        $report = $this->temuan->get_daily_report($date, $branch_id);
         if (!$report) {
-            $report = $this->temuan->compute_daily_report($date);
-            $this->temuan->save_daily_report($date, $report);
+            $report = $this->temuan->compute_daily_report($date, $branch_id);
+            $this->temuan->save_daily_report($date, $report, $branch_id);
         }
 
+        $cfg = $this->temuan->get_config();
         if ($phone_override !== null) {
             $phones = [$phone_override];
         } else {
-            $cfg = $this->temuan->get_config();
             $phones = $cfg ? array_filter(array_map('trim', explode(',', (string)$cfg['target_phones']))) : [];
+            $branches = $this->_daily_report_branches();
+            foreach ($branches as $b) {
+                if ($b['branch_id'] === $branch_id && $cfg && !empty($cfg[$b['phones_field']])) {
+                    foreach (array_filter(array_map('trim', explode(',', (string)$cfg[$b['phones_field']]))) as $p) {
+                        $phones[] = $p;
+                    }
+                }
+            }
+            $phones = array_values(array_unique($phones));
         }
         if (empty($phones)) return 'no_phones';
 
@@ -1878,13 +1935,18 @@ class Temuan extends CI_Controller {
 
         $this->load->library('hermes_wa');
         $wa = new Hermes_wa(['api_key' => $wa_cfg['secret']]);
-        $message = $this->_build_daily_report_message($report);
+        $message = $this->_build_daily_report_message($report, $branch_label);
+
+        $wa_type = 'temuan_daily_report';
+        foreach ($this->_daily_report_branches() as $b) {
+            if ($b['branch_id'] === $branch_id) { $wa_type = $b['wa_type']; break; }
+        }
 
         $sent = 0;
         foreach ($phones as $phone) {
             $result = $wa->send($phone, $message);
             $this->wa->insert_log([
-                'type'       => 'temuan_daily_report',
+                'type'       => $wa_type,
                 'phone'      => $wa->normalize_phone($phone),
                 'message'    => $message,
                 'status'     => $result['success'] ? 'success' : 'failed',
@@ -1939,9 +2001,9 @@ class Temuan extends CI_Controller {
         'ditolak'            => '❌',
     ];
 
-    private function _build_daily_report_message($report) {
+    private function _build_daily_report_message($report, $branch_label = null) {
         $lines = [
-            '📅 *DAILY REPORT — TIFFANY HOUSEWARE*',
+            '📅 *DAILY REPORT — TIFFANY HOUSEWARE'.($branch_label ? ' '.$branch_label : '').'*',
             '🕐 '.$this->_indonesian_date($report['date']).' | ⏰ '.date('H:i').' WIB',
             str_repeat('━', 29),
             '',
@@ -2002,7 +2064,7 @@ class Temuan extends CI_Controller {
         $lines[] = str_repeat('━', 29);
         $lines[] = '';
         $lines[] = '⚠️ *HAL YANG PERLU PERHATIAN (LEWAT DEADLINE)*';
-        $attention = $this->temuan->get_overdue_findings_summary();
+        $attention = $this->temuan->get_overdue_findings_summary(10, $report['branch_id'] ?? 0);
         if (empty($attention)) {
             $lines[] = '✅ Tidak ada, semua temuan terbuka masih dalam batas waktu.';
         } else {
