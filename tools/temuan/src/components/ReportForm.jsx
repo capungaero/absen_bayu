@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiGet, apiUpload } from '../api.js';
 import { compressImage } from '../imageCompress.js';
+import { SearchableSelect, SearchableChecklist } from './SearchableSelect.jsx';
 
 export default function ReportForm({ me, onDone, onSessionEnd }) {
   const [branches, setBranches] = useState([]);
@@ -144,31 +145,36 @@ export default function ReportForm({ me, onDone, onSessionEnd }) {
         <>
           <div className="field">
             <label>Mitra (bisa pilih lebih dari satu)</label>
-            <div className="pj-checklist">
-              {employees.map((u) => (
-                <label key={u.id} className="check-row" style={{ marginBottom: 4 }}>
-                  <input type="checkbox" checked={subjectIds.includes(String(u.id))} onChange={() => toggleSubject(String(u.id))} />
-                  {u.name}{u.position_name ? ` (${u.position_name})` : ''}
-                </label>
-              ))}
-              {employees.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>}
-            </div>
+            {employees.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pilih cabang dulu.</div>
+            ) : (
+              <SearchableChecklist
+                values={subjectIds}
+                onToggle={toggleSubject}
+                options={employees.map((u) => ({ id: u.id, label: u.name + (u.position_name ? ` (${u.position_name})` : '') }))}
+                placeholder="Ketik nama mitra…"
+              />
+            )}
           </div>
           <div className="field">
             <label>Pengawas (opsional — ikut boleh menyelesaikan)</label>
-            <select value={spvId} onChange={(e) => setSpvId(e.target.value)}>
-              <option value="">— tidak ada —</option>
-              {employees.map((u) => <option key={u.id} value={u.id}>{u.name}{u.position_name ? ` (${u.position_name})` : ''}</option>)}
-            </select>
+            <SearchableSelect
+              value={spvId}
+              onChange={setSpvId}
+              options={employees.map((u) => ({ id: u.id, label: u.name + (u.position_name ? ` (${u.position_name})` : '') }))}
+              placeholder="Ketik nama pengawas… (opsional)"
+            />
           </div>
         </>
       ) : (
         <div className="field">
           <label>Lokasi</label>
-          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
-            <option value="">— pilih lokasi —</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+          <SearchableSelect
+            value={locationId}
+            onChange={setLocationId}
+            options={locations.map((l) => ({ id: l.id, label: l.name }))}
+            placeholder="Ketik nama lokasi…"
+          />
           {branchId && locations.length === 0 && (
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
               Belum ada lokasi terdaftar untuk cabang ini. Minta admin menambah lewat menu Kelola.
