@@ -1,5 +1,9 @@
 // Service worker Temuan: cache shell saja, API selalu network.
-var CACHE = 'temuan-v1';
+// v2 (2 Okt 2026): index.html tanpa Cache-Control di nginx -> fetch() SW
+// bisa kena heuristic cache browser & balikin HTML lama meski "network-
+// first" (bug: admin lihat UI lama walau server sudah update). Fix: request
+// navigasi (HTML) dipaksa cache:'no-store' supaya SELALU hit network asli.
+var CACHE = 'temuan-v2';
 
 self.addEventListener('install', function (e) {
   self.skipWaiting();
@@ -19,8 +23,9 @@ self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET' || url.pathname.indexOf('/absen/temuan') === 0 || url.pathname.indexOf('/absen/api') === 0 || url.pathname.indexOf('/absen/assets') === 0) {
     return;
   }
+  var fetchOpts = e.request.mode === 'navigate' ? { cache: 'no-store' } : undefined;
   e.respondWith(
-    fetch(e.request).then(function (res) {
+    fetch(e.request, fetchOpts).then(function (res) {
       var copy = res.clone();
       caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
       return res;
