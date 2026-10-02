@@ -1715,15 +1715,21 @@ class Temuan extends CI_Controller {
         $progress_types = ['temuan_lapor', 'temuan_selesai', 'temuan_extend_request', 'temuan_extend_approved', 'temuan_extend_rejected'];
         if (in_array($type, $progress_types, true) && empty($cfg['notify_done_enabled'])) return;
 
-        // Target notif: nomor bersama (Kelola -> Notifikasi, target_phones) SELALU ikut di
-        // semua kasus, digabung (bukan fallback) dengan nomor yang ditag khusus area tsb --
+        // Target notif: nomor cabang (Kelola -> Notifikasi -> Daily Report per Cabang,
+        // daily_report_phones_gbr/_sdr) ikut menerima SETIAP notif temuan di cabangnya
+        // saja. `target_phones` (nomor global, penerima Daily Report 22:15 kedua cabang)
+        // SENGAJA TIDAK ikut notif per-temuan (permintaan user 2 Okt 2026). Digabung
+        // (bukan fallback) dengan nomor yang ditag khusus area tsb --
         // semua PJ + Pengawas Utama saja (bukan backup) + kontak WA yang dicentang buat
         // lokasi itu (Kelola -> Kode Area). Mode individu: + nomor Pengawas ad-hoc yang
         // dipilih saat lapor. Tiap nomor dilacak PERANnya (pj/pengawas/kontak/bersama)
         // biar isi pesan bisa dipersonalisasi -- lihat _build_message().
         $targets = [];
-        foreach (array_filter(array_map('trim', explode(',', (string)$cfg['target_phones']))) as $p) {
-            $targets[] = ['phone' => $p, 'role' => 'bersama'];
+        foreach ($this->_daily_report_branches() as $b) {
+            if ((int)$b['branch_id'] !== (int)($row['branch_id'] ?? 0) || empty($cfg[$b['phones_field']])) { continue; }
+            foreach (array_filter(array_map('trim', explode(',', (string)$cfg[$b['phones_field']]))) as $p) {
+                $targets[] = ['phone' => $p, 'role' => 'bersama'];
+            }
         }
         if (!empty($row['location_id'])) {
             foreach ($this->temuan->get_location_pj_phones($row['location_id']) as $p) {

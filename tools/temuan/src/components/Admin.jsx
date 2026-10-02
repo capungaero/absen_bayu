@@ -1076,22 +1076,24 @@ function ConfigAdmin({ onSessionEnd }) {
         Kirim notifikasi saat temuan selesai
       </label>
       <div className="field">
-        <label>Nomor tujuan (628xxx, pisah koma)</label>
+        <label>Penerima Daily Report 22:15 — SEMUA cabang (628xxx, pisah koma)</label>
         <textarea value={cfg.target_phones || ''} onChange={(e) => set('target_phones', e.target.value)} placeholder="6281234567890, 6289876543210" />
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+          Hanya menerima Daily Report jam 22:15 (laporan Gambir + Sudirman). TIDAK menerima notifikasi tiap temuan.
+        </p>
       </div>
 
       <hr style={{ margin: '18px 0' }} />
-      <h4 style={{ fontSize: 14, marginBottom: 4 }}>📊 Daily Report per Cabang</h4>
+      <h4 style={{ fontSize: 14, marginBottom: 4 }}>📊 Penerima per Cabang</h4>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
-        Laporan harian jam 22:15 dikirim TERPISAH per cabang. Nomor tujuan di atas (⬆) selalu ikut
-        dikirimi KEDUA laporan; nomor di bawah ini nomor TAMBAHAN yang cuma dapat laporan cabangnya sendiri.
+        Nomor di bawah menerima SETIAP notifikasi temuan di cabangnya + Daily Report 22:15 khusus cabang itu.
       </p>
       <div className="field">
-        <label>Nomor tambahan — Daily Report Gambir (628xxx, pisah koma)</label>
+        <label>Cabang Gambir (628xxx, pisah koma)</label>
         <textarea value={cfg.daily_report_phones_gbr || ''} onChange={(e) => set('daily_report_phones_gbr', e.target.value)} placeholder="6281234567890" />
       </div>
       <div className="field">
-        <label>Nomor tambahan — Daily Report Sudirman (628xxx, pisah koma)</label>
+        <label>Cabang Sudirman (628xxx, pisah koma)</label>
         <textarea value={cfg.daily_report_phones_sdr || ''} onChange={(e) => set('daily_report_phones_sdr', e.target.value)} placeholder="6281234567890, 6289876543210" />
       </div>
 
