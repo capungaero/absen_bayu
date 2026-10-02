@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiGet, apiPost } from '../api.js';
+import { SearchableChecklist } from './SearchableSelect.jsx';
 
 export default function Admin({ me, onSessionEnd }) {
   return (
@@ -505,13 +506,21 @@ function DivisionAdmin({ onSessionEnd }) {
 
 function WaContactAdmin({ onSessionEnd }) {
   const [contacts, setContacts] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const d = await apiGet('/wa_contacts', { all: 1 });
-      setContacts(d.rows);
+      const [c, e, d] = await Promise.all([
+        apiGet('/wa_contacts', { all: 1 }),
+        apiGet('/employees'),
+        apiGet('/divisions', { all: 1 }),
+      ]);
+      setContacts(c.rows);
+      setEmployees(e.rows);
+      setDivisions(d.rows);
     } catch (err) {
       if (err.auth) return onSessionEnd();
       setError(err.message);
@@ -531,6 +540,22 @@ function WaContactAdmin({ onSessionEnd }) {
     }
   };
 
+  const toggleEmployee = (uid) => {
+    setEditing((f) => {
+      const cur = f.employee_ids || [];
+      const has = cur.includes(uid);
+      return { ...f, employee_ids: has ? cur.filter((x) => x !== uid) : [...cur, uid] };
+    });
+  };
+
+  const toggleDivision = (did) => {
+    setEditing((f) => {
+      const cur = f.division_ids || [];
+      const has = cur.includes(did);
+      return { ...f, division_ids: has ? cur.filter((x) => x !== did) : [...cur, did] };
+    });
+  };
+
   const save = async () => {
     if (!editing.name.trim() || !editing.phone.trim()) return;
     try {
@@ -539,6 +564,8 @@ function WaContactAdmin({ onSessionEnd }) {
         name: editing.name.trim(),
         phone: editing.phone.trim(),
         is_active: editing.is_active ? 1 : 0,
+        employee_ids: editing.employee_ids || [],
+        division_ids: editing.division_ids || [],
       });
       setEditing(null);
       load();
@@ -548,35 +575,50 @@ function WaContactAdmin({ onSessionEnd }) {
     }
   };
 
+  const openEdit = (c) => {
+    setEditing({
+      ...c,
+      employee_ids: c.employee_ids ? String(c.employee_ids).split(',').map(Number) : [],
+      division_ids: c.division_ids ? String(c.division_ids).split(',').map(Number) : [],
+    });
+  };
+
   return (
     <div className="admin-section">
       <h3>📱 Kontak Notifikasi WA</h3>
       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Nomor HP + nama yang bisa dipilih sebagai penerima notif WA untuk Kode Area tertentu
-        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah).
+        (di bagian Kode Area, PJ &amp; Pengawas Area di bawah). Hubungkan ke mitra/divisi di
+        bawah supaya nomor ini otomatis terhitung sebagai "no kerja" mitra tsb — PJ/Pengawas
+        yang sudah tercakup di sini tidak perlu diisi no kerja terpisah lagi.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }}
-        onClick={() => setEditing({ name: '', phone: '', is_active: 1 })}>
+        onClick={() => setEditing({ name: '', phone: '', is_active: 1, employee_ids: [], division_ids: [] })}>
         + Tambah Kontak
       </button>
       <div className="table-wrap">
         <table className="loc-table">
-          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nama</th><th>Nomor HP</th><th>Terhubung ke</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {contacts.map((c) => (
               <tr key={c.id} className={Number(c.is_active) ? '' : 'inactive'}>
                 <td>{c.name}</td>
                 <td>{c.phone}</td>
+                <td style={{ fontSize: 13 }}>
+                  {c.employee_names && <div>👤 {c.employee_names}</div>}
+                  {c.division_names && <div>🏷️ Divisi: {c.division_names}</div>}
+                  {!c.employee_names && !c.division_names && <span style={{ color: 'var(--muted)' }}>Belum dihubungkan</span>}
+                </td>
                 <td>{Number(c.is_active) ? 'Aktif' : 'Nonaktif'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => setEditing(c)}>Edit</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)}>Edit</button>{' '}
                   <button className="btn btn-danger" onClick={() => remove(c)}>Hapus</button>
                 </td>
               </tr>
             ))}
             {contacts.length === 0 && (
-              <tr><td colSpan="4" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
+              <tr><td colSpan="5" style={{ color: 'var(--muted)' }}>Belum ada kontak.</td></tr>
             )}
           </tbody>
         </table>
@@ -598,6 +640,27 @@ function WaContactAdmin({ onSessionEnd }) {
               <input type="checkbox" checked={!!Number(editing.is_active)} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked ? 1 : 0 })} />
               Aktif
             </label>
+            <div className="field">
+              <label>Nomor kerja milik mitra (opsional — bisa pilih lebih dari satu)</label>
+              <SearchableChecklist
+                values={(editing.employee_ids || []).map(String)}
+                onToggle={(uid) => toggleEmployee(Number(uid))}
+                options={employees.map((u) => ({ id: u.id, label: u.name + (u.position_name ? ` (${u.position_name})` : '') }))}
+                placeholder="Ketik nama mitra…"
+              />
+            </div>
+            <div className="field">
+              <label>Atau untuk seluruh divisi/posisi ini (opsional)</label>
+              <div className="pj-checklist">
+                {divisions.map((d) => (
+                  <label key={d.id} className="check-row" style={{ marginBottom: 4 }}>
+                    <input type="checkbox" checked={(editing.division_ids || []).includes(Number(d.id))} onChange={() => toggleDivision(Number(d.id))} />
+                    {d.name}
+                  </label>
+                ))}
+                {divisions.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Belum ada divisi.</div>}
+              </div>
+            </div>
             <div className="modal-actions">
               <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Batal</button>
               <button className="btn btn-primary btn-sm" onClick={save}>Simpan</button>
@@ -758,6 +821,19 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
     });
   };
 
+  const setWorkPhone = (uid, val) => {
+    setForm((f) => ({ ...f, work_phones: { ...(f.work_phones || {}), [uid]: val } }));
+  };
+
+  // PJ/Pengawas yang ditugaskan tapi belum punya no WA kerja (temuan_work_phone)
+  // DAN belum tercakup kontak kantor (Kelola -> Kontak Notifikasi WA, langsung
+  // atau lewat divisi) -- backend akan menolak simpan kalau ini tidak diisi.
+  const assignedIds = Array.from(new Set([...(form.pj_user_ids || []), ...(form.spv_user_ids || [])]));
+  const missingPhoneIds = assignedIds.filter((uid) => {
+    const emp = employees.find((e) => Number(e.id) === uid);
+    return emp && !emp.work_phone && !Number(emp.has_notify_coverage);
+  });
+
   const save = async () => {
     if (!form.name.trim()) { setError('Nama lokasi wajib diisi'); return; }
     setBusy(true);
@@ -773,6 +849,7 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
         contact_ids: form.contact_ids || [],
         division_id: form.division_id || null,
         is_active: form.is_active ? 1 : 0,
+        work_phones: form.work_phones || {},
       });
       onSaved();
     } catch (err) {
@@ -856,6 +933,31 @@ function LocationModal({ initial, branches, onClose, onSaved, onSessionEnd }) {
             </div>
           )}
         </div>
+        {missingPhoneIds.length > 0 && (
+          <div className="field">
+            <label>No. WA Kerja (wajib diisi)</label>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 0, marginBottom: 6 }}>
+              Mitra di bawah ini ditugaskan sebagai PJ/Pengawas tapi belum punya nomor kantor.
+              Isi nomor WA KERJA-nya (bukan HP pribadi), atau hubungkan mereka ke nomor kantor
+              lewat "Kontak Notifikasi WA" di atas lalu buka lagi form ini.
+            </p>
+            {missingPhoneIds.map((uid) => {
+              const emp = employees.find((e) => Number(e.id) === uid);
+              return (
+                <div key={uid} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ flex: '0 0 160px', fontSize: 13 }}>{emp ? emp.name : uid}</span>
+                  <input
+                    type="text"
+                    style={{ flex: 1 }}
+                    value={(form.work_phones || {})[uid] || ''}
+                    onChange={(e) => setWorkPhone(uid, e.target.value)}
+                    placeholder="628xxxxxxxxxx"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="field">
           <label>Divisi (opsional, penanda area)</label>
           <select value={form.division_id} onChange={(e) => set('division_id', e.target.value)}>
